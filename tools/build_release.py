@@ -1,12 +1,14 @@
 """
 Builds the portable Windows release:
 
-    python tools/build_release.py [--no-zip]
+    python tools/build_release.py [--no-zip] [--installer]
 
     dist/Pane/                      the app folder (Pane.exe + _internal/)
     dist/Pane-<version>-win64.zip   the same folder zipped, with README and license notes
+    dist/Pane-<version>-setup.exe   (--installer) Inno Setup installer built from installer/pane.iss
 
-Needs PyInstaller (pip install pyinstaller). Version comes from core/version.py.
+Needs PyInstaller (pip install pyinstaller) and, for --installer, Inno Setup 6
+(winget install JRSoftware.InnoSetup). Version comes from core/version.py.
 """
 import argparse
 import shutil
@@ -16,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tools"))
 
 from core.version import APP_NAME, APP_VERSION  # noqa: E402
 
@@ -76,6 +79,34 @@ def add_docs(app_dir: Path):
             print(f"[build] note: release/{name} not found, skipped")
 
 
+def find_iscc() -> Path:
+    import os
+    candidates = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Inno Setup 6" / "ISCC.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "")) / "Inno Setup 6" / "ISCC.exe",
+        Path(os.environ.get("ProgramFiles", "")) / "Inno Setup 6" / "ISCC.exe",
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    found = shutil.which("ISCC")
+    if found:
+        return Path(found)
+    sys.exit("Inno Setup not found (winget install JRSoftware.InnoSetup)")
+
+
+def build_installer() -> Path:
+    import installer_registry
+    installer_registry.write()
+    iscc = find_iscc()
+    script = ROOT / "installer" / "pane.iss"
+    print(f"[build] compiling installer with {iscc.name} ...", flush=True)
+    subprocess.run([str(iscc), f"/DAppVersion={APP_VERSION}", str(script)], check=True, cwd=ROOT)
+    out = DIST / f"{APP_NAME}-{APP_VERSION}-setup.exe"
+    print(f"[build] installer: {out}  ({out.stat().st_size / 1048576:.0f} MB)")
+    return out
+
+
 def folder_size_mb(p: Path) -> float:
     return sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) / 1048576
 
@@ -83,12 +114,19 @@ def folder_size_mb(p: Path) -> float:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-zip", action="store_true")
+    ap.add_argument("--installer", action="store_true", help="also build the Inno Setup installer")
+    ap.add_argument("--installer-only", action="store_true", help="only the installer, from the existing dist/Pane")
     args = ap.parse_args()
 
+    if args.installer_only:
+        build_installer()
+        return
     run_pyinstaller(write_version_file())
     app_dir = DIST / APP_NAME
     add_docs(app_dir)
     print(f"[build] app folder: {app_dir}  ({folder_size_mb(app_dir):.0f} MB)")
+    if args.installer:
+        build_installer()
     if not args.no_zip:
         zip_base = DIST / f"{APP_NAME}-{APP_VERSION}-win64"
         archive = shutil.make_archive(str(zip_base), "zip", root_dir=DIST, base_dir=APP_NAME)

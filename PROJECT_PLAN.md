@@ -113,7 +113,8 @@ Video_Player/
 ├── PROJECT_PLAN.md          # 프로젝트 종합 계획서 (본 파일)
 ├── PROGRESS.md              # 진행 상황 기록
 ├── CHANGELOG.md             # 버전별 변경 이력
-├── release/                 # 배포 zip에 동봉되는 문서 (README, 라이선스 고지)
+├── release/                 # 배포 zip/설치 파일에 동봉되는 문서 (README, 라이선스 고지)
+├── installer/               # Inno Setup 설치 프로그램 스크립트 (pane.iss, 자동 생성 extensions.iss)
 ├── requirements.txt         # 필수 라이브러리 목록
 ├── requirements-dev.txt     # 개발용(pytest)
 ├── pytest.ini               # pytest 설정
@@ -121,6 +122,7 @@ Video_Player/
 ├── core/
 │   ├── __init__.py
 │   ├── player_engine.py     # libmpv 재생 코어 래퍼 (배속, 탐색, 오디오)
+│   ├── media_types.py       # 열 수 있는 영상 확장자 (열기 대화상자·설치 프로그램 파일 연결 공통)
 │   ├── media_info.py        # mpv에서 코덱/디코더/스트림 정보를 읽어 표시용으로 정리
 │   └── settings.py          # 이어보기, 최근 파일, 설정 저장소
 ├── ui/
@@ -144,7 +146,8 @@ Video_Player/
 ├── tools/
 │   ├── make_icons.py        # 팔레트로부터 로고·ICO 생성
 │   ├── setup_mpv.py         # libmpv 다운로드 (lib/mpv 준비)
-│   ├── build_release.py     # 포터블 zip 빌드 (PyInstaller)
+│   ├── build_release.py     # 포터블 zip + 설치 프로그램 빌드 (PyInstaller, Inno Setup)
+│   ├── installer_registry.py # 파일 연결 레지스트리 항목 생성 (core/media_types.py 기준)
 │   ├── flicker_probe.py     # 깜빡임/프레임 공백·렌더 시간 측정 (UI 시나리오 자동 실행)
 │   └── perf_probe.py        # 재생 성능 측정 (CPU/GPU/메모리/드랍/UI 지연)
 └── tests/
@@ -157,6 +160,8 @@ Video_Player/
     ├── test_integration.py  # 실제 파일 통합 흐름
     ├── test_branding.py     # 로고/아이콘/팔레트
     ├── test_media_info.py   # 코덱/디코더 정보 패널
+    ├── test_release.py      # 버전/경로/로그/정보 창/배포 문서
+    ├── test_installer.py    # 설치 스크립트와 앱의 일관성
     └── test_input_e2e.py    # 실제 마우스 입력 (--run-e2e)
 ```
 

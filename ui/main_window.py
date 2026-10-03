@@ -16,6 +16,7 @@ from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
+from core.media_types import open_dialog_filter
 from core import app_log
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge
@@ -438,7 +439,7 @@ class MainWindow(QMainWindow):
             self,
             "비디오 파일 선택",
             "",
-            "Video Files (*.mp4 *.mkv *.avi *.mov *.webm *.flv *.ts);;All Files (*.*)"
+            open_dialog_filter()
         )
         if file_path:
             self.load_media_file(file_path)

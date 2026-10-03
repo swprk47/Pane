@@ -106,6 +106,15 @@
 .\.venv\Scripts\python.exe -m pytest --run-e2e       # 실제 마우스 입력 포함 (커서가 움직임)
 ```
 
+### Windows 설치 프로그램 (Inno Setup) (2026-10-04)
+- **결정(사용자):** Inno Setup으로 진행, **바탕화면 바로가기는 설치 시 선택(기본 해제)**, **영상 파일 연결은 등록**(설치 화면에서 끌 수 있게 기본 체크).
+- **구성:** `installer/pane.iss` + 자동 생성 `installer/extensions.iss`(확장자 13개, `core/media_types.py`가 단일 출처 — 열기 대화상자 필터와 공유). `python tools/build_release.py --installer`로 `dist/Pane-1.0.0-setup.exe`(69MB, zip은 98MB) 생성. Inno Setup 6.7.3은 `winget install JRSoftware.InnoSetup`.
+- **설계:** 관리자 권한 없이 내 계정에 설치(`{autopf}`, 필요하면 모든 사용자 선택), 고정 `AppId`(바꾸면 업데이트가 옆에 따로 설치됨), 시작 메뉴 + 선택 바탕화면 바로가기에 `AppUserModelID=Pane.Player`(코드의 `SetCurrentProcessExplicitAppUserModelID`와 일치 → 작업표시줄 고정 아이콘 유지), 한국어/영어 안내, 실행 중이면 자동 종료 후 교체. 파일 연결은 **"연결 프로그램" 목록 + 설정>기본 앱의 Capabilities 등록만** 하고 사용자의 현재 기본 앱(UserChoice)은 건드리지 않음.
+- **제거:** 앱 폴더·바로가기·파일 연결 등록 모두 삭제. 설정(이어보기 등)은 대화형 제거 시 "함께 삭제할까요?"(기본 아니오), 조용한 제거는 `/DELETESETTINGS`를 줄 때만 삭제.
+- **실제 수명주기 시험(이 PC, 시험 후 원상복구 확인):** 조용한 설치(종료 코드 0, 파일·시작 메뉴·설치된 앱 목록 `Pane 1.0.0`·확장자 13개 연결 등록, 바탕화면 바로가기는 미생성) → 등록된 명령줄 그대로 실행 → **1.0.1로 제자리 업그레이드**(제거 항목 1개 유지, 설정 유지) → **실행 중인 앱이 있는 상태에서 설치**(설치 프로그램이 앱을 닫고 교체, 종료 코드 0) → 조용한 제거(폴더·바로가기·등록 항목 삭제, 사용자 설정 보존) → 바탕화면 바로가기 선택 설치 + `/DELETESETTINGS` 제거(바로가기·설정·로그 폴더 삭제; 사용자 설정은 **먼저 `reg export`로 백업해 시험 후 `reg import`로 복원**). 시험 후 바로가기/연결/제거 항목 잔여물 없음 확인.
+- **테스트:** `tests/test_installer.py` 14개(생성 파일 최신 여부, 확장자 일치, 기본 앱 비침범, 따옴표, AppId 고정, AppUserModelID 일치, 계정 설치, 바로가기 선택/연결 기본 선택, 실행 중 종료, 언어 메시지, 제거가 앱이 쓰는 설정 그룹과 일치, 조용한 제거 보존). 전체 186 passed.
+- **남은 것/주의:** 코드 서명 없음 → 설치 파일도 SmartScreen 경고(README에 안내). 설치 마법사 화면(한국어/영어)은 눈으로 확인하지 않았음(조용한 모드로만 시험). 다른 PC 미시험. 파일 연결의 "다중 선택 열기"는 첫 파일만 열림(앱이 인자 하나만 처리).
+
 ### v1.0.0 배포 준비 (2026-10-04, 지인 공유용 포터블 zip)
 - **범위:** 지금은 지인에게 공유, 기능이 더 갖춰지면 공개 예정. 형태는 **포터블 zip + 수동 업데이트**(새 zip을 폴더에 덮어쓰기, 설정은 레지스트리라 유지).
 - **빌드:** `python tools/build_release.py` → `dist/Pane/`(245MB) + `dist/Pane-1.0.0-win64.zip`(98MB). PyInstaller 6.22 + **Python 3.14.6에서 성공**(67초). libmpv는 `libmpv-2.dll` 하나만 번들(`mpv-2.dll`은 동일 복사본이라 제외). 필요 파일은 `tools/setup_mpv.py`로 내려받음(예전 `scratch/`에서 이동; `scratch/`는 gitignore라 저장소에 없었음).

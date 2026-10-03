@@ -6,6 +6,7 @@
 - Overlay controls on the video (YouTube style), centered transport, vertical volume popup
 - Resume position, recent files, PIP (always on top), subtitles auto-load, frame step, screenshots
 - Media info panel (I): codec, GPU/CPU decoding, resolution, fps, dropped frames
+- Windows installer (Inno Setup): per-user install, optional desktop shortcut, 'Open with' registration for video files, in-place upgrade, clean uninstall
 - Serenity-blue glass UI, Pane logo, SVG icons
 - Fixes found while preparing the release: PIP flicker, render blocking the UI thread, resume
   position being ignored, title bar double-click, screenshots on localized desktops
