@@ -141,7 +141,8 @@ Video_Player/
 ├── assets/                  # 로고 (svg / png / ico)
 ├── tools/
 │   ├── make_icons.py        # 팔레트로부터 로고·ICO 생성
-│   └── flicker_probe.py     # 깜빡임/프레임 공백·렌더 시간 측정 (UI 시나리오 자동 실행)
+│   ├── flicker_probe.py     # 깜빡임/프레임 공백·렌더 시간 측정 (UI 시나리오 자동 실행)
+│   └── perf_probe.py        # 재생 성능 측정 (CPU/GPU/메모리/드랍/UI 지연)
 └── tests/
     ├── conftest.py          # 공용 fixture (설정 격리, 샘플 영상, 엔진/창)
     ├── assets/sample.mp4    # 실제 파일 테스트용 3초 영상
@@ -197,6 +198,7 @@ Video_Player/
 
 ### 남은 항목
 - [ ] `- / □ / X` 타이틀바 더블클릭(최대화)이 누르자마자 드래그를 시작하는 패턴이라 뷰포트와 같은 문제를 가질 수 있음
-- [ ] 고해상도·장시간 영상에서 렌더 API 전환 후 성능 측정
+- [x] 고해상도 영상에서 렌더 API 전환 후 성능 측정 *(UHD/QHD/FHD 여유, 4K60 전체화면만 5~8% 드랍. PROGRESS.md 참고)*
+- [ ] (선택) 4K 60fps 전체화면 드랍과 전체화면 진입 시 ~200ms 멈칫 개선 — 전체화면 표시 경로 손보기
 - [x] 앱 로고 디자인 *(assets/pane_logo.svg 단독 유리 패널 아이콘, 로고·앱 포인트 색 모두 세레니티 `#B3CEE5`)*
 - [ ] 자막 싱크 조절, 다중 오디오 트랙
