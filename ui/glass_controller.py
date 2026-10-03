@@ -4,6 +4,8 @@ from PySide6.QtWidgets import (
     QPushButton, QSlider, QDialog, QListWidget,
     QListWidgetItem, QGraphicsOpacityEffect
 )
+from PySide6.QtGui import QPainter, QLinearGradient, QColor, QCursor, QMouseEvent, QContextMenuEvent
+from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QSettings, QSize
 from ui.timeline_slider import TimelineSlider
 from ui.volume_popup import VolumePopup
@@ -206,11 +208,22 @@ class GlassController(QWidget):
     screenshot_clicked = Signal()
     fullscreen_clicked = Signal()
     seek_requested = Signal(float)
+    visibility_changed = Signal(bool)   # controls shown / hidden (for the mini progress line)
+    opacity_changed = Signal(float)     # follows the fade so the top scrim fades with us
+
+    # Height of the bottom strip that carries the scrim gradient, and of the
+    # part of it that counts as "the controls" for hover / auto-hide.
+    STRIP_HEIGHT = 230
+    CONTROLS_HEIGHT = 112
+    SCRIM_ALPHA = 0.85
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("GlassControllerCapsule")
-        self.setFixedHeight(96)
+        self.setObjectName("GlassControllerOverlay")
+        self.setMinimumHeight(self.CONTROLS_HEIGHT)
+        self.forward_target = None   # video viewport: gets clicks on empty areas
+        self.hold_visible = None     # callable -> True keeps the controls from auto-hiding
+        self._has_media = False
 
         self.settings = open_settings("ControllerLayout")
         self.current_layout = self._load_layout()
@@ -236,6 +249,7 @@ class GlassController(QWidget):
         self.fade_anim.setDuration(120)
         self.fade_anim.setEasingCurve(QEasingCurve.OutQuad)
         self.fade_anim.finished.connect(self._hide_after_fade)
+        self.fade_anim.valueChanged.connect(lambda v: self.opacity_changed.emit(float(v)))
 
         self.autohide_timer = QTimer(self)
         self.autohide_timer.setInterval(2800)
@@ -263,59 +277,53 @@ class GlassController(QWidget):
         self._rebuild_buttons()
 
     def _init_ui(self):
-        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet("""
-            QWidget#GlassControllerCapsule {
-                background-color: rgba(26, 27, 36, 0.90);
-                border: 1px solid rgba(255, 255, 255, 0.24);
-                border-radius: 28px;
-            }
-            /* Pill-shaped glass buttons: soft fill + thin light rim */
+            /* Overlay style: icons sit directly on the video scrim, no bar. */
             QPushButton {
-                background: rgba(255, 255, 255, 0.07);
-                border: 1px solid rgba(255, 255, 255, 0.20);
-                border-radius: 18px;
+                background: transparent;
+                border: none;
+                border-radius: 20px;
                 color: #FFFFFF;
                 padding: 0px 10px;
-                min-width: 24px;
-                min-height: 34px;
-                max-height: 34px;
+                min-width: 20px;
+                min-height: 40px;
+                max-height: 40px;
                 outline: none;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.16);
-                border: 1px solid rgba(255, 255, 255, 0.42);
             }
             QPushButton:pressed {
-                background: rgba(10, 132, 255, 0.50);
-                border: 1px solid rgba(112, 180, 255, 0.95);
+                background: rgba(10, 132, 255, 0.45);
             }
             QPushButton#PlayButton {
-                background: rgba(255, 255, 255, 0.13);
-                border: 1px solid rgba(255, 255, 255, 0.36);
-                border-radius: 22px;
-                min-width: 40px;
-                min-height: 44px;
-                max-height: 44px;
+                background: rgba(255, 255, 255, 0.16);
+                border: 1px solid rgba(255, 255, 255, 0.42);
+                border-radius: 28px;
+                min-width: 36px;
+                min-height: 56px;
+                max-height: 56px;
             }
             QPushButton#PlayButton:hover {
-                background: rgba(255, 255, 255, 0.22);
-                border: 1px solid rgba(255, 255, 255, 0.60);
+                background: rgba(255, 255, 255, 0.26);
+                border: 1px solid rgba(255, 255, 255, 0.65);
             }
             QPushButton#PlayButton:pressed {
                 background: rgba(10, 132, 255, 0.55);
                 border: 1px solid rgba(112, 180, 255, 0.95);
             }
             QLabel {
-                color: rgba(255, 255, 255, 0.85);
+                color: rgba(255, 255, 255, 0.92);
                 font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
-                font-size: 12px;
+                font-size: 13px;
+                background: transparent;
             }
         """)
 
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(22, 10, 22, 10)
-        self.main_layout.setSpacing(8)
+        self.main_layout.setContentsMargins(24, 0, 24, 14)
+        self.main_layout.setSpacing(4)
+        self.main_layout.addStretch(1)  # content sits at the bottom of the scrim strip
 
         # 1. Timeline Seek Slider
         self.timeline = TimelineSlider(self)
@@ -443,7 +451,7 @@ class GlassController(QWidget):
 
         elif key == "time_label":
             self.lbl_time = QLabel("00:00 / 00:00", self)
-            self.lbl_time.setStyleSheet("color: rgba(255, 255, 255, 0.75); font-size: 12px; margin: 0 4px;")
+            self.lbl_time.setStyleSheet("margin: 0 4px;")
             self._update_time_display()
             return self.lbl_time
 
@@ -455,11 +463,13 @@ class GlassController(QWidget):
                 QPushButton#SpeedButton {
                     background: rgba(10, 132, 255, 0.22);
                     border: 1px solid rgba(10, 132, 255, 0.45);
-                    border-radius: 8px;
-                    color: #70B4FF;
+                    border-radius: 15px;
+                    color: #8EC5FF;
                     font-size: 13px;
                     font-weight: 700;
-                    padding: 3px 10px;
+                    padding: 0px 12px;
+                    min-height: 30px;
+                    max-height: 30px;
                 }
                 QPushButton#SpeedButton:hover {
                     background: rgba(10, 132, 255, 0.40);
@@ -584,7 +594,74 @@ class GlassController(QWidget):
 
     # --- Fast Responsive Auto-Hide Animations ---
 
+    def set_media_loaded(self, loaded: bool):
+        """No media: controls stay hidden (nothing to control yet)."""
+        self._has_media = loaded
+        if not loaded:
+            self.autohide_timer.stop()
+            self.volume_popup.hide()
+            self.hide()
+        else:
+            self.trigger_activity()
+
+    def _mouse_over_controls(self) -> bool:
+        pos = self.mapFromGlobal(QCursor.pos())
+        return self.rect().contains(pos) and pos.y() >= self.height() - self.CONTROLS_HEIGHT
+
+    def paintEvent(self, event):
+        # Bottom scrim: transparent at the top edge, dark behind the controls.
+        p = QPainter(self)
+        g = QLinearGradient(0, 0, 0, self.height())
+        g.setColorAt(0.0, QColor(0, 0, 0, 0))
+        g.setColorAt(0.45, QColor(0, 0, 0, int(255 * 0.45)))
+        g.setColorAt(1.0, QColor(0, 0, 0, int(255 * self.SCRIM_ALPHA)))
+        p.fillRect(self.rect(), g)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.visibility_changed.emit(True)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.visibility_changed.emit(False)
+
+    # Clicks on the empty scrim area belong to the video (drag, double-click,
+    # context menu), so hand them over instead of swallowing them here.
+    def _forward_mouse(self, event: QMouseEvent):
+        t = self.forward_target
+        if t is None:
+            event.ignore()
+            return
+        local = t.mapFromGlobal(event.globalPosition().toPoint())
+        ev = QMouseEvent(event.type(), local, event.globalPosition(), event.button(),
+                         event.buttons(), event.modifiers())
+        QApplication.sendEvent(t, ev)
+        event.accept()
+
+    def mousePressEvent(self, event):
+        self._forward_mouse(event)
+
+    def mouseMoveEvent(self, event):
+        self._forward_mouse(event)
+
+    def mouseReleaseEvent(self, event):
+        self._forward_mouse(event)
+
+    def mouseDoubleClickEvent(self, event):
+        self._forward_mouse(event)
+
+    def contextMenuEvent(self, event):
+        t = self.forward_target
+        if t is None:
+            event.ignore()
+            return
+        local = t.mapFromGlobal(event.globalPos())
+        QApplication.sendEvent(t, QContextMenuEvent(event.reason(), local, event.globalPos(), event.modifiers()))
+        event.accept()
+
     def trigger_activity(self):
+        if not self._has_media:
+            return
         if not self.isVisible():
             self.show()
         self._fade_in()
@@ -612,7 +689,8 @@ class GlassController(QWidget):
         return super().eventFilter(obj, event)
 
     def _fade_out(self):
-        if self.underMouse() or self.volume_popup.isVisible():
+        if (self._mouse_over_controls() or self.volume_popup.isVisible()
+                or (self.hold_visible and self.hold_visible())):
             self.autohide_timer.start(2800)
             return
 
@@ -628,8 +706,9 @@ class GlassController(QWidget):
 
     def enterEvent(self, event):
         self.autohide_timer.stop()
-        self.show()
-        self._fade_in()
+        if self._has_media:
+            self.show()
+            self._fade_in()
         super().enterEvent(event)
 
     def leaveEvent(self, event):

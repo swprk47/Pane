@@ -41,6 +41,19 @@ def run_speed_osd_tests():
     assert 1.4 in popup.presets, "1.4x should be added to presets via Pin"
     print(f"  [OK] 1.40x 핀 추가 완료 -> 새 프리셋 목록: {popup.presets}")
 
+    # 3-1. 핀 최대 개수(6) 제한 검증
+    from ui.speed_popup import MAX_PRESETS
+    assert MAX_PRESETS == 6
+    popup.slider.setValue(130)
+    popup._pin_current_speed()           # fills the 6th slot (5 defaults + 1.4 above, 1.3 may be refused)
+    popup.slider.setValue(175)
+    before = list(popup.presets)
+    assert len(before) <= MAX_PRESETS
+    if len(before) == MAX_PRESETS:
+        assert popup._pin_current_speed() is False, "pinning beyond the max must be refused"
+        assert popup.presets == before
+    print(f"  [OK] 최대 {MAX_PRESETS}개 제한 확인 -> {popup.presets}")
+
     # 4. 프리셋 언핀(Unpin / 삭제) 검증
     print("\n[3] ✕ 프리셋 언핀(삭제) 테스트:")
     popup._unpin_preset(1.2)

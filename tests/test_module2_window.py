@@ -21,15 +21,16 @@ def run_window_test():
     window = MainWindow()
     print("[1] MainWindow 인스턴스화 성공!")
 
-    # 1. 렌더 WID 확인
-    wid = window.get_render_wid()
-    assert wid > 0, f"Invalid native window handle: {wid}"
-    print(f"  [OK] 비디오 렌더링용 Native HWND WID 획득: {wid}")
+    # 1. 렌더 서피스 확인 (mpv render API -> QOpenGLWidget, 별도 네이티브 창 없음)
+    from ui.mpv_gl import MpvGLWidget
+    assert isinstance(window.viewport, MpvGLWidget), "viewport must be the OpenGL render surface"
+    assert window.viewport._mpv is window.engine.mpv, "mpv core must be attached to the viewport"
+    print("  [OK] 비디오 렌더 서피스(QOpenGLWidget)에 mpv 코어 연결 확인")
 
     # 2. 타이틀바 및 컴포넌트 검증
     assert window.title_bar is not None
     print("  [OK] 커스텀 글라스 타이틀바 초기화 성공")
-    window.set_media_title("테스트_영상_샘플.mp4")
+    window.title_bar.set_media_title("테스트_영상_샘플.mp4")
     assert "테스트_영상_샘플.mp4" in window.title_bar.file_label.text()
     print("  [OK] 미디어 타이틀 동적 업데이트 확인")
 

@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QLabel,
     QFileDialog, QMenu, QApplication
 )
-from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QSize
+from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QSize, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent, QAction
 
 import pywinstyles
@@ -14,6 +14,8 @@ from ui.title_bar import GlassTitleBar, native_start_window_drag
 from ui.speed_popup import SpeedPopup
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
+from ui.mpv_gl import MpvGLWidget
+from ui.overlay import TopScrim, MiniProgress, CenterBadge
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
 from core.settings import AppSettings
@@ -35,7 +37,7 @@ def apply_windows_11_rounded_corners(hwnd):
         print(f"[DWM] Corner preference notice: {e}")
 
 
-class VideoViewport(QWidget):
+class VideoViewport(MpvGLWidget):
     """
     Dedicated video rendering viewport.
     Supports dragging anywhere on the screen to move the window,
@@ -50,24 +52,11 @@ class VideoViewport(QWidget):
         super().__init__(parent_window)
         self.parent_window = parent_window
         self.setAcceptDrops(True)
-        self.setAttribute(Qt.WA_NativeWindow, True)
-        # A plain QWidget subclass ignores its QSS background unless this is set;
-        # without it the viewport stays alpha 0 and Windows hit-tests straight
-        # through the translucent window to whatever is behind it.
-        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.NoFocus)
         self._press_pos = None
         self._drag_started = False
-
-        # Solid dark background prevents Windows click-through to desktop
-        self.setStyleSheet("""
-            VideoViewport {
-                background-color: #0E0E12;
-                border-bottom-left-radius: 18px;
-                border-bottom-right-radius: 18px;
-            }
-        """)
+        self._after_double_click = False
 
         # Empty state notice overlay
         self.notice_layout = QVBoxLayout(self)
@@ -113,6 +102,7 @@ class VideoViewport(QWidget):
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
+            self._after_double_click = True
             self.double_clicked.emit()
             event.accept()
 
@@ -144,8 +134,9 @@ class VideoViewport(QWidget):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton and self._press_pos is not None:
-            if not self._drag_started:
+            if not self._drag_started and not self._after_double_click:
                 self.clicked.emit()
+            self._after_double_click = False
             self._press_pos = None
             event.accept()
         else:
@@ -180,6 +171,11 @@ class MainWindow(QMainWindow):
 
         self.app_settings = AppSettings()
 
+        self._click_timer = QTimer(self)
+        self._click_timer.setSingleShot(True)
+        self._click_timer.setInterval(260)
+        self._click_timer.timeout.connect(self._toggle_play_from_click)
+
         self._init_layout()
         self._init_engine()
         self._init_floating_widgets()
@@ -209,25 +205,41 @@ class MainWindow(QMainWindow):
         self.viewport = VideoViewport(self)
         self.viewport.file_dropped.connect(self.load_media_file)
         self.viewport.clicked.connect(self._on_viewport_clicked)
-        self.viewport.double_clicked.connect(self.toggle_fullscreen)
+        self.viewport.double_clicked.connect(self._on_viewport_double_clicked)
         self.viewport.context_menu_requested.connect(self.show_context_menu)
         self.main_layout.addWidget(self.viewport, stretch=1)
 
     def _init_engine(self):
-        wid = self.get_render_wid()
-        self.engine = PlayerEngine(wid=wid, parent=self)
+        # mpv draws into the viewport through the render API (no native child
+        # window), so the overlay widgets above can blend with the video.
+        self.engine = PlayerEngine(parent=self, render_api=True)
+        self.viewport.attach_mpv(self.engine.mpv)
         last_vol = self.app_settings.get_volume()
         self.engine.set_volume(last_vol)
 
     def _init_floating_widgets(self):
-        self.osd = GlassOSDWidget(self.central_widget)
-        self.osd.raise_()
+        self._duration = 0.0
 
-        self.speed_popup = SpeedPopup(self)
+        # Stacking order, bottom to top: viewport < scrims/badge < controller < OSD
+        self.top_scrim = TopScrim(self.central_widget)
+        self.center_badge = CenterBadge(self.central_widget)
+        self.center_badge.hide()
+        self.mini_progress = MiniProgress(self.central_widget)
+        self.mini_progress.hide()
+
+        self.speed_popup = SpeedPopup(self.central_widget)
 
         self.controller = GlassController(self.central_widget)
-        self.controller.show()
-        self.controller.raise_()
+        self.controller.forward_target = self.viewport
+        self.controller.set_media_loaded(False)
+        # keep the controls on screen while the speed panel is open
+        self.controller.hold_visible = lambda: self.speed_popup.isVisible()
+        self.controller.visibility_changed.connect(self._on_controls_visibility)
+        self.controller.opacity_changed.connect(self.top_scrim.set_opacity)
+        self.top_scrim.hide()
+
+        self.osd = GlassOSDWidget(self.central_widget)
+        self.osd.raise_()
 
         self._reposition_floating_widgets()
 
@@ -235,7 +247,9 @@ class MainWindow(QMainWindow):
         # Engine -> UI
         self.engine.time_pos_changed.connect(self._on_time_pos_changed)
         self.engine.duration_changed.connect(self.controller.set_duration)
+        self.engine.duration_changed.connect(self._on_duration_changed)
         self.engine.playback_state_changed.connect(self.controller.set_playback_state)
+        self.engine.playback_state_changed.connect(self._on_playback_state)
         self.engine.speed_changed.connect(self._on_speed_changed)
         self.engine.volume_changed.connect(self._on_volume_changed)
         self.engine.file_ended.connect(self._on_file_ended)
@@ -270,11 +284,6 @@ class MainWindow(QMainWindow):
         # transparent;", which wipes the whole theme. Re-apply it afterwards.
         self.setStyleSheet(GLASS_THEME_QSS)
         self._reposition_floating_widgets()
-        self.controller.raise_()
-        self.osd.raise_()
-
-    def get_render_wid(self) -> int:
-        return int(self.viewport.winId())
 
     # --- Mouse Tracking Event Filter ---
 
@@ -412,6 +421,10 @@ class MainWindow(QMainWindow):
         file_name = os.path.basename(file_path)
         self.title_bar.set_media_title(file_name)
         self.viewport.show_empty_notice(False)
+        self.viewport.set_has_frame(True)
+        self.top_scrim.set_title(file_name)
+        self.top_scrim.show()
+        self.controller.set_media_loaded(True)
 
         resume_pos = self.app_settings.get_resume_position(file_path)
         start_time = 0.0
@@ -436,8 +449,26 @@ class MainWindow(QMainWindow):
                 self.osd.show_message(f"자막 로드됨: {os.path.basename(sub_file)}", "💬")
                 break
 
+    def _on_duration_changed(self, duration: float):
+        self._duration = duration
+
+    def _on_playback_state(self, is_playing: bool):
+        # Big play badge only while paused with a file loaded.
+        self.center_badge.setVisible(not is_playing and self._current_file is not None)
+        self._reposition_floating_widgets()
+
+    def _on_controls_visibility(self, visible: bool):
+        # While controls are hidden a thin progress line stays at the bottom edge.
+        has_media = self._current_file is not None
+        self.mini_progress.setVisible(has_media and not visible)
+        if not visible:
+            self.top_scrim.set_opacity(0.0)
+        self.mini_progress.raise_()
+
     def _on_time_pos_changed(self, time_pos: float):
         self.controller.set_time_pos(time_pos)
+        if self._duration > 0:
+            self.mini_progress.set_ratio(time_pos / self._duration)
         if self._current_file:
             self.app_settings.save_resume_position(self._current_file, time_pos)
 
@@ -487,11 +518,22 @@ class MainWindow(QMainWindow):
 
     def _show_speed_popup(self):
         if hasattr(self.controller, "btn_speed"):
-            self.speed_popup.show_above_widget(self.controller.btn_speed)
+            self.speed_popup.toggle_above_widget(self.controller.btn_speed)
 
     def _on_viewport_clicked(self):
         if self.viewport.notice_widget.isVisible():
             self._open_file_dialog()
+            return
+        # Wait briefly: a second click means "fullscreen", not "pause".
+        self._click_timer.start()
+
+    def _on_viewport_double_clicked(self):
+        self._click_timer.stop()
+        self.toggle_fullscreen()
+
+    def _toggle_play_from_click(self):
+        if self._current_file:
+            self.engine.toggle_play()
 
     # --- Fullscreen & PIP Modes ---
 
@@ -638,27 +680,39 @@ class MainWindow(QMainWindow):
         self._reposition_floating_widgets()
 
     def _reposition_floating_widgets(self):
-        cw_w = self.central_widget.width()
-        cw_h = self.central_widget.height()
+        """Lay the overlay out over the video area (the viewport's rectangle)."""
+        if not hasattr(self, "controller"):
+            return
+        vp = self.viewport.geometry()
+        if vp.width() <= 0 or vp.height() <= 0:
+            return
 
-        needed = 0
-        if hasattr(self, "controller"):
-            self.controller.set_compact(False)
-            needed = self.controller.layout().minimumSize().width()
-            if cw_w - 32 < needed:
-                self.controller.set_compact(True)
-                needed = self.controller.layout().minimumSize().width()
-        c_w = min(cw_w - 32, max(int(cw_w * 0.75), needed))
-        c_h = 96
-        c_x = (cw_w - c_w) // 2
-        c_y = cw_h - c_h - 22
-        if hasattr(self, "controller"):
-            self.controller.setGeometry(c_x, c_y, c_w, c_h)
-            self.controller.raise_()
+        # Controls: compact (transport only) when the full set doesn't fit.
+        c = self.controller
+        c.set_compact(False)
+        needed = c.layout().minimumSize().width()
+        if vp.width() < needed:
+            c.set_compact(True)
+
+        strip_h = min(c.STRIP_HEIGHT, vp.height())
+        c.setGeometry(vp.x(), vp.bottom() + 1 - strip_h, vp.width(), strip_h)
+        self.top_scrim.setGeometry(vp.x(), vp.y(), vp.width(), self.top_scrim.height())
+        self.mini_progress.setGeometry(vp.x(), vp.bottom() + 1 - self.mini_progress.height(),
+                                       vp.width(), self.mini_progress.height())
+        self.center_badge.move(vp.x() + (vp.width() - self.center_badge.width()) // 2,
+                               vp.y() + (vp.height() - self.center_badge.height()) // 2)
 
         if hasattr(self, "osd"):
-            osd_w = self.osd.width()
-            self.osd.move((cw_w - osd_w) // 2, 55)
+            self.osd.move(vp.x() + (vp.width() - self.osd.width()) // 2, vp.y() + 17)
+
+        # stacking order, bottom to top
+        self.top_scrim.raise_()
+        self.center_badge.raise_()
+        self.mini_progress.raise_()
+        c.raise_()
+        if self.speed_popup.isVisible():
+            self.speed_popup.raise_()
+        if hasattr(self, "osd"):
             self.osd.raise_()
 
     # --- Frameless Window Drag & Resize ---
@@ -749,6 +803,9 @@ class MainWindow(QMainWindow):
         return f"{m:02d}:{s:02d}"
 
     def _on_close(self):
+        # Render context first, then the mpv core (the other order aborts).
+        if hasattr(self, "viewport"):
+            self.viewport.release()
         if hasattr(self, "engine"):
             self.engine.terminate()
 

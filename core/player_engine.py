@@ -35,7 +35,10 @@ class PlayerEngine(QObject):
     file_ended = Signal()                  # Playback reached end
     error_occurred = Signal(str)           # Error message
 
-    def __init__(self, wid=None, parent=None):
+    def __init__(self, wid=None, parent=None, render_api=False):
+        """render_api=True: no window of mpv's own; the caller draws frames via
+        MpvRenderContext (see ui/mpv_gl.py). Otherwise mpv opens its own window
+        or embeds into `wid`."""
         super().__init__(parent)
         self.wid = wid
         self._current_file = None
@@ -60,7 +63,12 @@ class PlayerEngine(QObject):
             "osc": "no",
         }
 
-        if wid is not None:
+        if render_api:
+            mpv_options["vo"] = "libmpv"
+            # GL interop for hardware surfaces isn't available here; decode on
+            # the GPU but copy frames back.
+            mpv_options["hwdec"] = "auto-copy"
+        elif wid is not None:
             mpv_options["wid"] = wid
 
         try:
