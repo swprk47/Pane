@@ -14,6 +14,7 @@ from ui.title_bar import GlassTitleBar, native_start_window_drag
 from ui.speed_popup import SpeedPopup
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
+from ui.media_info_panel import MediaInfoPanel
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge
 from ui.icons import get_svg_icon, get_svg_pixmap
@@ -231,6 +232,9 @@ class MainWindow(QMainWindow):
 
         self.speed_popup = SpeedPopup(self.central_widget)
 
+        self.info_panel = MediaInfoPanel(self.central_widget)
+        self.info_panel.set_provider(self.engine.get_media_info)
+
         self.controller = GlassController(self.central_widget)
         self.controller.forward_target = self.viewport
         self.controller.set_media_loaded(False)
@@ -364,6 +368,12 @@ class MainWindow(QMainWindow):
         # 5. Screenshot
         act_shot = menu.addAction("현재 화면 고화질 캡처 (Ctrl+S)")
         act_shot.triggered.connect(self.take_screenshot)
+
+        # Media info (codec / decoder / stats)
+        act_info = menu.addAction("재생 정보 - 코덱, 디코더 (I)")
+        act_info.setCheckable(True)
+        act_info.setChecked(self.info_panel.isVisible())
+        act_info.triggered.connect(self.toggle_media_info)
 
         # 6. PIP Mode
         act_pip = menu.addAction("PIP 항상 위 모드 (P)")
@@ -518,6 +528,16 @@ class MainWindow(QMainWindow):
         if path:
             self.osd.show_message(f"캡처 저장됨: {os.path.basename(path)}", "screenshot")
 
+    def toggle_media_info(self):
+        if self.info_panel.isVisible():
+            self.info_panel.hide()
+            return
+        if self._current_file is None:
+            self.osd.show_message("영상을 먼저 열어 주세요", "warning")
+            return
+        self.info_panel.show()
+        self._reposition_floating_widgets()
+
     def _show_speed_popup(self):
         if hasattr(self.controller, "btn_speed"):
             self.speed_popup.toggle_above_widget(self.controller.btn_speed)
@@ -638,6 +658,12 @@ class MainWindow(QMainWindow):
             event.accept()
             return
 
+        # Media info: I
+        if key == Qt.Key_I and not (modifiers & Qt.ControlModifier):
+            self.toggle_media_info()
+            event.accept()
+            return
+
         # Subtitle: C
         if key == Qt.Key_C:
             self.toggle_subtitle()
@@ -662,7 +688,9 @@ class MainWindow(QMainWindow):
             event.accept()
             return
         elif key == Qt.Key_Escape:
-            if self.isFullScreen():
+            if self.info_panel.isVisible():
+                self.info_panel.hide()
+            elif self.isFullScreen():
                 self.toggle_fullscreen()
             elif self._is_pip:
                 self.toggle_pip_mode()
@@ -707,6 +735,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "osd"):
             self.osd.move(vp.x() + (vp.width() - self.osd.width()) // 2, vp.y() + 17)
 
+        # media info: top-right corner of the video area
+        if self.info_panel.isVisible():
+            self.info_panel.adjustSize()
+            self.info_panel.move(max(vp.x() + 8, vp.right() - self.info_panel.width() - 14), vp.y() + 14)
+
         # stacking order, bottom to top
         self.top_scrim.raise_()
         self.center_badge.raise_()
@@ -714,6 +747,8 @@ class MainWindow(QMainWindow):
         c.raise_()
         if self.speed_popup.isVisible():
             self.speed_popup.raise_()
+        if self.info_panel.isVisible():
+            self.info_panel.raise_()
         if hasattr(self, "osd"):
             self.osd.raise_()
 

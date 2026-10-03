@@ -102,6 +102,7 @@
 | **볼륨/자막** | `↑` / `↓` 또는 `마우스 휠` | 볼륨 5% 증감 |
 | | `M` | 음소거 토글 |
 | | `C` | 자막 켜기 / 끄기 |
+| **정보** | `I` | 재생 정보 패널 (코덱 · 하드웨어/소프트웨어 디코딩 · 해상도 · FPS · 버려진 프레임, 복사 가능) |
 
 ---
 
@@ -118,12 +119,14 @@ Video_Player/
 ├── core/
 │   ├── __init__.py
 │   ├── player_engine.py     # libmpv 재생 코어 래퍼 (배속, 탐색, 오디오)
+│   ├── media_info.py        # mpv에서 코덱/디코더/스트림 정보를 읽어 표시용으로 정리
 │   └── settings.py          # 이어보기, 최근 파일, 설정 저장소
 ├── ui/
 │   ├── __init__.py
 │   ├── main_window.py       # 메인 윈도우 (윈도우 11 프레임리스, 이벤트 핸들러)
 │   ├── title_bar.py         # 커스텀 글라스 타이틀바
 │   ├── mpv_gl.py            # libmpv 렌더 API → QOpenGLWidget (영상 표시면)
+│   ├── media_info_panel.py  # 재생 정보(코덱/디코더/통계) 패널
 │   ├── overlay.py           # 상단 스크림, 하단 진행선, 중앙 재생 표시
 │   ├── glass_controller.py  # 영상 위 오버레이 컨트롤러 (하단 스크림 + 아이콘)
 │   ├── volume_popup.py      # 음소거 버튼 호버 시 뜨는 세로 볼륨 슬라이더
@@ -147,6 +150,7 @@ Video_Player/
     ├── test_window.py       # 메인 윈도우
     ├── test_integration.py  # 실제 파일 통합 흐름
     ├── test_branding.py     # 로고/아이콘/팔레트
+    ├── test_media_info.py   # 코덱/디코더 정보 패널
     └── test_input_e2e.py    # 실제 마우스 입력 (--run-e2e)
 ```
 

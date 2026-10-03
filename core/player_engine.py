@@ -297,6 +297,13 @@ class PlayerEngine(QObject):
             self.error_occurred.emit(f"Screenshot failed: {e}")
             return ""
 
+    # --- Media info ---
+
+    def get_media_info(self) -> dict:
+        """Codec / decoder / stream details (see core.media_info)."""
+        from core.media_info import read_media_info
+        return read_media_info(self.mpv)
+
     # --- Lifecycle ---
 
     def terminate(self):

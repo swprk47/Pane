@@ -106,6 +106,13 @@
 .\.venv\Scripts\python.exe -m pytest --run-e2e       # 실제 마우스 입력 포함 (커서가 움직임)
 ```
 
+### 재생 정보(코덱·디코더) 패널 (2026-10-03, 성능 측정의 준비 단계)
+- **무엇을:** `I` 키(또는 우클릭 메뉴 '재생 정보')로 영상 오른쪽 위에 유리 패널을 띄워 비디오 코덱+프로필(예: `H264 · High`), 상세 코덱명, **디코더(GPU `d3d11va-copy` / CPU 소프트웨어)**, 해상도, 프레임레이트, 비트레이트, 픽셀 형식(`nv12 · bt.601 · limited`), 오디오 코덱·샘플레이트·채널, 컨테이너·파일 크기·길이, **배속·실제 FPS·버려진 프레임(출력/디코더)**, 출력 방식을 보여 줌. 1초마다 갱신, '복사' 버튼으로 텍스트 복사, Esc/✕/`I`로 닫기(전체화면 중 Esc는 패널을 먼저 닫음). 영상이 없으면 OSD로 안내.
+- **구조:** `core/media_info.py`(mpv 속성 읽기 + 표시 문구 변환, 순수 함수라 테스트 용이) → `PlayerEngine.get_media_info()` → `ui/media_info_panel.py`. mpv 속성은 `mpv[...]`(옵션 영역)이 아니라 `_get_property()`로 읽어야 함(`mpv['video-codec']`는 항상 AttributeError).
+- **성능 측정에 쓸 수 있는 값:** 디코더가 실제로 GPU인지(`hwdec-current`), 실제 FPS(`estimated-vf-fps`), 버려진 프레임(`frame-drop-count`, `decoder-frame-drop-count`). 0이 아니면 주황색으로 강조.
+- 한계: `video-bitrate`/`audio-bitrate`는 재생이 어느 정도 진행돼야 mpv가 알려 줘서 처음엔 '—'. 샘플 영상은 오디오가 없어 '오디오 없음'.
+- **테스트:** `tests/test_media_info.py` 38개(형식 변환, 가짜 정보로 describe, 실제 파일, 패널 갱신/복사/이스케이프, `I` 키, Esc 우선순위, 위치/리사이즈). 전체 148 passed + e2e 7.
+
 ### 타임라인 손잡이 흰 원으로 (2026-10-03, 사용자 지적)
 - 손잡이가 포인트색 원(10px) + 반투명 테두리 3px 구조라 원 두 개가 겹친 것처럼 깨져 보였음 → 테두리 없는 지름 14px 흰색 원 하나로 변경(호버 시 아주 연한 하늘색). `test_timeline_thumb_is_a_single_white_circle`로 재발 방지.
 
