@@ -280,3 +280,71 @@ def test_paused_seek_updates_position(window, sample_video, pump):
     window.engine.seek(2.0, "absolute")
     assert pump(lambda: abs(window.engine._time_pos - 2.0) < 0.2, timeout=2.0), \
         f"time_pos stayed at {window.engine._time_pos}"
+
+
+# --- title bar: drag vs double-click ---------------------------------------
+
+@pytest.fixture
+def title_drag(window, monkeypatch, pump):
+    """Records native window-drag starts instead of entering the system move loop."""
+    import ui.title_bar as tb
+    calls = []
+    monkeypatch.setattr(tb, "native_start_window_drag", lambda hwnd: calls.append(hwnd) or True)
+    pump(timeout=0.2)
+    return calls
+
+
+def _empty_title_spot(window):
+    return QPoint(window.title_bar.width() // 2, window.title_bar.height() // 2)
+
+
+def test_title_bar_click_does_not_start_a_drag(window, title_drag):
+    tb, pos = window.title_bar, _empty_title_spot(window)
+    QTest.mousePress(tb, Qt.LeftButton, Qt.NoModifier, pos)
+    QTest.mouseRelease(tb, Qt.LeftButton, Qt.NoModifier, pos)
+    assert title_drag == []
+
+
+def test_title_bar_small_jitter_does_not_start_a_drag(window, title_drag):
+    tb, pos = window.title_bar, _empty_title_spot(window)
+    QTest.mousePress(tb, Qt.LeftButton, Qt.NoModifier, pos)
+    QTest.mouseMove(tb, pos + QPoint(2, 1))
+    QTest.mouseRelease(tb, Qt.LeftButton, Qt.NoModifier, pos + QPoint(2, 1))
+    assert title_drag == []
+
+
+def test_title_bar_drag_starts_once_after_the_threshold(window, title_drag):
+    from PySide6.QtWidgets import QApplication
+    tb, pos = window.title_bar, _empty_title_spot(window)
+    far = QApplication.startDragDistance() + 8
+    QTest.mousePress(tb, Qt.LeftButton, Qt.NoModifier, pos)
+    QTest.mouseMove(tb, pos + QPoint(far, 0))
+    QTest.mouseMove(tb, pos + QPoint(far + 10, 0))
+    assert len(title_drag) == 1, "the move loop must start exactly once per drag"
+    QTest.mouseRelease(tb, Qt.LeftButton, Qt.NoModifier, pos + QPoint(far + 10, 0))
+
+
+def test_title_bar_double_click_toggles_maximize_without_dragging(window, title_drag, pump):
+    """Regression: the drag used to start on the first press, which swallowed the button-up and
+    stopped the double-click from ever arriving."""
+    tb, pos = window.title_bar, _empty_title_spot(window)
+    assert not window.isMaximized()
+    QTest.mouseDClick(tb, Qt.LeftButton, Qt.NoModifier, pos)
+    pump(timeout=0.4)
+    assert window.isMaximized()
+    assert title_drag == []
+    QTest.mouseDClick(tb, Qt.LeftButton, Qt.NoModifier, pos)
+    pump(timeout=0.4)
+    assert not window.isMaximized()
+
+
+def test_title_bar_does_not_drag_a_maximized_window(window, title_drag, pump):
+    from PySide6.QtWidgets import QApplication
+    window.showMaximized()
+    pump(timeout=0.4)
+    tb, pos = window.title_bar, _empty_title_spot(window)
+    QTest.mousePress(tb, Qt.LeftButton, Qt.NoModifier, pos)
+    QTest.mouseMove(tb, pos + QPoint(QApplication.startDragDistance() + 20, 0))
+    QTest.mouseRelease(tb, Qt.LeftButton, Qt.NoModifier, pos)
+    assert title_drag == []
+    window.showNormal()

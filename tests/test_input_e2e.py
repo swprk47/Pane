@@ -181,3 +181,31 @@ def test_volume_popup_opens_on_hover_and_closes_on_leave(screen_window, sample_v
     assert pump(lambda: c.volume_popup.isVisible(), timeout=1.0)
     user32.SetCursorPos(btn.x() - 500, btn.y() - 300)
     assert pump(lambda: not c.volume_popup.isVisible(), timeout=1.5)
+
+
+def _title_spot(window):
+    return window.title_bar.mapToGlobal(QPoint(window.title_bar.width() // 2, window.title_bar.height() // 2))
+
+
+def test_title_bar_double_click_maximizes_and_restores(screen_window, pump, mouse, monkeypatch):
+    import ui.title_bar as tb
+    started = []
+    monkeypatch.setattr(tb, "native_start_window_drag", lambda hwnd: started.append(hwnd) or True)
+    w = screen_window
+    p = _title_spot(w)
+    mouse.click(p.x(), p.y(), times=2)
+    pump(timeout=0.6)
+    assert w.isMaximized() and started == []
+    p = _title_spot(w)
+    mouse.click(p.x(), p.y(), times=2)
+    pump(timeout=0.6)
+    assert not w.isMaximized()
+
+
+def test_title_bar_drag_with_the_real_mouse(screen_window, pump, mouse, monkeypatch):
+    import ui.title_bar as tb
+    started = []
+    monkeypatch.setattr(tb, "native_start_window_drag", lambda hwnd: started.append(hwnd) or True)
+    p = _title_spot(screen_window)
+    mouse.drag(p.x(), p.y())
+    assert len(started) == 1

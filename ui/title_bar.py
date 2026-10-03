@@ -1,5 +1,5 @@
 import ctypes
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QApplication
 from PySide6.QtCore import Qt, QPoint, Signal, QSize
 from ui.icons import get_svg_icon, get_logo_icon
 
@@ -31,6 +31,8 @@ class GlassTitleBar(QWidget):
         # bar is alpha 0 and clicks fall through the translucent window.
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFixedHeight(38)
+        self._press_pos = None
+        self._drag_started = False
 
         self._init_ui()
 
@@ -163,17 +165,35 @@ class GlassTitleBar(QWidget):
         self._close_window()
 
     # --- Windows Native Drag Event ---
+    # The native move loop must only start once the cursor really drags. Starting it on
+    # press swallows the button-up, so a double-click (maximize/restore) never arrives.
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            hwnd = int(self.parent_window.winId())
-            if not self.parent_window.isMaximized():
-                if native_start_window_drag(hwnd):
-                    event.accept()
-                    return
+            self._press_pos = event.position().toPoint()
+            self._drag_started = False
+            event.accept()
+            return
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (event.buttons() & Qt.LeftButton and self._press_pos is not None and not self._drag_started
+                and not self.parent_window.isMaximized()):
+            moved = (event.position().toPoint() - self._press_pos).manhattanLength()
+            if moved >= QApplication.startDragDistance():
+                self._drag_started = True
+                native_start_window_drag(int(self.parent_window.winId()))
+                event.accept()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._press_pos = None
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:
+            self._press_pos = None
             self._toggle_maximize()
             event.accept()
