@@ -1,0 +1,757 @@
+import os
+import ctypes
+from pathlib import Path
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QLabel,
+    QFileDialog, QMenu, QApplication
+)
+from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QSize
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent, QAction
+
+import pywinstyles
+from styles.glass_theme import GLASS_THEME_QSS
+from ui.title_bar import GlassTitleBar, native_start_window_drag
+from ui.speed_popup import SpeedPopup
+from ui.osd_widget import GlassOSDWidget
+from ui.glass_controller import GlassController
+from ui.icons import get_svg_icon
+from core.player_engine import PlayerEngine
+from core.settings import AppSettings
+
+
+def apply_windows_11_rounded_corners(hwnd):
+    """Apply native Windows 11 rounded window corners."""
+    try:
+        DWMWA_WINDOW_CORNER_PREFERENCE = 33
+        DWMWCP_ROUND = 2
+        val = ctypes.c_int(DWMWCP_ROUND)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            ctypes.byref(val),
+            ctypes.sizeof(val)
+        )
+    except Exception as e:
+        print(f"[DWM] Corner preference notice: {e}")
+
+
+class VideoViewport(QWidget):
+    """
+    Dedicated video rendering viewport.
+    Supports dragging anywhere on the screen to move the window,
+    right-click context menu, and file drag-and-drop.
+    """
+    file_dropped = Signal(str)
+    double_clicked = Signal()
+    clicked = Signal()
+    context_menu_requested = Signal(QPoint)
+
+    def __init__(self, parent_window):
+        super().__init__(parent_window)
+        self.parent_window = parent_window
+        self.setAcceptDrops(True)
+        self.setAttribute(Qt.WA_NativeWindow, True)
+        # A plain QWidget subclass ignores its QSS background unless this is set;
+        # without it the viewport stays alpha 0 and Windows hit-tests straight
+        # through the translucent window to whatever is behind it.
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.NoFocus)
+        self._press_pos = None
+        self._drag_started = False
+
+        # Solid dark background prevents Windows click-through to desktop
+        self.setStyleSheet("""
+            VideoViewport {
+                background-color: #0E0E12;
+                border-bottom-left-radius: 18px;
+                border-bottom-right-radius: 18px;
+            }
+        """)
+
+        # Empty state notice overlay
+        self.notice_layout = QVBoxLayout(self)
+        self.notice_layout.setAlignment(Qt.AlignCenter)
+        self.notice_widget = QWidget(self)
+        nw_layout = QVBoxLayout(self.notice_widget)
+        nw_layout.setAlignment(Qt.AlignCenter)
+
+        self.lbl_icon = QLabel("🎬", self)
+        self.lbl_icon.setStyleSheet("font-size: 46px; margin-bottom: 8px;")
+        self.lbl_icon.setAlignment(Qt.AlignCenter)
+        nw_layout.addWidget(self.lbl_icon)
+
+        self.lbl_main = QLabel("재생할 영상을 이곳으로 끌어다 놓으세요", self)
+        self.lbl_main.setObjectName("EmptyNoticeLabel")
+        self.lbl_main.setAlignment(Qt.AlignCenter)
+        nw_layout.addWidget(self.lbl_main)
+
+        self.lbl_sub = QLabel("화면 클릭하여 파일 열기 / 화면 아무 곳이나 드래그하여 창 이동", self)
+        self.lbl_sub.setObjectName("EmptyNoticeSubLabel")
+        self.lbl_sub.setAlignment(Qt.AlignCenter)
+        nw_layout.addWidget(self.lbl_sub)
+
+        self.notice_layout.addWidget(self.notice_widget)
+
+    def show_empty_notice(self, show: bool):
+        self.notice_widget.setVisible(show)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent):
+        urls = event.mimeData().urls()
+        if urls:
+            file_path = urls[0].toLocalFile()
+            if os.path.exists(file_path):
+                self.file_dropped.emit(file_path)
+        event.acceptProposedAction()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self.double_clicked.emit()
+            event.accept()
+
+    def mousePressEvent(self, event: QMouseEvent):
+        # Right button is deliberately not handled here: it falls through to
+        # contextMenuEvent so the menu opens through exactly one code path.
+        if event.button() == Qt.LeftButton:
+            self._press_pos = event.position().toPoint()
+            self._drag_started = False
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        # Start the native window move only once the cursor really drags.
+        # Starting it on press would swallow the button-up and break
+        # click / double-click detection.
+        if (event.buttons() & Qt.LeftButton and self._press_pos is not None
+                and not self._drag_started
+                and not self.parent_window.isFullScreen()
+                and not self.parent_window.isMaximized()):
+            moved = (event.position().toPoint() - self._press_pos).manhattanLength()
+            if moved >= QApplication.startDragDistance():
+                self._drag_started = True
+                native_start_window_drag(int(self.parent_window.winId()))
+                event.accept()
+                return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton and self._press_pos is not None:
+            if not self._drag_started:
+                self.clicked.emit()
+            self._press_pos = None
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event):
+        self.context_menu_requested.emit(event.globalPos())
+        event.accept()
+
+
+class MainWindow(QMainWindow):
+    """
+    Apple Glass Frameless Main Window for Windows 11 with fully integrated player engine.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("MainWindowContainer")
+        self.resize(1060, 640)
+        self.setMinimumSize(640, 380)
+
+        # Frameless Window Hint & Translucent Container
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowMinMaxButtonsHint)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setStyleSheet(GLASS_THEME_QSS)
+
+        self._margin = 8
+        self._resizing = False
+        self._resize_edge = None
+        self._is_pip = False
+        self._saved_geometry = None
+        self._current_file = None
+
+        self.app_settings = AppSettings()
+
+        self._init_layout()
+        self._init_engine()
+        self._init_floating_widgets()
+        self._connect_signals()
+
+        # Install global event filters for mouse tracking
+        self.installEventFilter(self)
+        self.viewport.installEventFilter(self)
+
+    def _init_layout(self):
+        self.central_widget = QWidget(self)
+        self.central_widget.setObjectName("MainWindowContainer")
+        self.central_widget.setMouseTracking(True)
+        self.setCentralWidget(self.central_widget)
+
+        self.main_layout = QVBoxLayout(self.central_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        # 1. Custom Glass Title Bar
+        self.title_bar = GlassTitleBar(self)
+        self.title_bar.pip_toggled.connect(self.toggle_pip_mode)
+        self.title_bar.close_requested.connect(self._on_close)
+        self.main_layout.addWidget(self.title_bar)
+
+        # 2. Video Viewport
+        self.viewport = VideoViewport(self)
+        self.viewport.file_dropped.connect(self.load_media_file)
+        self.viewport.clicked.connect(self._on_viewport_clicked)
+        self.viewport.double_clicked.connect(self.toggle_fullscreen)
+        self.viewport.context_menu_requested.connect(self.show_context_menu)
+        self.main_layout.addWidget(self.viewport, stretch=1)
+
+    def _init_engine(self):
+        wid = self.get_render_wid()
+        self.engine = PlayerEngine(wid=wid, parent=self)
+        last_vol = self.app_settings.get_volume()
+        self.engine.set_volume(last_vol)
+
+    def _init_floating_widgets(self):
+        self.osd = GlassOSDWidget(self.central_widget)
+        self.osd.raise_()
+
+        self.speed_popup = SpeedPopup(self)
+
+        self.controller = GlassController(self.central_widget)
+        self.controller.show()
+        self.controller.raise_()
+
+        self._reposition_floating_widgets()
+
+    def _connect_signals(self):
+        # Engine -> UI
+        self.engine.time_pos_changed.connect(self._on_time_pos_changed)
+        self.engine.duration_changed.connect(self.controller.set_duration)
+        self.engine.playback_state_changed.connect(self.controller.set_playback_state)
+        self.engine.speed_changed.connect(self._on_speed_changed)
+        self.engine.volume_changed.connect(self._on_volume_changed)
+        self.engine.file_ended.connect(self._on_file_ended)
+        self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "⚠️"))
+
+        # Controller -> Engine
+        self.controller.play_pause_clicked.connect(self.engine.toggle_play)
+        self.controller.prev_frame_clicked.connect(self.engine.step_frame_backward)
+        self.controller.next_frame_clicked.connect(self.engine.step_frame_forward)
+        self.controller.seek_backward_clicked.connect(lambda s: self.seek_relative(-s))
+        self.controller.seek_forward_clicked.connect(lambda s: self.seek_relative(s))
+        self.controller.seek_requested.connect(lambda pos: self.engine.seek(pos, "absolute"))
+        self.controller.speed_button_clicked.connect(self._show_speed_popup)
+        self.controller.volume_changed.connect(self.set_volume)
+        self.controller.mute_clicked.connect(self.toggle_mute)
+        self.controller.subtitle_clicked.connect(self.toggle_subtitle)
+        self.controller.screenshot_clicked.connect(self.take_screenshot)
+        self.controller.fullscreen_clicked.connect(self.toggle_fullscreen)
+
+        # Speed popup -> Engine
+        self.speed_popup.speed_selected.connect(self.engine.set_speed)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        hwnd = int(self.winId())
+        apply_windows_11_rounded_corners(hwnd)
+        try:
+            pywinstyles.apply_style(self, "acrylic")
+        except Exception as e:
+            print(f"[pywinstyles] acrylic not applied: {e}")
+        # pywinstyles replaces the window stylesheet with "background-color:
+        # transparent;", which wipes the whole theme. Re-apply it afterwards.
+        self.setStyleSheet(GLASS_THEME_QSS)
+        self._reposition_floating_widgets()
+        self.controller.raise_()
+        self.osd.raise_()
+
+    def get_render_wid(self) -> int:
+        return int(self.viewport.winId())
+
+    # --- Mouse Tracking Event Filter ---
+
+    def eventFilter(self, watched, event):
+        if event.type() in (QEvent.MouseMove, QEvent.HoverMove, QEvent.MouseButtonPress):
+            if hasattr(self, "controller"):
+                self.controller.trigger_activity()
+        return super().eventFilter(watched, event)
+
+    # --- Video Context Menu (Right Click) ---
+
+    def show_context_menu(self, global_pos: QPoint):
+        """Display comprehensive Apple Glass context menu on right click."""
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: rgba(26, 26, 36, 0.98);
+                border: 1px solid rgba(255, 255, 255, 0.22);
+                border-radius: 12px;
+                padding: 6px;
+                font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+            }
+            QMenu::item {
+                color: #FFFFFF;
+                font-size: 13px;
+                padding: 6px 20px 6px 12px;
+                border-radius: 6px;
+                margin: 1px 0;
+            }
+            QMenu::item:selected {
+                background-color: #0A84FF;
+                color: #FFFFFF;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: rgba(255, 255, 255, 0.12);
+                margin: 4px 6px;
+            }
+        """)
+
+        # 1. Open File
+        act_open = menu.addAction("파일 열기... (Ctrl+O)")
+        act_open.triggered.connect(self._open_file_dialog)
+
+        menu.addSeparator()
+
+        # 2. Play / Pause
+        is_playing = self.engine.is_playing()
+        act_play = menu.addAction("일시정지 (Space)" if is_playing else "재생 (Space)")
+        act_play.triggered.connect(self.engine.toggle_play)
+
+        # 3. Speed Submenu
+        speed_menu = menu.addMenu("재생 속도 (배속)")
+        speed_menu.setStyleSheet(menu.styleSheet())
+        cur_spd = self.engine.get_speed()
+
+        for spd in [0.8, 1.0, 1.2, 1.25, 1.4, 1.5, 1.75, 2.0]:
+            label = f"{spd:g}x" + ("  ✓" if abs(cur_spd - spd) < 0.01 else "")
+            act_s = speed_menu.addAction(label)
+            act_s.triggered.connect(lambda _, s=spd: self.engine.set_speed(s))
+
+        speed_menu.addSeparator()
+        act_speed_popup = speed_menu.addAction("정밀 배속 슬라이더 & 프리셋 설정...")
+        act_speed_popup.triggered.connect(self._show_speed_popup)
+
+        # 4. Subtitles
+        sub_menu = menu.addMenu("자막 (Subtitles)")
+        sub_menu.setStyleSheet(menu.styleSheet())
+        act_sub_toggle = sub_menu.addAction("자막 켜기 / 끄기 (C)")
+        act_sub_toggle.triggered.connect(self.toggle_subtitle)
+        act_sub_load = sub_menu.addAction("외부 자막 파일 선택...")
+        act_sub_load.triggered.connect(self._select_subtitle_file)
+
+        menu.addSeparator()
+
+        # 5. Screenshot
+        act_shot = menu.addAction("현재 화면 고화질 캡처 (Ctrl+S)")
+        act_shot.triggered.connect(self.take_screenshot)
+
+        # 6. PIP Mode
+        act_pip = menu.addAction("PIP 항상 위 모드 (P)")
+        act_pip.setCheckable(True)
+        act_pip.setChecked(self._is_pip)
+        act_pip.triggered.connect(self.toggle_pip_mode)
+
+        # 7. Fullscreen
+        act_full = menu.addAction("전체화면 (F)")
+        act_full.setCheckable(True)
+        act_full.setChecked(self.isFullScreen())
+        act_full.triggered.connect(self.toggle_fullscreen)
+
+        menu.addSeparator()
+
+        # 8. Customize Buttons
+        act_layout = menu.addAction("컨트롤러 버튼 배열 설정 (⚙️)")
+        act_layout.triggered.connect(self.controller._open_settings_dialog)
+
+        # 9. Exit
+        act_exit = menu.addAction("GlassPlayer 종료 (Alt+F4)")
+        act_exit.triggered.connect(self.close)
+
+        menu.exec(global_pos)
+
+    def contextMenuEvent(self, event):
+        self.show_context_menu(event.globalPos())
+
+    # --- Media Playback Lifecycle ---
+
+    def _open_file_dialog(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "비디오 파일 선택",
+            "",
+            "Video Files (*.mp4 *.mkv *.avi *.mov *.webm *.flv *.ts);;All Files (*.*)"
+        )
+        if file_path:
+            self.load_media_file(file_path)
+
+    def _select_subtitle_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "자막 파일 선택",
+            "",
+            "Subtitle Files (*.srt *.vtt *.ass *.smi);;All Files (*.*)"
+        )
+        if file_path:
+            self.engine.set_subtitle(file_path)
+            self.osd.show_message(f"자막 로드됨: {os.path.basename(file_path)}", "💬")
+
+    def load_media_file(self, file_path: str):
+        if not os.path.exists(file_path):
+            return
+
+        self._current_file = file_path
+        file_name = os.path.basename(file_path)
+        self.title_bar.set_media_title(file_name)
+        self.viewport.show_empty_notice(False)
+
+        resume_pos = self.app_settings.get_resume_position(file_path)
+        start_time = 0.0
+        if resume_pos > 5.0:
+            start_time = resume_pos
+            self.osd.show_message(f"이어서 재생 ({self._format_seconds(resume_pos)})", "⏱")
+
+        self.engine.load_file(file_path, start_time=start_time)
+        self.engine.play()
+
+        self._auto_load_subtitle(file_path)
+        self.app_settings.add_recent_file(file_path)
+        self.controller.trigger_activity()
+        self.controller.raise_()
+
+    def _auto_load_subtitle(self, video_path: str):
+        base, _ = os.path.splitext(video_path)
+        for ext in [".srt", ".vtt", ".ass", ".smi"]:
+            sub_file = base + ext
+            if os.path.exists(sub_file):
+                self.engine.set_subtitle(sub_file)
+                self.osd.show_message(f"자막 로드됨: {os.path.basename(sub_file)}", "💬")
+                break
+
+    def _on_time_pos_changed(self, time_pos: float):
+        self.controller.set_time_pos(time_pos)
+        if self._current_file:
+            self.app_settings.save_resume_position(self._current_file, time_pos)
+
+    def _on_speed_changed(self, speed: float):
+        self.controller.set_speed_display(speed)
+        self.speed_popup.set_current_speed(speed)
+        self.osd.show_message(f"{speed:.2f}x", "⚡")
+
+    def _on_volume_changed(self, volume: float):
+        self.controller.set_volume_display(volume)
+        self.app_settings.save_volume(volume)
+
+    def _on_file_ended(self):
+        self.controller.set_playback_state(False)
+        self.osd.show_message("재생 완료", "🎬")
+
+    # --- Actions ---
+
+    def seek_relative(self, seconds: float):
+        self.engine.seek(seconds, reference="relative")
+        direction = f"+{int(seconds)}s" if seconds > 0 else f"{int(seconds)}s"
+        self.osd.show_message(direction, "⏩" if seconds > 0 else "⏪")
+
+    def change_speed_relative(self, delta: float):
+        self.engine.change_speed_relative(delta)
+
+    def reset_speed(self):
+        self.engine.reset_speed()
+
+    def set_volume(self, volume: float):
+        self.engine.set_volume(volume)
+        self.osd.show_message(f"볼륨 {int(volume)}%", "🔊")
+
+    def toggle_mute(self):
+        is_muted = self.engine.toggle_mute()
+        self.controller.set_volume_display(self.engine.get_volume(), is_muted=is_muted)
+        self.osd.show_message("음소거" if is_muted else "음소거 해제", "🔇" if is_muted else "🔊")
+
+    def toggle_subtitle(self):
+        visible = self.engine.toggle_subtitle_visibility()
+        self.osd.show_message("자막 켬" if visible else "자막 끔", "💬")
+
+    def take_screenshot(self):
+        path = self.engine.take_screenshot()
+        if path:
+            self.osd.show_message(f"캡처 저장됨: {os.path.basename(path)}", "📷")
+
+    def _show_speed_popup(self):
+        if hasattr(self.controller, "btn_speed"):
+            self.speed_popup.show_above_widget(self.controller.btn_speed)
+
+    def _on_viewport_clicked(self):
+        if self.viewport.notice_widget.isVisible():
+            self._open_file_dialog()
+
+    # --- Fullscreen & PIP Modes ---
+
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showNormal()
+            self.title_bar.show()
+            self.title_bar.btn_max.setIcon(get_svg_icon("maximize", size=12))
+            self.osd.show_message("전체화면 종료", "⛶")
+        else:
+            self.showFullScreen()
+            self.title_bar.hide()
+            self.osd.show_message("전체화면 (F/ESC)", "⛶")
+        self._reposition_floating_widgets()
+
+    def toggle_pip_mode(self):
+        if not self._is_pip:
+            self._saved_geometry = self.geometry()
+            self._is_pip = True
+            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+            self.resize(480, 270)
+            self.title_bar.btn_pip.setStyleSheet("""
+                QPushButton#PipBadgeButton {
+                    background: #0A84FF;
+                    border: 1px solid #0A84FF;
+                    color: #FFFFFF;
+                    font-weight: bold;
+                }
+            """)
+            self.show()
+            self.osd.show_message("PIP 항상 위 모드 (P)", "PIP")
+        else:
+            self._is_pip = False
+            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+            if self._saved_geometry:
+                self.setGeometry(self._saved_geometry)
+            self.title_bar.btn_pip.setStyleSheet("")
+            self.show()
+            self.osd.show_message("일반 모드 복원", "PIP")
+        self._reposition_floating_widgets()
+
+    # --- Keybindings Map ---
+
+    def keyPressEvent(self, event: QKeyEvent):
+        key = event.key()
+        modifiers = event.modifiers()
+
+        # Space: Play/Pause
+        if key == Qt.Key_Space:
+            self.engine.toggle_play()
+            event.accept()
+            return
+
+        # Speed: [ / ] (0.1x), Shift + [ / ] (0.05x)
+        if key == Qt.Key_BracketRight:
+            delta = 0.05 if (modifiers & Qt.ShiftModifier) else 0.1
+            self.change_speed_relative(delta)
+            event.accept()
+            return
+        elif key == Qt.Key_BracketLeft:
+            delta = -0.05 if (modifiers & Qt.ShiftModifier) else -0.1
+            self.change_speed_relative(delta)
+            event.accept()
+            return
+        elif key in (Qt.Key_Backslash, Qt.Key_Backspace):
+            self.reset_speed()
+            event.accept()
+            return
+
+        # Seeking: Left / Right
+        if key == Qt.Key_Right:
+            step = 1.0 if (modifiers & Qt.ShiftModifier) else 5.0
+            self.seek_relative(step)
+            event.accept()
+            return
+        elif key == Qt.Key_Left:
+            step = -1.0 if (modifiers & Qt.ShiftModifier) else -5.0
+            self.seek_relative(step)
+            event.accept()
+            return
+
+        # Frame step: Comma / Period
+        if key == Qt.Key_Period:
+            self.engine.step_frame_forward()
+            self.osd.show_message("1프레임 앞", "⏭")
+            event.accept()
+            return
+        elif key == Qt.Key_Comma:
+            self.engine.step_frame_backward()
+            self.osd.show_message("1프레임 뒤", "⏮")
+            event.accept()
+            return
+
+        # Volume: Up / Down
+        if key == Qt.Key_Up:
+            cur = self.engine.get_volume()
+            self.set_volume(cur + 5.0)
+            event.accept()
+            return
+        elif key == Qt.Key_Down:
+            cur = self.engine.get_volume()
+            self.set_volume(cur - 5.0)
+            event.accept()
+            return
+        elif key == Qt.Key_M:
+            self.toggle_mute()
+            event.accept()
+            return
+
+        # Subtitle: C
+        if key == Qt.Key_C:
+            self.toggle_subtitle()
+            event.accept()
+            return
+
+        # Open File: Ctrl + O
+        if key == Qt.Key_O and (modifiers & Qt.ControlModifier):
+            self._open_file_dialog()
+            event.accept()
+            return
+
+        # Screenshot: Ctrl + S
+        if key == Qt.Key_S and (modifiers & Qt.ControlModifier):
+            self.take_screenshot()
+            event.accept()
+            return
+
+        # Fullscreen / PIP / Esc
+        if key in (Qt.Key_F, Qt.Key_Return):
+            self.toggle_fullscreen()
+            event.accept()
+            return
+        elif key == Qt.Key_Escape:
+            if self.isFullScreen():
+                self.toggle_fullscreen()
+            elif self._is_pip:
+                self.toggle_pip_mode()
+            event.accept()
+            return
+        elif key == Qt.Key_P:
+            self.toggle_pip_mode()
+            event.accept()
+            return
+
+        super().keyPressEvent(event)
+
+    # --- Layout & Resizing ---
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reposition_floating_widgets()
+
+    def _reposition_floating_widgets(self):
+        cw_w = self.central_widget.width()
+        cw_h = self.central_widget.height()
+
+        c_w = min(cw_w - 32, max(580, int(cw_w * 0.75)))
+        c_h = 84
+        c_x = (cw_w - c_w) // 2
+        c_y = cw_h - c_h - 22
+        if hasattr(self, "controller"):
+            self.controller.setGeometry(c_x, c_y, c_w, c_h)
+            self.controller.raise_()
+
+        if hasattr(self, "osd"):
+            osd_w = self.osd.width()
+            self.osd.move((cw_w - osd_w) // 2, 55)
+            self.osd.raise_()
+
+    # --- Frameless Window Drag & Resize ---
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton and not self.isMaximized() and not self.isFullScreen():
+            edge = self._get_edge(event.pos())
+            if edge:
+                self._resizing = True
+                self._resize_edge = edge
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if not self.isMaximized() and not self.isFullScreen():
+            if self._resizing:
+                self._do_resize(event.globalPosition().toPoint())
+                event.accept()
+                return
+            else:
+                self._update_cursor(event.pos())
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self._resizing = False
+        self._resize_edge = None
+        self.setCursor(Qt.ArrowCursor)
+        super().mouseReleaseEvent(event)
+
+    def _get_edge(self, pos: QPoint):
+        rect = self.rect()
+        m = self._margin
+        left = pos.x() <= m
+        right = pos.x() >= rect.width() - m
+        top = pos.y() <= m
+        bottom = pos.y() >= rect.height() - m
+
+        if top and left: return "top-left"
+        if top and right: return "top-right"
+        if bottom and left: return "bottom-left"
+        if bottom and right: return "bottom-right"
+        if left: return "left"
+        if right: return "right"
+        if top: return "top"
+        if bottom: return "bottom"
+        return None
+
+    def _update_cursor(self, pos: QPoint):
+        edge = self._get_edge(pos)
+        if edge in ("top-left", "bottom-right"):
+            self.setCursor(Qt.SizeFDiagCursor)
+        elif edge in ("top-right", "bottom-left"):
+            self.setCursor(Qt.SizeBDiagCursor)
+        elif edge in ("left", "right"):
+            self.setCursor(Qt.SizeHorCursor)
+        elif edge in ("top", "bottom"):
+            self.setCursor(Qt.SizeVerCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+
+    def _do_resize(self, global_pos: QPoint):
+        geo = self.geometry()
+        min_w, min_h = self.minimumWidth(), self.minimumHeight()
+
+        if "right" in self._resize_edge:
+            new_w = max(min_w, global_pos.x() - geo.left())
+            geo.setWidth(new_w)
+        if "bottom" in self._resize_edge:
+            new_h = max(min_h, global_pos.y() - geo.top())
+            geo.setHeight(new_h)
+        if "left" in self._resize_edge:
+            new_w = max(min_w, geo.right() - global_pos.x())
+            geo.setLeft(geo.right() - new_w)
+        if "top" in self._resize_edge:
+            new_h = max(min_h, geo.bottom() - global_pos.y())
+            geo.setTop(geo.bottom() - new_h)
+
+        self.setGeometry(geo)
+
+    @staticmethod
+    def _format_seconds(secs: float) -> str:
+        s = int(max(0, secs))
+        m, s = divmod(s, 60)
+        h, m = divmod(m, 60)
+        if h > 0:
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        return f"{m:02d}:{s:02d}"
+
+    def _on_close(self):
+        if hasattr(self, "engine"):
+            self.engine.terminate()
+
+    def closeEvent(self, event):
+        self._on_close()
+        super().closeEvent(event)
