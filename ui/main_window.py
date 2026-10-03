@@ -373,7 +373,7 @@ class MainWindow(QMainWindow):
         act_layout.triggered.connect(self.controller._open_settings_dialog)
 
         # 9. Exit
-        act_exit = menu.addAction("GlassPlayer 종료 (Alt+F4)")
+        act_exit = menu.addAction("Pane 종료 (Alt+F4)")
         act_exit.triggered.connect(self.close)
 
         menu.exec(global_pos)
@@ -513,14 +513,7 @@ class MainWindow(QMainWindow):
             self._is_pip = True
             self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
             self.resize(480, 270)
-            self.title_bar.btn_pip.setStyleSheet("""
-                QPushButton#PipBadgeButton {
-                    background: #0A84FF;
-                    border: 1px solid #0A84FF;
-                    color: #FFFFFF;
-                    font-weight: bold;
-                }
-            """)
+            self.title_bar.set_pip_active(True)
             self.show()
             self.osd.show_message("PIP 항상 위 모드 (P)", "PIP")
         else:
@@ -528,7 +521,7 @@ class MainWindow(QMainWindow):
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
             if self._saved_geometry:
                 self.setGeometry(self._saved_geometry)
-            self.title_bar.btn_pip.setStyleSheet("")
+            self.title_bar.set_pip_active(False)
             self.show()
             self.osd.show_message("일반 모드 복원", "PIP")
         self._reposition_floating_widgets()
@@ -648,8 +641,15 @@ class MainWindow(QMainWindow):
         cw_w = self.central_widget.width()
         cw_h = self.central_widget.height()
 
-        c_w = min(cw_w - 32, max(580, int(cw_w * 0.75)))
-        c_h = 84
+        needed = 0
+        if hasattr(self, "controller"):
+            self.controller.set_compact(False)
+            needed = self.controller.layout().minimumSize().width()
+            if cw_w - 32 < needed:
+                self.controller.set_compact(True)
+                needed = self.controller.layout().minimumSize().width()
+        c_w = min(cw_w - 32, max(int(cw_w * 0.75), needed))
+        c_h = 96
         c_x = (cw_w - c_w) // 2
         c_y = cw_h - c_h - 22
         if hasattr(self, "controller"):

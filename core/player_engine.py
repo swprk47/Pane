@@ -262,7 +262,7 @@ class PlayerEngine(QObject):
             desktop = Path.home() / "Desktop"
             import time
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            output_path = str(desktop / f"GlassPlayer_capture_{timestamp}.png")
+            output_path = str(desktop / f"Pane_capture_{timestamp}.png")
 
         try:
             # video-high: with subtitles/full render

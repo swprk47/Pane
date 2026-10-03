@@ -1,13 +1,28 @@
 import json
 from PySide6.QtCore import QSettings
 
+APP_NAME = "Pane"
+LEGACY_APP_NAME = "GlassPlayer"  # name used before the rename
+
+
+def open_settings(group: str) -> QSettings:
+    """Open QSettings(APP_NAME, group); on first use copy over the old
+    GlassPlayer values so resume positions, layout and presets survive."""
+    new = QSettings(APP_NAME, group)
+    if not new.allKeys():
+        old = QSettings(LEGACY_APP_NAME, group)
+        for key in old.allKeys():
+            new.setValue(key, old.value(key))
+        new.sync()
+    return new
+
 class AppSettings:
     """
-    Persistent application settings manager for GlassPlayer.
+    Persistent application settings manager for Pane.
     Tracks recent files, resume playback positions, and user preferences.
     """
     def __init__(self):
-        self.settings = QSettings("GlassPlayer", "AppSettings")
+        self.settings = open_settings("AppSettings")
 
     def get_resume_position(self, file_path: str) -> float:
         """Get last playback position in seconds for a specific file."""

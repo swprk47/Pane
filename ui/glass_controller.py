@@ -4,15 +4,20 @@ from PySide6.QtWidgets import (
     QPushButton, QSlider, QDialog, QListWidget,
     QListWidgetItem, QGraphicsOpacityEffect
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QPropertyAnimation, QEasingCurve, QSettings, QSize
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QSettings, QSize
 from ui.timeline_slider import TimelineSlider
+from ui.volume_popup import VolumePopup
+from core.settings import open_settings
 from ui.icons import get_svg_icon
 
 DEFAULT_LAYOUT = {
-    "left": ["play_pause", "prev_frame", "next_frame", "time_label"],
-    "center": ["seek_backward", "speed_button", "seek_forward"],
+    "left": ["time_label", "speed_button"],
+    "center": ["prev_frame", "seek_backward", "play_pause", "seek_forward", "next_frame"],
     "right": ["screenshot", "subtitle", "volume", "fullscreen", "settings"]
 }
+
+# Bump when DEFAULT_LAYOUT changes so stale saved layouts get replaced once.
+LAYOUT_VERSION = 3
 
 BUTTON_METADATA = {
     "play_pause": {"name": "재생 / 일시정지", "icon_name": "play"},
@@ -205,16 +210,20 @@ class GlassController(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("GlassControllerCapsule")
-        self.setFixedHeight(84)
-        self.setMinimumWidth(580)
+        self.setFixedHeight(96)
 
-        self.settings = QSettings("GlassPlayer", "ControllerLayout")
+        self.settings = open_settings("ControllerLayout")
         self.current_layout = self._load_layout()
 
+        self._compact = False
         self._is_playing = False
         self._is_muted = False
         self._duration = 0.0
         self._time_pos = 0.0
+
+        self.volume_popup = VolumePopup(parent)
+        self.vol_slider = self.volume_popup.slider
+        self.volume_popup.value_changed.connect(lambda v: self.volume_changed.emit(float(v)))
 
         self._init_ui()
 
@@ -235,6 +244,10 @@ class GlassController(QWidget):
 
     def _load_layout(self) -> dict:
         raw = self.settings.value("button_layout", None)
+        if int(self.settings.value("layout_version", 0) or 0) != LAYOUT_VERSION:
+            raw = None
+            self.settings.setValue("layout_version", LAYOUT_VERSION)
+            self.settings.remove("button_layout")
         if raw:
             try:
                 data = json.loads(raw)
@@ -250,76 +263,59 @@ class GlassController(QWidget):
         self._rebuild_buttons()
 
     def _init_ui(self):
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet("""
             QWidget#GlassControllerCapsule {
-                background-color: rgba(22, 22, 30, 0.92);
-                border: 1px solid rgba(255, 255, 255, 0.22);
-                border-radius: 24px;
+                background-color: rgba(26, 27, 36, 0.90);
+                border: 1px solid rgba(255, 255, 255, 0.24);
+                border-radius: 28px;
             }
+            /* Pill-shaped glass buttons: soft fill + thin light rim */
             QPushButton {
-                background: transparent;
-                border: 1px solid transparent;
+                background: rgba(255, 255, 255, 0.07);
+                border: 1px solid rgba(255, 255, 255, 0.20);
+                border-radius: 18px;
                 color: #FFFFFF;
-                border-radius: 8px;
-                padding: 6px;
-                min-width: 34px;
+                padding: 0px 10px;
+                min-width: 24px;
                 min-height: 34px;
+                max-height: 34px;
                 outline: none;
-                qproperty-cursor: PointingHandCursor;
             }
             QPushButton:hover {
-                background: rgba(255, 255, 255, 0.20);
-                border: 1px solid rgba(255, 255, 255, 0.30);
-                color: #FFFFFF;
+                background: rgba(255, 255, 255, 0.16);
+                border: 1px solid rgba(255, 255, 255, 0.42);
             }
             QPushButton:pressed {
+                background: rgba(10, 132, 255, 0.50);
+                border: 1px solid rgba(112, 180, 255, 0.95);
+            }
+            QPushButton#PlayButton {
+                background: rgba(255, 255, 255, 0.13);
+                border: 1px solid rgba(255, 255, 255, 0.36);
+                border-radius: 22px;
+                min-width: 40px;
+                min-height: 44px;
+                max-height: 44px;
+            }
+            QPushButton#PlayButton:hover {
+                background: rgba(255, 255, 255, 0.22);
+                border: 1px solid rgba(255, 255, 255, 0.60);
+            }
+            QPushButton#PlayButton:pressed {
                 background: rgba(10, 132, 255, 0.55);
                 border: 1px solid rgba(112, 180, 255, 0.95);
-                padding-top: 7px;
-                padding-bottom: 5px;
-            }
-            QPushButton:focus {
-                border: 1px solid rgba(112, 180, 255, 0.80);
             }
             QLabel {
                 color: rgba(255, 255, 255, 0.85);
                 font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
                 font-size: 12px;
             }
-            QSlider::groove:horizontal {
-                height: 4px;
-                background: rgba(255, 255, 255, 0.22);
-                border-radius: 2px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #0A84FF;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #FFFFFF;
-                width: 12px;
-                margin-top: -4px;
-                margin-bottom: -4px;
-                border-radius: 6px;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #70B4FF;
-                width: 14px;
-                margin-top: -5px;
-                margin-bottom: -5px;
-            }
-            QSlider::handle:horizontal:pressed {
-                background: #0A84FF;
-                border: 2px solid #FFFFFF;
-                width: 14px;
-                margin-top: -5px;
-                margin-bottom: -5px;
-            }
         """)
 
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(18, 8, 18, 10)
-        self.main_layout.setSpacing(6)
+        self.main_layout.setContentsMargins(22, 10, 22, 10)
+        self.main_layout.setSpacing(8)
 
         # 1. Timeline Seek Slider
         self.timeline = TimelineSlider(self)
@@ -331,9 +327,14 @@ class GlassController(QWidget):
         self.btn_row.setContentsMargins(0, 0, 0, 0)
         self.btn_row.setSpacing(8)
 
-        self.left_box = QHBoxLayout()
+        # Left and right zones live in widgets forced to the same width, so the
+        # center zone (play button) is exactly centered however many buttons
+        # each side holds. See _equalize_side_zones().
+        self.left_zone = QWidget(self)
+        self.left_box = QHBoxLayout(self.left_zone)
+        self.left_box.setContentsMargins(0, 0, 0, 0)
         self.left_box.setSpacing(6)
-        self.btn_row.addLayout(self.left_box)
+        self.btn_row.addWidget(self.left_zone)
 
         self.btn_row.addStretch()
 
@@ -343,9 +344,11 @@ class GlassController(QWidget):
 
         self.btn_row.addStretch()
 
-        self.right_box = QHBoxLayout()
+        self.right_zone = QWidget(self)
+        self.right_box = QHBoxLayout(self.right_zone)
+        self.right_box.setContentsMargins(0, 0, 0, 0)
         self.right_box.setSpacing(6)
-        self.btn_row.addLayout(self.right_box)
+        self.btn_row.addWidget(self.right_zone)
 
         self.main_layout.addLayout(self.btn_row)
 
@@ -359,23 +362,49 @@ class GlassController(QWidget):
                 if w:
                     w.deleteLater()
 
+        # Left zone hugs the left edge, right zone hugs the right edge.
         for key in self.current_layout.get("left", []):
             w = self._create_widget_for_key(key)
             if w: self.left_box.addWidget(w)
+        self.left_box.addStretch()
 
         for key in self.current_layout.get("center", []):
             w = self._create_widget_for_key(key)
             if w: self.center_box.addWidget(w)
 
+        self.right_box.addStretch()
         for key in self.current_layout.get("right", []):
             w = self._create_widget_for_key(key)
             if w: self.right_box.addWidget(w)
 
+        self._equalize_side_zones()
+
+    def set_compact(self, compact: bool):
+        """Narrow windows: keep only the center transport zone."""
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.left_zone.setVisible(not compact)
+        self.right_zone.setVisible(not compact)
+
+    def _equalize_side_zones(self):
+        # Size hints are only right once QSS (min-width etc.) has been applied.
+        for zone in (self.left_zone, self.right_zone):
+            zone.setMinimumWidth(0)
+            zone.setMaximumWidth(16777215)
+            for child in zone.findChildren(QWidget):
+                child.ensurePolished()
+            zone.layout().activate()
+        side = max(self.left_zone.sizeHint().width(), self.right_zone.sizeHint().width())
+        self.left_zone.setFixedWidth(side)
+        self.right_zone.setFixedWidth(side)
+
     def _create_widget_for_key(self, key: str) -> QWidget:
         if key == "play_pause":
             self.btn_play = QPushButton(self)
+            self.btn_play.setObjectName("PlayButton")
             self._update_play_button_icon()
-            self.btn_play.setIconSize(QSize(18, 18))
+            self.btn_play.setIconSize(QSize(20, 20))
             self.btn_play.setToolTip("재생 / 일시정지 (Space)")
             self.btn_play.clicked.connect(self.play_pause_clicked.emit)
             return self.btn_play
@@ -465,25 +494,13 @@ class GlassController(QWidget):
             return btn
 
         elif key == "volume":
-            vol_widget = QWidget(self)
-            vl = QHBoxLayout(vol_widget)
-            vl.setContentsMargins(0, 0, 0, 0)
-            vl.setSpacing(4)
-
             self.btn_mute = QPushButton(self)
             self._update_volume_icon()
             self.btn_mute.setIconSize(QSize(16, 16))
-            self.btn_mute.setToolTip("음소거 토글 (M)")
+            self.btn_mute.setToolTip("음소거 토글 (M) / 마우스를 올리면 볼륨 조절")
             self.btn_mute.clicked.connect(self.mute_clicked.emit)
-            vl.addWidget(self.btn_mute)
-
-            self.vol_slider = QSlider(Qt.Horizontal, self)
-            self.vol_slider.setRange(0, 100)
-            self.vol_slider.setValue(100)
-            self.vol_slider.setFixedWidth(70)
-            self.vol_slider.valueChanged.connect(lambda v: self.volume_changed.emit(float(v)))
-            vl.addWidget(self.vol_slider)
-            return vol_widget
+            self.btn_mute.installEventFilter(self)
+            return self.btn_mute
 
         elif key == "fullscreen":
             btn = QPushButton(self)
@@ -513,7 +530,7 @@ class GlassController(QWidget):
     def _update_play_button_icon(self):
         if hasattr(self, "btn_play"):
             icon_name = "pause" if self._is_playing else "play"
-            self.btn_play.setIcon(get_svg_icon(icon_name, size=18))
+            self.btn_play.setIcon(get_svg_icon(icon_name, size=20))
 
     def _update_volume_icon(self):
         if hasattr(self, "btn_mute"):
@@ -548,10 +565,7 @@ class GlassController(QWidget):
     def set_volume_display(self, vol: float, is_muted: bool = False):
         self._is_muted = is_muted
         self._update_volume_icon()
-        if hasattr(self, "vol_slider"):
-            self.vol_slider.blockSignals(True)
-            self.vol_slider.setValue(int(vol))
-            self.vol_slider.blockSignals(False)
+        self.volume_popup.set_value(int(vol))
 
     def _update_time_display(self):
         if hasattr(self, "lbl_time"):
@@ -585,8 +599,20 @@ class GlassController(QWidget):
             self.fade_anim.setEndValue(1.0)
             self.fade_anim.start()
 
+    def eventFilter(self, obj, event):
+        if obj is getattr(self, "btn_mute", None):
+            if event.type() == QEvent.Enter:
+                self.volume_popup.open_above(self.btn_mute)
+            elif event.type() == QEvent.Leave:
+                self.volume_popup.schedule_close()
+            elif event.type() == QEvent.Wheel:
+                step = 5 if event.angleDelta().y() > 0 else -5
+                self.volume_popup.slider.setValue(self.volume_popup.slider.value() + step)
+                return True
+        return super().eventFilter(obj, event)
+
     def _fade_out(self):
-        if self.underMouse():
+        if self.underMouse() or self.volume_popup.isVisible():
             self.autohide_timer.start(2800)
             return
 
@@ -597,6 +623,7 @@ class GlassController(QWidget):
 
     def _hide_after_fade(self):
         if self.opacity_effect.opacity() <= 0.01:
+            self.volume_popup.hide()
             self.hide()
 
     def enterEvent(self, event):

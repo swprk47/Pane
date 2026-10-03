@@ -49,7 +49,7 @@ class GlassTitleBar(QWidget):
         layout.addWidget(self.logo_btn)
 
         # App Title
-        self.title_label = QLabel("GlassPlayer", self)
+        self.title_label = QLabel("Pane", self)
         self.title_label.setObjectName("TitleLabel")
         layout.addWidget(self.title_label)
 
@@ -79,6 +79,11 @@ class GlassTitleBar(QWidget):
             }
             QPushButton#PipBadgeButton:hover {
                 background: rgba(10, 132, 255, 0.35);
+                border: 1px solid #0A84FF;
+                color: #FFFFFF;
+            }
+            QPushButton#PipBadgeButton[active="true"] {
+                background: #0A84FF;
                 border: 1px solid #0A84FF;
                 color: #FFFFFF;
             }
@@ -126,6 +131,12 @@ class GlassTitleBar(QWidget):
         self.btn_close.setToolTip("닫기")
         self.btn_close.clicked.connect(self._on_close_clicked)
         layout.addWidget(self.btn_close)
+
+    def set_pip_active(self, active: bool):
+        """Highlight the PIP badge without replacing its own stylesheet."""
+        self.btn_pip.setProperty("active", "true" if active else "false")
+        self.btn_pip.style().unpolish(self.btn_pip)
+        self.btn_pip.style().polish(self.btn_pip)
 
     def set_media_title(self, title: str):
         if title:

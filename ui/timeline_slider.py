@@ -13,7 +13,7 @@ class TimelineSlider(QSlider):
         super().__init__(Qt.Horizontal, parent)
         self.setRange(0, 1000)
         self.setValue(0)
-        self.setFixedHeight(18)
+        self.setFixedHeight(22)
         self.setCursor(Qt.PointingHandCursor)
         self.setMouseTracking(True)
 
@@ -23,46 +23,30 @@ class TimelineSlider(QSlider):
         self._apply_style()
 
     def _apply_style(self):
+        # Thick rounded track with a glass-pill thumb.
         self.setStyleSheet("""
             QSlider::groove:horizontal {
-                height: 4px;
-                background: rgba(255, 255, 255, 0.20);
-                border-radius: 2px;
-            }
-            QSlider::groove:horizontal:hover {
-                height: 6px;
-                background: rgba(255, 255, 255, 0.28);
-                border-radius: 3px;
+                height: 8px;
+                background: rgba(255, 255, 255, 0.18);
+                border-radius: 4px;
             }
             QSlider::sub-page:horizontal {
                 background: #0A84FF;
-                border-radius: 2px;
+                border-radius: 4px;
             }
             QSlider::handle:horizontal {
-                background: #FFFFFF;
-                width: 12px;
-                height: 12px;
-                margin-top: -4px;
-                margin-bottom: -4px;
-                border-radius: 6px;
-                border: 1px solid rgba(0, 0, 0, 0.15);
+                background: rgba(255, 255, 255, 0.45);
+                border: 1px solid rgba(255, 255, 255, 0.85);
+                width: 30px;
+                margin-top: -6px;
+                margin-bottom: -6px;
+                border-radius: 10px;
             }
             QSlider::handle:horizontal:hover {
-                background: #70B4FF;
-                width: 14px;
-                height: 14px;
-                margin-top: -5px;
-                margin-bottom: -5px;
-                border-radius: 7px;
+                background: rgba(255, 255, 255, 0.70);
             }
             QSlider::handle:horizontal:pressed {
-                background: #0A84FF;
-                border: 2px solid #FFFFFF;
-                width: 14px;
-                height: 14px;
-                margin-top: -5px;
-                margin-bottom: -5px;
-                border-radius: 7px;
+                background: rgba(255, 255, 255, 0.85);
             }
         """)
 

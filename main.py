@@ -1,5 +1,5 @@
 """
-GlassPlayer: Modern Apple Glass-styled Media Player for Windows 11.
+Pane: Modern Apple Glass-styled Media Player for Windows 11.
 Features 0.05x precision speed control, modular customizable controls,
 pitch correction, subtitles, PIP mode, and smooth frameless glass UI.
 """
@@ -35,8 +35,8 @@ def main():
     )
 
     app = QApplication(sys.argv)
-    app.setApplicationName("GlassPlayer")
-    app.setOrganizationName("GlassPlayer")
+    app.setApplicationName("Pane")
+    app.setOrganizationName("Pane")
 
     # Set default modern font
     font = QFont("Segoe UI Variable Text", 10)

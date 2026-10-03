@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QSettings, QPoint
 from PySide6.QtGui import QColor, QAction
+from core.settings import open_settings
 
 DEFAULT_PRESETS = [1.0, 1.2, 1.25, 1.5, 2.0]
 
@@ -22,7 +23,7 @@ class SpeedPopup(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setFixedWidth(280)
 
-        self.settings = QSettings("GlassPlayer", "SpeedSettings")
+        self.settings = open_settings("SpeedSettings")
         self._current_speed = 1.0
         self.presets = self._load_presets()
 
