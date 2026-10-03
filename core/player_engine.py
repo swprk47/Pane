@@ -35,10 +35,11 @@ class PlayerEngine(QObject):
     file_ended = Signal()                  # Playback reached end
     error_occurred = Signal(str)           # Error message
 
-    def __init__(self, wid=None, parent=None, render_api=False):
+    def __init__(self, wid=None, parent=None, render_api=False, options_override=None):
         """render_api=True: no window of mpv's own; the caller draws frames via
         MpvRenderContext (see ui/mpv_gl.py). Otherwise mpv opens its own window
-        or embeds into `wid`."""
+        or embeds into `wid`. `options_override` overrides individual mpv options
+        (tests use {"vo": "null", "ao": "null"} to run without any window)."""
         super().__init__(parent)
         self.wid = wid
         self._current_file = None
@@ -47,6 +48,7 @@ class PlayerEngine(QObject):
         self._is_paused = False
         self._speed = 1.0
         self._volume = 100.0
+        self._eof_emitted = False
 
         # mpv initialization options
         mpv_options = {
@@ -70,6 +72,8 @@ class PlayerEngine(QObject):
             mpv_options["hwdec"] = "auto-copy"
         elif wid is not None:
             mpv_options["wid"] = wid
+
+        mpv_options.update(options_override or {})
 
         try:
             self.mpv = mpv.MPV(**mpv_options)
@@ -119,11 +123,23 @@ class PlayerEngine(QObject):
                 self._volume = float(value)
                 self.volume_changed.emit(self._volume)
 
+        # With keep_open=yes mpv never sends end-file at EOF; it just flips
+        # eof-reached. Listen to both so file_ended fires exactly once.
+        @self.mpv.property_observer("eof-reached")
+        def _on_eof_reached(_name, value):
+            if value is True:
+                self._emit_file_ended()
+
         @self.mpv.event_callback("end-file")
         def _on_end_file(event):
             reason = getattr(event, "reason", None)
             if reason == mpv.MpvEventEndFile.EOF:
-                self.file_ended.emit()
+                self._emit_file_ended()
+
+    def _emit_file_ended(self):
+        if not self._eof_emitted:
+            self._eof_emitted = True
+            self.file_ended.emit()
 
     # --- Core Controls ---
 
@@ -134,6 +150,7 @@ class PlayerEngine(QObject):
             return False
 
         self._current_file = file_path
+        self._eof_emitted = False
         try:
             # mpv loadfile command
             self.mpv.loadfile(file_path)

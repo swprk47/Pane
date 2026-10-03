@@ -3,7 +3,7 @@ Vector SVG icons with Apple SF Symbols minimalist aesthetic.
 """
 from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtCore import Qt, QByteArray, QSize
+from PySide6.QtCore import Qt, QByteArray, QSize, QRectF
 
 # Minimalist modern white SVG icons
 SVG_ICONS = {
@@ -100,11 +100,54 @@ SVG_ICONS = {
         <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" fill="#FFFFFF"/><line x1="12" y1="17" x2="12" y2="22"/>
     </svg>""",
 
+    "speed": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>
+    </svg>""",
+
+    "clock": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    </svg>""",
+
+    "warning": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>""",
+
+    "check": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+    </svg>""",
+
+    "pip": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="14" rx="2"/><rect x="12" y="10" width="8" height="5" rx="1" fill="#FFFFFF"/>
+    </svg>""",
+
+    "film": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
+    </svg>""",
+
     "close": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round">
         <line x1="18" y1="6" x2="6" y2="18"/>
         <line x1="6" y1="6" x2="18" y2="18"/>
     </svg>"""
 }
+
+def get_svg_pixmap(name: str, size: int = 18, color: str = None, stroke_width: float = None) -> QPixmap:
+    """Crisp pixmap (rendered at 2x, devicePixelRatio 2) for use in QLabel etc."""
+    svg_data = SVG_ICONS.get(name)
+    pixmap = QPixmap(size * 2, size * 2)
+    pixmap.fill(Qt.transparent)
+    pixmap.setDevicePixelRatio(2.0)
+    if not svg_data:
+        return pixmap
+    if stroke_width is not None:
+        svg_data = svg_data.replace('stroke-width="2"', f'stroke-width="{stroke_width}"')
+    if color:
+        svg_data = svg_data.replace("#FFFFFF", color)
+    renderer = QSvgRenderer(QByteArray(svg_data.encode("utf-8")))
+    painter = QPainter(pixmap)
+    renderer.render(painter, QRectF(0, 0, size, size))
+    painter.end()
+    return pixmap
+
 
 def get_svg_icon(name: str, size: int = 18, color: str = None) -> QIcon:
     """Render an SVG string into a crisp high-res QIcon."""

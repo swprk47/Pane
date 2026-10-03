@@ -139,13 +139,13 @@ QWidget {
 
 /* Empty Video Viewport placeholder */
 #EmptyNoticeLabel {
-    font-size: 15px;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.55);
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.88);
 }
 
 #EmptyNoticeSubLabel {
     font-size: 12px;
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(255, 255, 255, 0.62);
 }
 """

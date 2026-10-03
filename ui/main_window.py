@@ -16,7 +16,7 @@ from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge
-from ui.icons import get_svg_icon
+from ui.icons import get_svg_icon, get_svg_pixmap
 from core.player_engine import PlayerEngine
 from core.settings import AppSettings
 
@@ -65,8 +65,9 @@ class VideoViewport(MpvGLWidget):
         nw_layout = QVBoxLayout(self.notice_widget)
         nw_layout.setAlignment(Qt.AlignCenter)
 
-        self.lbl_icon = QLabel("🎬", self)
-        self.lbl_icon.setStyleSheet("font-size: 46px; margin-bottom: 8px;")
+        self.lbl_icon = QLabel(self)
+        self.lbl_icon.setPixmap(get_svg_pixmap("film", 56, "#8FA3C7", stroke_width=1.5))
+        self.lbl_icon.setStyleSheet("margin-bottom: 10px;")
         self.lbl_icon.setAlignment(Qt.AlignCenter)
         nw_layout.addWidget(self.lbl_icon)
 
@@ -253,7 +254,7 @@ class MainWindow(QMainWindow):
         self.engine.speed_changed.connect(self._on_speed_changed)
         self.engine.volume_changed.connect(self._on_volume_changed)
         self.engine.file_ended.connect(self._on_file_ended)
-        self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "⚠️"))
+        self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "warning"))
 
         # Controller -> Engine
         self.controller.play_pause_clicked.connect(self.engine.toggle_play)
@@ -378,7 +379,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
 
         # 8. Customize Buttons
-        act_layout = menu.addAction("컨트롤러 버튼 배열 설정 (⚙️)")
+        act_layout = menu.addAction("컨트롤러 버튼 배열 설정")
         act_layout.triggered.connect(self.controller._open_settings_dialog)
 
         # 9. Exit
@@ -411,7 +412,7 @@ class MainWindow(QMainWindow):
         )
         if file_path:
             self.engine.set_subtitle(file_path)
-            self.osd.show_message(f"자막 로드됨: {os.path.basename(file_path)}", "💬")
+            self.osd.show_message(f"자막 로드됨: {os.path.basename(file_path)}", "subtitle")
 
     def load_media_file(self, file_path: str):
         if not os.path.exists(file_path):
@@ -430,7 +431,7 @@ class MainWindow(QMainWindow):
         start_time = 0.0
         if resume_pos > 5.0:
             start_time = resume_pos
-            self.osd.show_message(f"이어서 재생 ({self._format_seconds(resume_pos)})", "⏱")
+            self.osd.show_message(f"이어서 재생 ({self._format_seconds(resume_pos)})", "clock")
 
         self.engine.load_file(file_path, start_time=start_time)
         self.engine.play()
@@ -446,7 +447,7 @@ class MainWindow(QMainWindow):
             sub_file = base + ext
             if os.path.exists(sub_file):
                 self.engine.set_subtitle(sub_file)
-                self.osd.show_message(f"자막 로드됨: {os.path.basename(sub_file)}", "💬")
+                self.osd.show_message(f"자막 로드됨: {os.path.basename(sub_file)}", "subtitle")
                 break
 
     def _on_duration_changed(self, duration: float):
@@ -475,7 +476,7 @@ class MainWindow(QMainWindow):
     def _on_speed_changed(self, speed: float):
         self.controller.set_speed_display(speed)
         self.speed_popup.set_current_speed(speed)
-        self.osd.show_message(f"{speed:.2f}x", "⚡")
+        self.osd.show_message(f"{speed:.2f}x", "speed")
 
     def _on_volume_changed(self, volume: float):
         self.controller.set_volume_display(volume)
@@ -483,14 +484,14 @@ class MainWindow(QMainWindow):
 
     def _on_file_ended(self):
         self.controller.set_playback_state(False)
-        self.osd.show_message("재생 완료", "🎬")
+        self.osd.show_message("재생 완료", "check")
 
     # --- Actions ---
 
     def seek_relative(self, seconds: float):
         self.engine.seek(seconds, reference="relative")
         direction = f"+{int(seconds)}s" if seconds > 0 else f"{int(seconds)}s"
-        self.osd.show_message(direction, "⏩" if seconds > 0 else "⏪")
+        self.osd.show_message(direction, "forward_5" if seconds > 0 else "backward_5")
 
     def change_speed_relative(self, delta: float):
         self.engine.change_speed_relative(delta)
@@ -500,21 +501,21 @@ class MainWindow(QMainWindow):
 
     def set_volume(self, volume: float):
         self.engine.set_volume(volume)
-        self.osd.show_message(f"볼륨 {int(volume)}%", "🔊")
+        self.osd.show_message(f"볼륨 {int(volume)}%", "volume_high")
 
     def toggle_mute(self):
         is_muted = self.engine.toggle_mute()
         self.controller.set_volume_display(self.engine.get_volume(), is_muted=is_muted)
-        self.osd.show_message("음소거" if is_muted else "음소거 해제", "🔇" if is_muted else "🔊")
+        self.osd.show_message("음소거" if is_muted else "음소거 해제", "volume_mute" if is_muted else "volume_high")
 
     def toggle_subtitle(self):
         visible = self.engine.toggle_subtitle_visibility()
-        self.osd.show_message("자막 켬" if visible else "자막 끔", "💬")
+        self.osd.show_message("자막 켬" if visible else "자막 끔", "subtitle")
 
     def take_screenshot(self):
         path = self.engine.take_screenshot()
         if path:
-            self.osd.show_message(f"캡처 저장됨: {os.path.basename(path)}", "📷")
+            self.osd.show_message(f"캡처 저장됨: {os.path.basename(path)}", "screenshot")
 
     def _show_speed_popup(self):
         if hasattr(self.controller, "btn_speed"):
@@ -542,11 +543,11 @@ class MainWindow(QMainWindow):
             self.showNormal()
             self.title_bar.show()
             self.title_bar.btn_max.setIcon(get_svg_icon("maximize", size=12))
-            self.osd.show_message("전체화면 종료", "⛶")
+            self.osd.show_message("전체화면 종료", "exit_fullscreen")
         else:
             self.showFullScreen()
             self.title_bar.hide()
-            self.osd.show_message("전체화면 (F/ESC)", "⛶")
+            self.osd.show_message("전체화면 (F/ESC)", "fullscreen")
         self._reposition_floating_widgets()
 
     def toggle_pip_mode(self):
@@ -557,7 +558,7 @@ class MainWindow(QMainWindow):
             self.resize(480, 270)
             self.title_bar.set_pip_active(True)
             self.show()
-            self.osd.show_message("PIP 항상 위 모드 (P)", "PIP")
+            self.osd.show_message("PIP 항상 위 모드 (P)", "pip")
         else:
             self._is_pip = False
             self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
@@ -565,7 +566,7 @@ class MainWindow(QMainWindow):
                 self.setGeometry(self._saved_geometry)
             self.title_bar.set_pip_active(False)
             self.show()
-            self.osd.show_message("일반 모드 복원", "PIP")
+            self.osd.show_message("일반 모드 복원", "pip")
         self._reposition_floating_widgets()
 
     # --- Keybindings Map ---
@@ -611,12 +612,12 @@ class MainWindow(QMainWindow):
         # Frame step: Comma / Period
         if key == Qt.Key_Period:
             self.engine.step_frame_forward()
-            self.osd.show_message("1프레임 앞", "⏭")
+            self.osd.show_message("1프레임 앞", "next_frame")
             event.accept()
             return
         elif key == Qt.Key_Comma:
             self.engine.step_frame_backward()
-            self.osd.show_message("1프레임 뒤", "⏮")
+            self.osd.show_message("1프레임 뒤", "prev_frame")
             event.accept()
             return
 

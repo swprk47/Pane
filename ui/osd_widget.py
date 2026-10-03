@@ -1,5 +1,10 @@
 from PySide6.QtWidgets import QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
+from ui.icons import SVG_ICONS, get_svg_pixmap
+
+# Icons that should not use the default accent color.
+ICON_COLORS = {"warning": "#FFB340", "volume_mute": "#FF6B61"}
+DEFAULT_ICON_COLOR = "#5AA9FF"
 
 class GlassOSDWidget(QWidget):
     """
@@ -10,6 +15,8 @@ class GlassOSDWidget(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        # Needed for the QSS pill background below to paint on a plain QWidget.
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFixedHeight(48)
         self.setMinimumWidth(120)
 
@@ -36,7 +43,8 @@ class GlassOSDWidget(QWidget):
         layout.setSpacing(8)
 
         self.icon_label = QLabel("", self)
-        self.icon_label.setStyleSheet("font-size: 16px; color: #0A84FF;")
+        self.icon_label.setFixedSize(20, 20)
+        self.icon_label.setStyleSheet("background: transparent; border: none;")
         layout.addWidget(self.icon_label)
 
         self.text_label = QLabel("", self)
@@ -62,10 +70,10 @@ class GlassOSDWidget(QWidget):
         """)
 
     def show_message(self, text: str, icon: str = ""):
-        """Show OSD badge with text and optional icon, then fade out."""
+        """Show OSD badge with text and an optional icon (a key of ui.icons.SVG_ICONS)."""
         self.text_label.setText(text)
-        if icon:
-            self.icon_label.setText(icon)
+        if icon in SVG_ICONS:
+            self.icon_label.setPixmap(get_svg_pixmap(icon, 20, ICON_COLORS.get(icon, DEFAULT_ICON_COLOR)))
             self.icon_label.show()
         else:
             self.icon_label.hide()
