@@ -1,7 +1,7 @@
 import ctypes
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton
 from PySide6.QtCore import Qt, QPoint, Signal, QSize
-from ui.icons import get_svg_icon
+from ui.icons import get_svg_icon, get_logo_icon
 
 
 def native_start_window_drag(hwnd):
@@ -43,8 +43,8 @@ class GlassTitleBar(QWidget):
         self.logo_btn = QPushButton(self)
         self.logo_btn.setFocusPolicy(Qt.NoFocus)
         self.logo_btn.setCursor(Qt.PointingHandCursor)
-        self.logo_btn.setIcon(get_svg_icon("play", size=14, color="#0A84FF"))
-        self.logo_btn.setIconSize(QSize(14, 14))
+        self.logo_btn.setIcon(get_logo_icon(20))
+        self.logo_btn.setIconSize(QSize(20, 20))
         self.logo_btn.setStyleSheet("background: transparent; border: none; padding: 0;")
         layout.addWidget(self.logo_btn)
 
@@ -78,18 +78,18 @@ class GlassTitleBar(QWidget):
                 padding: 3px 8px;
             }
             QPushButton#PipBadgeButton:hover {
-                background: rgba(10, 132, 255, 0.35);
-                border: 1px solid #0A84FF;
+                background: rgba(179, 206, 229, 0.35);
+                border: 1px solid #B3CEE5;
                 color: #FFFFFF;
             }
             QPushButton#PipBadgeButton[active="true"] {
-                background: #0A84FF;
-                border: 1px solid #0A84FF;
-                color: #FFFFFF;
+                background: #B3CEE5;
+                border: 1px solid #B3CEE5;
+                color: #16212E;
             }
             QPushButton#PipBadgeButton:pressed {
-                background: rgba(10, 132, 255, 0.70);
-                border: 1px solid #70B4FF;
+                background: rgba(179, 206, 229, 0.70);
+                border: 1px solid #D0E1EF;
                 color: #FFFFFF;
                 padding-top: 4px;
                 padding-bottom: 2px;

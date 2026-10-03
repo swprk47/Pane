@@ -9,7 +9,9 @@ from PySide6.QtGui import (
     QPainter, QLinearGradient, QColor, QFont, QFontMetrics, QPen, QPolygonF
 )
 
-ACCENT = QColor("#0A84FF")
+from styles.palette import ACCENT as _ACCENT_HEX
+
+ACCENT = QColor(_ACCENT_HEX)
 
 
 class _OverlayBase(QWidget):

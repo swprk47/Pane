@@ -4,11 +4,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QPoint, QSize, QTimer, QEvent
 from core.settings import open_settings
+from styles.palette import ACCENT, ACCENT_LIGHT
 from ui.icons import get_svg_icon
 
 DEFAULT_PRESETS = [1.0, 1.2, 1.25, 1.5, 2.0]
 MAX_PRESETS = 6          # more chips than this stop being readable
-ACCENT = "#0A84FF"
 
 POPUP_QSS = """
     QWidget#SpeedPopupWidget {
@@ -27,7 +27,7 @@ POPUP_QSS = """
         border-radius: 2px;
     }
     QSlider::sub-page:horizontal {
-        background: #0A84FF;
+        background: #B3CEE5;
         border-radius: 2px;
     }
     QSlider::handle:horizontal {
@@ -39,7 +39,7 @@ POPUP_QSS = """
         border-radius: 7px;
     }
     QSlider::handle:horizontal:hover {
-        background: #CFE6FF;
+        background: #F0F6FB;
     }
 """
 
@@ -61,7 +61,7 @@ class PresetChip(QPushButton):
         self.setToolTip(f"{speed:g}x 배속 적용")
         self.setStyleSheet(f"""
             QPushButton {{
-                background: {'rgba(10, 132, 255, 0.55)' if active else 'rgba(255, 255, 255, 0.09)'};
+                background: {'rgba(179, 206, 229, 0.55)' if active else 'rgba(255, 255, 255, 0.09)'};
                 border: 1px solid {ACCENT if active else 'rgba(255, 255, 255, 0.20)'};
                 border-radius: 18px;
                 color: #FFFFFF;
@@ -69,8 +69,8 @@ class PresetChip(QPushButton):
                 font-weight: 600;
             }}
             QPushButton:hover {{
-                background: {'rgba(10, 132, 255, 0.70)' if active else 'rgba(255, 255, 255, 0.20)'};
-                border: 1px solid {'#70B4FF' if active else 'rgba(255, 255, 255, 0.42)'};
+                background: {'rgba(179, 206, 229, 0.70)' if active else 'rgba(255, 255, 255, 0.20)'};
+                border: 1px solid {'#D0E1EF' if active else 'rgba(255, 255, 255, 0.42)'};
             }}
         """)
         self.clicked.connect(lambda: self.chosen.emit(self.speed))

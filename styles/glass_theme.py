@@ -97,25 +97,25 @@ QWidget {
 }
 
 .GlassButton:checked {
-    background-color: rgba(10, 132, 255, 0.45);
-    border: 1px solid rgba(10, 132, 255, 0.8);
+    background-color: rgba(179, 206, 229, 0.45);
+    border: 1px solid rgba(179, 206, 229, 0.8);
     color: #FFFFFF;
 }
 
 /* Accent Badge / Speed Button */
 #SpeedButton {
-    background-color: rgba(10, 132, 255, 0.22);
-    border: 1px solid rgba(10, 132, 255, 0.45);
+    background-color: rgba(179, 206, 229, 0.22);
+    border: 1px solid rgba(179, 206, 229, 0.45);
     border-radius: 10px;
-    color: #70B4FF;
+    color: #D0E1EF;
     font-size: 12px;
     font-weight: 600;
     padding: 4px 10px;
 }
 
 #SpeedButton:hover {
-    background-color: rgba(10, 132, 255, 0.35);
-    border: 1px solid rgba(10, 132, 255, 0.75);
+    background-color: rgba(179, 206, 229, 0.35);
+    border: 1px solid rgba(179, 206, 229, 0.75);
     color: #FFFFFF;
 }
 

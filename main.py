@@ -23,9 +23,10 @@ if LIB_MPV.exists():
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 
 from ui.main_window import MainWindow
+from ui.icons import LOGO_ICO
 
 
 def main():
@@ -37,6 +38,17 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Pane")
     app.setOrganizationName("Pane")
+
+    # Give the process its own identity so the taskbar shows Pane's icon instead
+    # of grouping it under python.exe, and use the logo for window / taskbar.
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Pane.Player")
+        except Exception:
+            pass
+    if LOGO_ICO.exists():
+        app.setWindowIcon(QIcon(str(LOGO_ICO)))
 
     # Set default modern font
     font = QFont("Segoe UI Variable Text", 10)

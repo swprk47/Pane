@@ -79,11 +79,13 @@ def test_sidecar_subtitle_is_auto_loaded(window, sample_video, tmp_path, pump):
 def test_seek_button_moves_playback_and_shows_osd(playing, pump):
     w = playing
     w.engine.set_speed(0.5)
-    pump(timeout=0.3)
+    # let the (asynchronous) speed-change OSD arrive first, otherwise it could
+    # overwrite the seek message we are about to check
+    assert pump(lambda: w.osd.text_label.text() == "0.50x")
     start = w.engine._time_pos
     w.seek_relative(1.0)
-    assert pump(lambda: w.engine._time_pos > start + 0.8)
     assert w.osd.text_label.text() == "+1s"
+    assert pump(lambda: w.engine._time_pos > start + 0.8), f"{start} -> {w.engine._time_pos}"
 
 
 def test_finish_then_open_another_file(window, sample_video, pump):

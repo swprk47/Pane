@@ -23,8 +23,8 @@ class TimelineSlider(QSlider):
         self._apply_style()
 
     def _apply_style(self):
-        # Thick rounded track with a glass-pill thumb.
-        # Thin track that thickens on hover, accent-colored thumb dot.
+        # Thin track that thickens on hover, one clean white round thumb (no ring:
+        # an accent dot with a translucent border looked like two overlapping circles).
         self.setStyleSheet("""
             QSlider::groove:horizontal {
                 height: 5px;
@@ -36,20 +36,19 @@ class TimelineSlider(QSlider):
                 border-radius: 3px;
             }
             QSlider::sub-page:horizontal {
-                background: #0A84FF;
+                background: #B3CEE5;
                 border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                background: #0A84FF;
-                border: 3px solid rgba(10, 132, 255, 0.35);
-                width: 10px;
-                height: 10px;
-                margin-top: -7px;
-                margin-bottom: -7px;
-                border-radius: 8px;
+                background: #FFFFFF;
+                width: 14px;
+                height: 14px;
+                margin-top: -5px;
+                margin-bottom: -5px;
+                border-radius: 7px;
             }
             QSlider::handle:horizontal:hover {
-                background: #3D9BFF;
+                background: #F0F6FB;
             }
         """)
 

@@ -17,6 +17,7 @@ from ui.glass_controller import GlassController
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge
 from ui.icons import get_svg_icon, get_svg_pixmap
+from styles.palette import MUTED_ICON
 from core.player_engine import PlayerEngine
 from core.settings import AppSettings
 
@@ -66,7 +67,7 @@ class VideoViewport(MpvGLWidget):
         nw_layout.setAlignment(Qt.AlignCenter)
 
         self.lbl_icon = QLabel(self)
-        self.lbl_icon.setPixmap(get_svg_pixmap("film", 56, "#8FA3C7", stroke_width=1.5))
+        self.lbl_icon.setPixmap(get_svg_pixmap("film", 56, MUTED_ICON, stroke_width=1.5))
         self.lbl_icon.setStyleSheet("margin-bottom: 10px;")
         self.lbl_icon.setAlignment(Qt.AlignCenter)
         nw_layout.addWidget(self.lbl_icon)
@@ -315,8 +316,8 @@ class MainWindow(QMainWindow):
                 margin: 1px 0;
             }
             QMenu::item:selected {
-                background-color: #0A84FF;
-                color: #FFFFFF;
+                background-color: #B3CEE5;
+                color: #16212E;
             }
             QMenu::separator {
                 height: 1px;

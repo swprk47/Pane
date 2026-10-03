@@ -14,14 +14,14 @@ class VolumePopup(QFrame):
         super().__init__(parent)
         self.setObjectName("VolumePopup")
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setFixedSize(50, 168)
+        self.setFixedSize(38, 144)
         self.hide()
 
         self.setStyleSheet("""
             QFrame#VolumePopup {
                 background-color: rgba(26, 27, 36, 0.94);
                 border: 1px solid rgba(255, 255, 255, 0.24);
-                border-radius: 25px;
+                border-radius: 19px;
             }
             QLabel {
                 color: rgba(255, 255, 255, 0.85);
@@ -29,40 +29,41 @@ class VolumePopup(QFrame):
                 font-weight: 600;
                 background: transparent;
             }
+            /* thin track, small round thumb */
             QSlider::groove:vertical {
-                width: 8px;
-                background: rgba(255, 255, 255, 0.18);
-                border-radius: 4px;
+                width: 3px;
+                background: rgba(255, 255, 255, 0.28);
+                border-radius: 2px;
             }
             QSlider::sub-page:vertical {
-                background: rgba(255, 255, 255, 0.18);
-                border-radius: 4px;
+                background: rgba(255, 255, 255, 0.28);
+                border-radius: 2px;
             }
             QSlider::add-page:vertical {
-                background: #0A84FF;
-                border-radius: 4px;
+                background: #B3CEE5;
+                border-radius: 2px;
             }
             QSlider::handle:vertical {
-                background: rgba(255, 255, 255, 0.55);
-                border: 1px solid rgba(255, 255, 255, 0.85);
-                height: 14px;
-                margin-left: -7px;
-                margin-right: -7px;
-                border-radius: 7px;
+                background: #FFFFFF;
+                height: 13px;
+                margin-left: -5px;
+                margin-right: -5px;
+                border-radius: 6px;
             }
             QSlider::handle:vertical:hover {
-                background: rgba(255, 255, 255, 0.85);
+                background: #F0F6FB;
             }
         """)
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 14, 0, 10)
+        lay.setContentsMargins(0, 14, 0, 9)
         lay.setSpacing(8)
 
         self.slider = QSlider(Qt.Vertical, self)
         self.slider.setRange(0, 100)
         self.slider.setValue(100)
         self.slider.setCursor(Qt.PointingHandCursor)
+        self.slider.setFixedWidth(22)          # comfortable hit area around the thin track
         self.slider.valueChanged.connect(self._on_value)
         lay.addWidget(self.slider, 1, Qt.AlignHCenter)
 

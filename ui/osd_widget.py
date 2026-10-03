@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from ui.icons import SVG_ICONS, get_svg_pixmap
+from styles.palette import ACCENT_LIGHT
 
 # Icons that should not use the default accent color.
 ICON_COLORS = {"warning": "#FFB340", "volume_mute": "#FF6B61"}
-DEFAULT_ICON_COLOR = "#5AA9FF"
+DEFAULT_ICON_COLOR = ACCENT_LIGHT
 
 class GlassOSDWidget(QWidget):
     """

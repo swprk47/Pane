@@ -1,6 +1,7 @@
 """
 Vector SVG icons with Apple SF Symbols minimalist aesthetic.
 """
+from pathlib import Path
 from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtCore import Qt, QByteArray, QSize, QRectF
@@ -129,6 +130,28 @@ SVG_ICONS = {
         <line x1="6" y1="6" x2="18" y2="18"/>
     </svg>"""
 }
+
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+LOGO_SVG = ASSETS_DIR / "pane_logo.svg"
+LOGO_ICO = ASSETS_DIR / "pane.ico"
+
+
+def get_logo_pixmap(size: int = 18) -> QPixmap:
+    """The Pane logo (assets/pane_logo.svg) as a crisp pixmap."""
+    pixmap = QPixmap(size * 2, size * 2)
+    pixmap.fill(Qt.transparent)
+    pixmap.setDevicePixelRatio(2.0)
+    if LOGO_SVG.exists():
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        QSvgRenderer(str(LOGO_SVG)).render(painter, QRectF(0, 0, size, size))
+        painter.end()
+    return pixmap
+
+
+def get_logo_icon(size: int = 18) -> QIcon:
+    return QIcon(get_logo_pixmap(size))
+
 
 def get_svg_pixmap(name: str, size: int = 18, color: str = None, stroke_width: float = None) -> QPixmap:
     """Crisp pixmap (rendered at 2x, devicePixelRatio 2) for use in QLabel etc."""

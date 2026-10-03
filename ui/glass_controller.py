@@ -69,7 +69,7 @@ class ControllerSettingsDialog(QDialog):
                 border-radius: 6px;
             }
             QListWidget::item:selected {
-                background-color: rgba(10, 132, 255, 0.45);
+                background-color: rgba(179, 206, 229, 0.45);
             }
             QPushButton {
                 background: rgba(255, 255, 255, 0.10);
@@ -138,7 +138,7 @@ class ControllerSettingsDialog(QDialog):
         bot_layout.addStretch()
 
         btn_save = QPushButton("적용 및 저장", self)
-        btn_save.setStyleSheet("background: #0A84FF; border: none; font-weight: bold;")
+        btn_save.setStyleSheet("background: #B3CEE5; color: #16212E; border: none; font-weight: bold;")
         btn_save.clicked.connect(self._save_and_close)
         bot_layout.addWidget(btn_save)
 
@@ -294,7 +294,7 @@ class GlassController(QWidget):
                 background: rgba(255, 255, 255, 0.16);
             }
             QPushButton:pressed {
-                background: rgba(10, 132, 255, 0.45);
+                background: rgba(179, 206, 229, 0.45);
             }
             QPushButton#PlayButton {
                 background: rgba(255, 255, 255, 0.16);
@@ -309,8 +309,8 @@ class GlassController(QWidget):
                 border: 1px solid rgba(255, 255, 255, 0.65);
             }
             QPushButton#PlayButton:pressed {
-                background: rgba(10, 132, 255, 0.55);
-                border: 1px solid rgba(112, 180, 255, 0.95);
+                background: rgba(179, 206, 229, 0.55);
+                border: 1px solid rgba(208, 225, 239, 0.95);
             }
             QLabel {
                 color: rgba(255, 255, 255, 0.92);
@@ -461,10 +461,10 @@ class GlassController(QWidget):
             self.btn_speed.setToolTip("정밀 배속 조절 (클릭 시 팝업)")
             self.btn_speed.setStyleSheet("""
                 QPushButton#SpeedButton {
-                    background: rgba(10, 132, 255, 0.22);
-                    border: 1px solid rgba(10, 132, 255, 0.45);
+                    background: rgba(179, 206, 229, 0.22);
+                    border: 1px solid rgba(179, 206, 229, 0.45);
                     border-radius: 15px;
-                    color: #8EC5FF;
+                    color: #D0E1EF;
                     font-size: 13px;
                     font-weight: 700;
                     padding: 0px 12px;
@@ -472,13 +472,13 @@ class GlassController(QWidget):
                     max-height: 30px;
                 }
                 QPushButton#SpeedButton:hover {
-                    background: rgba(10, 132, 255, 0.40);
-                    border: 1px solid rgba(112, 180, 255, 0.95);
+                    background: rgba(179, 206, 229, 0.40);
+                    border: 1px solid rgba(208, 225, 239, 0.95);
                     color: #FFFFFF;
                 }
                 QPushButton#SpeedButton:pressed {
-                    background: rgba(10, 132, 255, 0.70);
-                    border: 1px solid #70B4FF;
+                    background: rgba(179, 206, 229, 0.70);
+                    border: 1px solid #D0E1EF;
                     color: #FFFFFF;
                     padding-top: 4px;
                     padding-bottom: 2px;

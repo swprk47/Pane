@@ -145,6 +145,26 @@ def test_volume_popup_sync_and_signal(controller, qapp):
     assert got == [80.0]
 
 
+def test_timeline_thumb_is_a_single_white_circle(controller):
+    """Regression: an accent dot with a translucent 3px border looked like two overlapping circles."""
+    qss = controller.timeline.styleSheet()
+    handle = qss[qss.index("QSlider::handle:horizontal {"):]
+    handle = handle[:handle.index("}")]
+    assert "#FFFFFF" in handle
+    assert "border" not in handle.replace("border-radius", "")
+    assert "width: 14px" in handle and "height: 14px" in handle
+
+
+def test_volume_popup_is_slim(controller):
+    """Thin track and small round thumb (the thick pill version was the old look)."""
+    pop = controller.volume_popup
+    assert pop.width() <= 40
+    qss = pop.styleSheet()
+    assert "width: 3px" in qss                       # 3 px track
+    assert "height: 13px" in qss                     # 13 px round thumb
+    assert "width: 8px" not in qss
+
+
 def test_volume_popup_opens_above_mute_button(controller):
     controller.volume_popup.open_above(controller.btn_mute)
     pop = controller.volume_popup
