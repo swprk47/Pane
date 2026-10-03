@@ -1,0 +1,38 @@
+Pane - Third-party components
+=============================
+
+Pane bundles the following software. Each component is covered by its own license.
+
+1. mpv / libmpv  (libmpv-2.dll)
+   Video playback engine, including FFmpeg and other libraries it is built with.
+   Project:  https://mpv.io/            Source: https://github.com/mpv-player/mpv
+   Windows build used: shinchiro/mpv-winbuild-cmake
+     https://github.com/shinchiro/mpv-winbuild-cmake (releases include the build scripts and
+     the exact source revisions).
+   License:  mpv is GPL-2.0-or-later (it can be built as LGPL-2.1-or-later). The build bundled here
+   is treated as a GPL build; FFmpeg and the other libraries inside it carry their own
+   (L)GPL / permissive licenses. See the links above for the license texts and the complete source.
+   NOTE (maintainer): confirm the exact license of the bundled build before any public release.
+
+2. Qt for Python (PySide6) and Qt 6
+   License:  LGPL-3.0-only (also available under GPL / commercial terms).
+   Project:  https://www.qt.io/qt-for-python     Source: https://code.qt.io/
+   Pane uses the shared Qt libraries shipped in the "_internal" folder; they can be replaced by
+   another build of the same Qt version as the LGPL requires.
+
+3. python-mpv
+   License:  GPL-2.0-or-later OR LGPL-2.1-or-later.
+   Project:  https://github.com/jaseg/python-mpv
+
+4. pywinstyles
+   License:  CC0 1.0 (public domain dedication).
+   Project:  https://github.com/Akascape/py-window-styles
+
+5. Python
+   License:  Python Software Foundation License.   Project: https://www.python.org/
+
+6. PyInstaller (used to build the executable)
+   License:  GPL-2.0-or-later with a special exception that allows distributing the bundled
+   program under any license.   Project: https://pyinstaller.org/
+
+Pane's own interface icons are original work. The Pane logo is original work.

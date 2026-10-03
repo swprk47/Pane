@@ -15,6 +15,8 @@ from ui.speed_popup import SpeedPopup
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.media_info_panel import MediaInfoPanel
+from core.version import APP_NAME, APP_VERSION
+from core import app_log
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge
 from ui.icons import get_svg_icon, get_svg_pixmap
@@ -393,11 +395,38 @@ class MainWindow(QMainWindow):
         act_layout = menu.addAction("컨트롤러 버튼 배열 설정")
         act_layout.triggered.connect(self.controller._open_settings_dialog)
 
+        act_about = menu.addAction(f"{APP_NAME} 정보 (v{APP_VERSION})")
+        act_about.triggered.connect(self.show_about)
+
         # 9. Exit
         act_exit = menu.addAction("Pane 종료 (Alt+F4)")
         act_exit.triggered.connect(self.close)
 
         menu.exec(global_pos)
+
+    def about_text(self) -> str:
+        import platform
+        import PySide6
+        try:
+            mpv_ver = self.engine.mpv._get_property("mpv-version")
+        except Exception:
+            mpv_ver = "?"
+        lines = [
+            f"{APP_NAME} v{APP_VERSION}",
+            "",
+            f"mpv: {mpv_ver}",
+            f"Qt for Python: {PySide6.__version__}",
+            f"Python: {platform.python_version()}  ·  {platform.platform()}",
+            "",
+            f"오류 기록: {app_log.log_path()}",
+            "",
+            "제3자 구성 요소와 라이선스는 THIRD_PARTY_NOTICES.txt를 확인하세요.",
+        ]
+        return "\n".join(lines)
+
+    def show_about(self):
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(self, f"{APP_NAME} 정보", self.about_text())
 
     def contextMenuEvent(self, event):
         self.show_context_menu(event.globalPos())

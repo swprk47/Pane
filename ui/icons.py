@@ -131,7 +131,7 @@ SVG_ICONS = {
     </svg>"""
 }
 
-ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+from core.paths import ASSETS_DIR
 LOGO_SVG = ASSETS_DIR / "pane_logo.svg"
 LOGO_ICO = ASSETS_DIR / "pane.ico"
 

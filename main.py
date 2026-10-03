@@ -8,11 +8,12 @@ import os
 from pathlib import Path
 
 # Add project root to sys.path
-PROJECT_ROOT = Path(__file__).resolve().parent
+# Source checkout: the folder of this file. Packaged app: the PyInstaller bundle folder.
+PROJECT_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Setup libmpv path before importing Qt / mpv
-LIB_MPV = PROJECT_ROOT / "lib" / "mpv"
+from core.paths import LIB_MPV_DIR as LIB_MPV
 if LIB_MPV.exists():
     os.environ["PATH"] = str(LIB_MPV) + os.pathsep + os.environ.get("PATH", "")
     if hasattr(os, "add_dll_directory"):
@@ -20,6 +21,9 @@ if LIB_MPV.exists():
             os.add_dll_directory(str(LIB_MPV))
         except Exception:
             pass
+
+from core import app_log
+app_log.install()          # packaged app only: errors go to %LOCALAPPDATA%\Pane\pane.log
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
@@ -36,7 +40,9 @@ def main():
     )
 
     app = QApplication(sys.argv)
+    from core.version import APP_VERSION
     app.setApplicationName("Pane")
+    app.setApplicationVersion(APP_VERSION)
     app.setOrganizationName("Pane")
 
     # Give the process its own identity so the taskbar shows Pane's icon instead

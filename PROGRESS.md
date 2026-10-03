@@ -106,6 +106,16 @@
 .\.venv\Scripts\python.exe -m pytest --run-e2e       # 실제 마우스 입력 포함 (커서가 움직임)
 ```
 
+### v1.0.0 배포 준비 (2026-10-04, 지인 공유용 포터블 zip)
+- **범위:** 지금은 지인에게 공유, 기능이 더 갖춰지면 공개 예정. 형태는 **포터블 zip + 수동 업데이트**(새 zip을 폴더에 덮어쓰기, 설정은 레지스트리라 유지).
+- **빌드:** `python tools/build_release.py` → `dist/Pane/`(245MB) + `dist/Pane-1.0.0-win64.zip`(98MB). PyInstaller 6.22 + **Python 3.14.6에서 성공**(67초). libmpv는 `libmpv-2.dll` 하나만 번들(`mpv-2.dll`은 동일 복사본이라 제외). 필요 파일은 `tools/setup_mpv.py`로 내려받음(예전 `scratch/`에서 이동; `scratch/`는 gitignore라 저장소에 없었음).
+- **검증(포장본):** zip을 다른 임시 폴더에 풀고 **시스템 폴더만 있는 PATH**(파이썬·프로젝트 없음)에서 실행 → 응답, 창 제목 `Pane`, 번들 `python314.dll`·`libmpv-2.dll` 사용, QHD 영상 재생(CPU 24%, 소스 실행과 동일), 오류 기록 파일 생성, **Ctrl+S 캡처가 실제 바탕화면에 저장됨**.
+- **코드 변경:** `core/version.py`(버전 한 곳에서 정의: exe 속성, 정보 창), `core/paths.py`(소스/포장 환경에서 번들 파일 위치), `core/app_log.py`(포장 앱은 콘솔이 없어서 stdout/stderr와 처리 안 된 예외를 `%LOCALAPPDATA%\Pane\pane.log`에 기록, ~1MB 유지), 우클릭 메뉴 `Pane 정보 (v1.0.0)`(버전·mpv·Qt·Python·로그 위치).
+- **배포 중 찾아 고친 버그:** 기본 캡처 위치가 `<홈>\Desktop`이라 한국어/OneDrive 환경(이 PC는 바탕 화면 폴더가 `바탕화면`)에서는 존재하지 않아 Ctrl+S가 실패 → `QStandardPaths`의 실제 바탕화면 위치 사용. (정보 창 메서드가 `contextMenuEvent`가 두 클래스에 있어 엉뚱한 클래스에 들어간 것도 테스트가 잡아 수정)
+- **동봉 문서(`release/`):** `README_RELEASE.txt`(실행·SmartScreen 안내·단축키·설정/삭제/업데이트·알려진 한계), `THIRD_PARTY_NOTICES.txt`, `LICENSE.txt`(지인 공유용 임시 약관: 개인·비상업, 재배포 금지). `CHANGELOG.md`.
+- **미확정(공개 전 반드시):** ① libmpv 빌드(shinchiro) 라이선스를 DLL에서 확인하지 못해 GPL 빌드로 가정하고 고지함 — 공개 배포 전에 정확히 확인하고, GPL이면 소스 공개 의무 → 앱 라이선스 선택 필요. ② 코드 서명 없음(SmartScreen 경고, README에 안내). ③ 이 PC 외 환경(다른 GPU/Windows 11 빌드)에서의 실행 확인 없음.
+- 테스트: `tests/test_release.py`(버전, 경로, 로그, 정보 창, 문서 일관성, 빌드 스크립트) + 캡처 폴더 회귀 테스트. 전체 175 passed.
+
 ### 타이틀바 더블클릭(최대화) 수정 (2026-10-04)
 - **원인:** 타이틀바가 왼쪽 버튼을 누르자마자 `native_start_window_drag`(시스템 창 이동 루프)를 시작해서 버튼 뗌 이벤트를 삼키고, 그 결과 더블클릭이 들어오지 않아 최대화/복원이 동작하지 않았음(뷰포트에서 고쳤던 것과 같은 패턴). 실제 마우스 입력 테스트로 재현·확인(예전 코드에서 더블클릭해도 최대화 안 됨).
 - **수정:** 누른 위치를 기억하고 `startDragDistance` 이상 움직였을 때만 창 이동을 시작(드래그당 정확히 1회). 더블클릭은 이동을 시작하지 않고 최대화/복원. 최대화 상태에서는 기존처럼 드래그로 이동하지 않음.

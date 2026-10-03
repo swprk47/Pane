@@ -154,3 +154,20 @@ def test_no_start_time_begins_at_the_start(engine, sample_video, pump):
     engine.load_file(sample_video)
     assert pump(lambda: engine._time_pos > 0.1)
     assert engine._time_pos < 1.0
+
+
+def test_default_capture_dir_is_an_existing_folder(engine):
+    """Regression: the default was <home>/Desktop, which does not exist on localized
+    Windows (the desktop is called 바탕화면 here), so Ctrl+S failed."""
+    d = engine.default_capture_dir()
+    assert d.is_dir()
+
+
+def test_default_screenshot_lands_in_the_capture_dir(engine, sample_video, pump, tmp_path, monkeypatch):
+    from PySide6.QtCore import QStandardPaths
+    monkeypatch.setattr(QStandardPaths, "writableLocation", staticmethod(lambda loc: str(tmp_path)))
+    engine.load_file(sample_video)
+    pump(lambda: engine._time_pos > 0.3)
+    out = engine.take_screenshot()                       # no explicit path: the default location
+    assert out and out.startswith(str(tmp_path))
+    assert (tmp_path / out.split("\\")[-1].split("/")[-1]).exists()

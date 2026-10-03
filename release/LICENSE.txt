@@ -1,0 +1,13 @@
+Pane  -  Copyright (c) 2026. All rights reserved.
+
+INTERIM TERMS (private sharing)
+This program is shared privately. You may use it for personal, non-commercial purposes.
+Do not redistribute it or its source code, or use it commercially, without permission.
+These terms will be replaced by a proper open-source or end-user license before any public release.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+Third-party components bundled with Pane (mpv/libmpv, FFmpeg, Qt, python-mpv, pywinstyles,
+Python, ...) are NOT covered by the terms above. They remain under their own licenses; see
+THIRD_PARTY_NOTICES.txt. Where a license grants you more rights than these terms
+(for example the GPL/LGPL), those rights apply to that component.

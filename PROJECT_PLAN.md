@@ -112,6 +112,8 @@
 Video_Player/
 ├── PROJECT_PLAN.md          # 프로젝트 종합 계획서 (본 파일)
 ├── PROGRESS.md              # 진행 상황 기록
+├── CHANGELOG.md             # 버전별 변경 이력
+├── release/                 # 배포 zip에 동봉되는 문서 (README, 라이선스 고지)
 ├── requirements.txt         # 필수 라이브러리 목록
 ├── requirements-dev.txt     # 개발용(pytest)
 ├── pytest.ini               # pytest 설정
@@ -141,6 +143,8 @@ Video_Player/
 ├── assets/                  # 로고 (svg / png / ico)
 ├── tools/
 │   ├── make_icons.py        # 팔레트로부터 로고·ICO 생성
+│   ├── setup_mpv.py         # libmpv 다운로드 (lib/mpv 준비)
+│   ├── build_release.py     # 포터블 zip 빌드 (PyInstaller)
 │   ├── flicker_probe.py     # 깜빡임/프레임 공백·렌더 시간 측정 (UI 시나리오 자동 실행)
 │   └── perf_probe.py        # 재생 성능 측정 (CPU/GPU/메모리/드랍/UI 지연)
 └── tests/

@@ -5,8 +5,8 @@ from PySide6.QtCore import QObject, Signal
 
 # Configure mpv-2.dll lookup path before importing mpv
 def _setup_mpv_path():
-    project_root = Path(__file__).resolve().parent.parent
-    lib_mpv_dir = project_root / "lib" / "mpv"
+    from core.paths import LIB_MPV_DIR
+    lib_mpv_dir = LIB_MPV_DIR
     if lib_mpv_dir.exists():
         path_str = str(lib_mpv_dir)
         os.environ["PATH"] = path_str + os.pathsep + os.environ.get("PATH", "")
@@ -280,13 +280,25 @@ class PlayerEngine(QObject):
         except Exception:
             return False
 
+    @staticmethod
+    def default_capture_dir() -> Path:
+        """The user's real desktop folder. It is not always <home>/Desktop: on localized or
+        OneDrive-redirected systems it has another name (here: 바탕화면), and mpv fails
+        silently when the target folder does not exist."""
+        from PySide6.QtCore import QStandardPaths
+        for loc in (QStandardPaths.DesktopLocation, QStandardPaths.PicturesLocation):
+            path = QStandardPaths.writableLocation(loc)
+            if path and Path(path).is_dir():
+                return Path(path)
+        return Path.home()
+
     def take_screenshot(self, output_path: str = None) -> str:
         """
         Capture high-resolution screenshot of current video frame.
-        If output_path is None, saves to Desktop or current directory.
+        If output_path is None, saves to the real desktop folder (see default_capture_dir).
         """
         if output_path is None:
-            desktop = Path.home() / "Desktop"
+            desktop = self.default_capture_dir()
             import time
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             output_path = str(desktop / f"Pane_capture_{timestamp}.png")
