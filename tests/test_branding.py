@@ -1,4 +1,4 @@
-"""Logo files, app icon wiring and the violet accent palette."""
+"""Logo files, app icon wiring and the app accent palette."""
 import re
 import struct
 from pathlib import Path
@@ -31,10 +31,15 @@ def test_palette_rgb_matches_hex():
         assert f"{c.red()}, {c.green()}, {c.blue()}" == rgb
 
 
-def test_accent_is_serenity_and_the_logo_shares_it():
+def test_accent_is_serenity():
     assert palette.ACCENT.upper() == "#B3CEE5"
-    assert palette.LOGO_ACCENT == palette.ACCENT
-    assert palette.LOGO_ACCENT_LIGHT == palette.ACCENT_LIGHT
+
+
+def test_logo_colors_are_independent_of_the_app_accent():
+    """The logo (blue-violet slab) has its own colors; the UI accent must not leak into the generator."""
+    assert not hasattr(palette, "LOGO_ACCENT")
+    svg = make_icons.build_svg().upper()
+    assert palette.ACCENT.upper() not in svg and palette.ACCENT_LIGHT.upper() not in svg
 
 
 def _contrast(a, b):
@@ -82,13 +87,14 @@ def test_logo_assets_exist():
         assert p.exists() and p.stat().st_size > 500, p
 
 
-def test_logo_svg_uses_the_logo_accent():
-    svg = LOGO_SVG.read_text(encoding="utf-8")
-    assert palette.LOGO_ACCENT in svg and palette.LOGO_ACCENT_LIGHT in svg
+def test_logo_svg_uses_the_logo_colors():
+    svg = LOGO_SVG.read_text(encoding="utf-8").upper()
+    for color in (make_icons.SLAB_LOW[0], make_icons.SLAB_LOW[1], make_icons.TRI_FILL[0], make_icons.OUTLINE):
+        assert color.upper() in svg, color
 
 
 def test_checked_in_logo_matches_the_generator():
-    """Fails when the palette changed but tools/make_icons.py was not re-run."""
+    """Fails when tools/make_icons.py changed but was not re-run."""
     assert LOGO_SVG.read_text(encoding="utf-8") == make_icons.build_svg()
 
 
@@ -113,17 +119,63 @@ def test_rendered_logo_is_not_blank(qapp):
     assert visible > 400, "logo renders (nearly) empty"
 
 
-def test_logo_has_no_background_tile(qapp):
-    """The icon is the glass panes alone (no square), so it blends into any taskbar."""
-    img = get_logo_pixmap(64).toImage()
-    for x, y in ((1, 1), (126, 1), (1, 126), (126, 126), (64, 1), (64, 126), (1, 64)):
-        assert img.pixelColor(x, y).alpha() < 40, f"({x},{y}) is not transparent"
+def _alpha_grid(img, step=2):
+    return [[img.pixelColor(x, y).alpha() for x in range(0, img.width(), step)] for y in range(0, img.height(), step)]
 
 
-def test_logo_fills_the_canvas_width(qapp):
+def test_logo_is_a_rounded_slab_with_transparent_corners(qapp):
+    """A rounded square plate: corners are cut away, the plate itself is opaque."""
+    img = get_logo_pixmap(64).toImage()                         # 128 px
+    for x, y in ((1, 1), (126, 1), (1, 126), (126, 126)):
+        assert img.pixelColor(x, y).alpha() < 40, f"({x},{y}) should be transparent"
+    for x, y in ((64, 20), (30, 60), (100, 60)):
+        assert img.pixelColor(x, y).alpha() > 240, f"({x},{y}) should be opaque slab"
+
+
+def test_logo_fills_the_canvas(qapp):
     img = get_logo_pixmap(64).toImage()
     cols = [x for x in range(128) if any(img.pixelColor(x, y).alpha() > 100 for y in range(0, 128, 2))]
-    assert (cols[-1] - cols[0]) / 128 >= 0.85, "panes should fill the icon so it is not tiny in the taskbar"
+    rows = [y for y in range(128) if any(img.pixelColor(x, y).alpha() > 100 for x in range(0, 128, 2))]
+    assert (cols[-1] - cols[0]) / 128 >= 0.85, "the slab should fill the icon width"
+    assert (rows[-1] - rows[0]) / 128 >= 0.85, "the slab should fill the icon height"
+
+
+def test_small_drawing_widens_the_gap_and_enlarges_the_triangle():
+    large, small = make_icons.build_svg(), make_icons.build_svg(small=True)
+    assert large != small
+    assert make_icons.SMALL["pane"].split()[2] == "H43" and make_icons.LARGE["pane"].split()[2] == "H46"
+    assert make_icons.SMALL["tri"] == "M27 31 L48.5 47 L27 63 Z" and make_icons.LARGE["tri"] == "M27 32 L50 47 L27 62 Z"
+    assert 'H43 A12' in small and 'H46 A12' in large
+
+
+def test_ico_uses_the_small_drawing_up_to_32px_only(qapp):
+    from PySide6.QtGui import QImage
+    data = LOGO_ICO.read_bytes()
+    count = struct.unpack("<H", data[4:6])[0]
+    by_size = {}
+    for i in range(count):
+        w, _h, _c, _r, _p, _b, length, offset = struct.unpack("<BBBBHHII", data[6 + 16 * i:22 + 16 * i])
+        by_size[w or 256] = data[offset:offset + length]
+    for size, png in by_size.items():
+        svg = make_icons.build_svg(small=size <= make_icons.SMALL_MAX)
+        assert png == make_icons.render_png_bytes(svg, size), f"{size}px entry is not the expected drawing"
+    assert make_icons.SMALL_MAX == 32
+
+
+def test_logo_light_line_is_a_rect_with_height():
+    """A horizontal line with a bbox gradient does not render: the lower light must be a rect."""
+    for small in (False, True):
+        svg = make_icons.build_svg(small=small)
+        assert '<rect' in svg and 'fill="url(#line)"' in svg
+
+
+def test_small_logo_keeps_the_gap_and_the_triangle(qapp):
+    """At 16 px the play triangle (white) and the gap between the panes must still be there."""
+    img = QImage.fromData(make_icons.render_png_bytes(make_icons.build_svg(small=True), 16))
+    def white(x, y):
+        c = img.pixelColor(x, y)
+        return c.alpha() > 200 and c.red() > 225 and c.green() > 225 and c.blue() > 225
+    assert sum(white(x, y) for x in range(16) for y in range(16)) >= 6, "white triangle vanished at 16 px"
 
 
 # --- app wiring ------------------------------------------------------------

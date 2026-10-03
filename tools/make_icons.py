@@ -1,14 +1,16 @@
 """
-Builds the Pane logo files from the accent in styles/palette.py:
+Builds the Pane logo files:
 
-    assets/pane_logo.svg   the logo (vector, source of truth)
+    assets/pane_logo.svg   the logo (vector, source of truth; large-size drawing)
     assets/pane_256.png    256px preview
     assets/pane.ico        multi-size Windows icon (16..256, PNG-compressed entries)
 
-Run after changing the accent:   python tools/make_icons.py
-Design: two tinted glass panes (the big one carries a white play triangle), no
-background tile, so the icon sits on any taskbar. A thin dark hairline under the
-white rim keeps the glass visible on light backgrounds. See PROGRESS.md.
+Run after changing the design:   python tools/make_icons.py
+Design (design "Q"): a thick glass slab (blue-violet) carrying two glass panes, the big one with a
+white play triangle, and a thin light line along the lower edge. The logo has its own colors (below);
+the app's UI accent in styles/palette.py is independent of it. Sizes up to 32 px use a slightly
+different drawing (narrower big pane = wider gap, bigger triangle, heavier lines) so the gap and the
+triangle still read; 48 px and up use the large drawing. See PROGRESS.md.
 """
 import struct
 import sys
@@ -17,43 +19,79 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from styles.palette import LOGO_ACCENT, LOGO_ACCENT_LIGHT  # noqa: E402
-
 ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+SMALL_MAX = 32                      # ICO entries up to this size use the small-size drawing
 
-# geometry (100x100 viewBox): no tile, the panes fill the canvas; divider at 60 %
-X0, Y0, X1, Y1, R = 4, 15, 96, 85, 18
-DIV = X0 + (X1 - X0) * 0.60
-GAP, R_IN = 5, 6
-TRI = "23.5,38.5 43,50 23.5,61.5"
-EDGE = "#22364D"                    # dark slate-blue hairline / shadow color
+# ---- logo colors (independent of the app accent)
+SLAB_LOW = ("#7B6BE6", "#453CB4")                           # lower layer, vertical, opaque
+SLAB_TOP = (("#6FA0F2", 0), ("#6376E8", 0.5), ("#8D62E4", 1))   # top face, diagonal
+SLAB_TOP_OPACITY = 0.97
+PANE_FILL = (("#FFFFFF", 0.40), ("#CFC8FF", 0.20))          # panes, diagonal
+TRI_FILL = ("#FFFFFF", "#EEF0FF")
+LINE_STOPS = (("#DCCBFF", 0, 0.0), ("#EADCF8", 0.18, 0.85), ("#FFEADD", 0.5, 0.95),
+              ("#EADCF8", 0.82, 0.85), ("#DCCBFF", 1, 0.0))  # lower light line, horizontal, transparent ends
+RIM_STOPS = (0, 1.0), (0.5, 0.35), (1, 0.7)                 # white rim light opacity along the diagonal
+OUTLINE = "#0F0E4A"
+TRI_SHADOW = "#101456"
+
+# ---- geometry (100x100 viewBox)
+SLAB_LOW_PATH = "M27 9 H73 A22 22 0 0 1 95 31 V75 A22 22 0 0 1 73 97 H27 A22 22 0 0 1 5 75 V31 A22 22 0 0 1 27 9 Z"
+SLAB_TOP_PATH = "M27 3 H73 A22 22 0 0 1 95 25 V69 A22 22 0 0 1 73 91 H27 A22 22 0 0 1 5 69 V25 A22 22 0 0 1 27 3 Z"
+PILL_PATH = "M75 15 A11 11 0 0 1 86 26 V68 A11 11 0 0 1 75 79 A11 11 0 0 1 64 68 V26 A11 11 0 0 1 75 15 Z"
+
+# values that differ between the large and the small drawing
+LARGE = dict(
+    pane="M26 15 H46 A12 12 0 0 1 58 27 V67 A12 12 0 0 1 46 79 H26 A12 12 0 0 1 14 67 V27 A12 12 0 0 1 26 15 Z",
+    tri="M27 32 L50 47 L27 62 Z",
+    low=(0.35, 2), top=(0.22, 2.4), panel=(0.30, 2.2),
+    rim_top=1.6, rim_panel=1.4,
+    tri_dy=1.3, tri_shadow_opacity=0.36, tri_shadow_w=7, tri_w=5,
+    line=(26, 93.4, 48, 3.2, 1.6),
+)
+SMALL = dict(
+    pane="M26 15 H43 A12 12 0 0 1 55 27 V67 A12 12 0 0 1 43 79 H26 A12 12 0 0 1 14 67 V27 A12 12 0 0 1 26 15 Z",
+    tri="M27 31 L48.5 47 L27 63 Z",
+    low=(0.4, 2.2), top=(0.26, 2.6), panel=(0.34, 2.6),
+    rim_top=1.8, rim_panel=1.6,
+    tri_dy=1.4, tri_shadow_opacity=0.38, tri_shadow_w=7.5, tri_w=5.5,
+    line=(24, 92.2, 52, 4.2, 2.1),
+)
 
 
-def build_svg(accent: str = LOGO_ACCENT, accent_light: str = LOGO_ACCENT_LIGHT) -> str:
-    lx, rx = DIV - GAP / 2, DIV + GAP / 2
-    left = (f"M{X0 + R} {Y0} H{lx - R_IN} Q{lx} {Y0} {lx} {Y0 + R_IN} V{Y1 - R_IN} Q{lx} {Y1} {lx - R_IN} {Y1} "
-            f"H{X0 + R} A{R} {R} 0 0 1 {X0} {Y1 - R} V{Y0 + R} A{R} {R} 0 0 1 {X0 + R} {Y0} Z")
-    right = (f"M{rx + R_IN} {Y0} H{X1 - R} A{R} {R} 0 0 1 {X1} {Y0 + R} V{Y1 - R} A{R} {R} 0 0 1 {X1 - R} {Y1} "
-             f"H{rx + R_IN} Q{rx} {Y1} {rx} {Y1 - R_IN} V{Y0 + R_IN} Q{rx} {Y0} {rx + R_IN} {Y0} Z")
+def build_svg(small: bool = False) -> str:
+    g = SMALL if small else LARGE
 
-    def pane(path):
-        # dark hairline UNDER the white rim: the glass stays visible on light backgrounds too
-        return (f'<path d="{path}" fill="url(#glass)"/>'
-                f'<path d="{path}" fill="none" stroke="{EDGE}" stroke-opacity="0.55" stroke-width="3.6" stroke-linejoin="round"/>'
-                f'<path d="{path}" fill="none" stroke="url(#rim)" stroke-width="1.9" stroke-linejoin="round"/>')
+    def outline(path, opacity, width):
+        return (f'<path d="{path}" fill="none" stroke="{OUTLINE}" stroke-opacity="{opacity}" '
+                f'stroke-width="{width}" stroke-linejoin="round"/>')
 
-    gloss = (f'<path d="M{X0} 54 C{X0} 32 19 {Y0} 36 {Y0} H55 C36 30 25 46 {X0 + 7} 74 C{X0 + 2} 70 {X0} 64 {X0} 54 Z" '
-             'fill="#FFFFFF" fill-opacity="0.34" clip-path="url(#leftClip)"/>')
-    # dark outline + soft drop under the white triangle: it must read on pale glass over light backgrounds
-    shadow = (f'<polygon points="{TRI}" transform="translate(0 1.2)" fill="{EDGE}" fill-opacity="0.5" stroke="{EDGE}" stroke-opacity="0.5" stroke-width="7" stroke-linejoin="round"/>')
+    def rim(path, width):
+        return f'<path d="{path}" fill="none" stroke="url(#rim)" stroke-width="{width}" stroke-linejoin="round"/>'
+
+    def panel(path):
+        return f'<path d="{path}" fill="url(#pane)"/>' + outline(path, *g["panel"]) + rim(path, g["rim_panel"])
+
+    lx, ly, lw, lh, lr = g["line"]
+    top_stops = "".join(f'<stop offset="{o}" stop-color="{c}"/>' for c, o in SLAB_TOP)
+    pane_stops = "".join(f'<stop offset="{o}" stop-color="{c}" stop-opacity="{a}"/>'
+                         for o, (c, a) in zip((0, 1), PANE_FILL))
+    line_stops = "".join(f'<stop offset="{o}" stop-color="{c}" stop-opacity="{a}"/>' for c, o, a in LINE_STOPS)
+    rim_stops = "".join(f'<stop offset="{o}" stop-color="#FFFFFF" stop-opacity="{a}"/>' for o, a in RIM_STOPS)
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 100 100">
 <defs>
-<linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{accent_light}" stop-opacity="0.78"/><stop offset="1" stop-color="{accent}" stop-opacity="0.55"/></linearGradient>
-<linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.98"/><stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.6"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.45"/></linearGradient>
-<clipPath id="leftClip"><path d="{left}"/></clipPath>
+<linearGradient id="low" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="{SLAB_LOW[0]}"/><stop offset="1" stop-color="{SLAB_LOW[1]}"/></linearGradient>
+<linearGradient id="top" x1="0" y1="0" x2="1" y2="1">{top_stops}</linearGradient>
+<linearGradient id="pane" x1="0" y1="0" x2="1" y2="1">{pane_stops}</linearGradient>
+<linearGradient id="tri" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="{TRI_FILL[0]}"/><stop offset="1" stop-color="{TRI_FILL[1]}"/></linearGradient>
+<linearGradient id="line" x1="0" y1="0" x2="1" y2="0">{line_stops}</linearGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">{rim_stops}</linearGradient>
 </defs>
-{pane(left)}{gloss}{pane(right)}
-{shadow}<polygon points="{TRI}" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="5" stroke-linejoin="round"/>
+<path d="{SLAB_LOW_PATH}" fill="url(#low)"/>{outline(SLAB_LOW_PATH, *g["low"])}
+<rect x="{lx}" y="{ly}" width="{lw}" height="{lh}" rx="{lr}" fill="url(#line)"/>
+<path d="{SLAB_TOP_PATH}" fill="url(#top)" fill-opacity="{SLAB_TOP_OPACITY}"/>{outline(SLAB_TOP_PATH, *g["top"])}{rim(SLAB_TOP_PATH, g["rim_top"])}
+{panel(g["pane"])}{panel(PILL_PATH)}
+<path d="{g["tri"]}" transform="translate(0 {g["tri_dy"]})" fill="{TRI_SHADOW}" fill-opacity="{g["tri_shadow_opacity"]}" stroke="{TRI_SHADOW}" stroke-opacity="{g["tri_shadow_opacity"]}" stroke-width="{g["tri_shadow_w"]}" stroke-linejoin="round"/>
+<path d="{g["tri"]}" fill="url(#tri)" stroke="url(#tri)" stroke-width="{g["tri_w"]}" stroke-linejoin="round"/>
 </svg>
 '''
 
@@ -97,12 +135,12 @@ def main():
 
     out = ROOT / "assets"
     out.mkdir(exist_ok=True)
-    svg = build_svg()
-    (out / "pane_logo.svg").write_text(svg, encoding="utf-8")
-    pngs = {s: render_png_bytes(svg, s) for s in ICO_SIZES}
+    large, small = build_svg(), build_svg(small=True)
+    (out / "pane_logo.svg").write_text(large, encoding="utf-8")
+    pngs = {s: render_png_bytes(small if s <= SMALL_MAX else large, s) for s in ICO_SIZES}
     (out / "pane_256.png").write_bytes(pngs[256])
     (out / "pane.ico").write_bytes(build_ico(pngs))
-    print(f"wrote {out / 'pane_logo.svg'}, pane_256.png and pane.ico ({len(ICO_SIZES)} sizes) with logo accent {LOGO_ACCENT}")
+    print(f"wrote {out / 'pane_logo.svg'}, pane_256.png and pane.ico ({len(ICO_SIZES)} sizes)")
 
 
 if __name__ == "__main__":

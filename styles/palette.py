@@ -1,11 +1,11 @@
 """
 Single source of truth for the app's colors: soft "Serenity" blue.
 
-The logo uses the same hue (LOGO_ACCENT is kept as its own name so the logo can
-diverge again without touching the UI). Most QSS strings in ui/ spell the colors
+The logo has its own colors (tools/make_icons.py) and no longer follows this accent.
+Most QSS strings in ui/ spell the colors
 out as literals; tests/test_branding.py fails if a legacy accent literal sneaks
-back in, so a future color change is: edit this file, replace the literals
-(LEGACY_ACCENT_LITERALS lists the previous sets) and re-run tools/make_icons.py.
+back in, so a future color change is: edit this file and replace the literals
+(LEGACY_ACCENT_LITERALS lists the previous sets).
 """
 # ---- accent: Serenity (progress, pins, speed text, highlights)
 ACCENT = "#B3CEE5"
@@ -16,10 +16,6 @@ ACCENT_HOVER = "#C2D8EA"            # hover state of accent-filled elements
 ACCENT_PALE = "#F0F6FB"             # very light tone (slider handle hover)
 ON_ACCENT = "#16212E"               # text on a SOLID accent fill (white is unreadable on a pale accent)
 MUTED_ICON = "#93A8BC"              # desaturated grey-blue for large decorative icons
-
-# ---- logo accent
-LOGO_ACCENT = ACCENT
-LOGO_ACCENT_LIGHT = ACCENT_LIGHT
 
 # Literals of previous accents; the regression test asserts none is left in the source.
 LEGACY_ACCENT_LITERALS = (

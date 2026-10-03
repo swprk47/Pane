@@ -106,6 +106,14 @@
 .\.venv\Scripts\python.exe -m pytest --run-e2e       # 실제 마우스 입력 포함 (커서가 움직임)
 ```
 
+### 앱 아이콘 개편: 유리 받침판 + 두 패널 (2026-10-04, 시안 Q)
+- **디자인:** 두꺼운 유리 받침판(파랑~보라) 위에 큰 패널과 알약 패널 두 장, 큰 패널에 흰 재생 삼각형, 받침판 아래 가장자리에 얇은 빛줄. 이전 아이콘(타일 없는 세레니티 유리 두 장)을 대체. 시안은 /design Artifact에서 A~F를 비교한 뒤 사용자가 Q(구조 I + 색 N)로 확정.
+- **색은 로고 전용:** 로고 색은 `tools/make_icons.py` 안의 상수(`SLAB_LOW`, `SLAB_TOP`, `PANE_FILL`, `TRI_FILL`, `LINE_STOPS`, `OUTLINE` 등)로 옮겼고, `styles/palette.py`의 `LOGO_ACCENT`/`LOGO_ACCENT_LIGHT`는 삭제함. **앱 UI 색(ACCENT 등)은 그대로 세레니티**이고 나중에 따로 바꿀 예정. 이제 팔레트를 바꿔도 로고는 안 바뀜.
+- **두 가지 그림:** `build_svg(small=False)` 큰 크기용(`assets/pane_logo.svg`, ICO 40px 이상)과 `build_svg(small=True)` 작은 크기용(ICO 16/20/24/32px). 작은 쪽은 큰 패널을 좁혀 틈을 6→9로, 삼각형을 키우고 선을 굵게. 빛줄은 높이가 있는 사각형으로 그림(수평선에 bbox 그라데이션을 쓰면 렌더되지 않음).
+- **확인:** 16/24/32/48/256px을 어두운/밝은/사진 배경에서 렌더해 봄(16px에서도 삼각형과 틈이 읽힘). 타이틀바 로고는 새 아이콘으로 표시됨.
+- **작업표시줄 옛 아이콘(해결):** 이 PC에서는 새 아이콘으로 바꾼 뒤에도 작업표시줄이 예전 아이콘을 보여 줌. 아이콘 캐시(`iconcache_*.db`) 삭제 + 탐색기 재시작으로는 안 바뀜. 원인은 이전 설치 시험이 남긴 윈도우의 앱 기록(`W~Pane.Player`, `AppListBackup`/`CloudStore`)이 옛 아이콘을 기억하던 것. **새 아이콘으로 다시 빌드한 설치 프로그램으로 설치하자 작업표시줄이 새 아이콘으로 바뀌었고**, 제거한 뒤에는 `python main.py` 개발 실행에서도 새 아이콘이 나옴(시험 후 제거 완료: 폴더·시작 메뉴·제거 항목 없음, 사용자 설정은 보존). 주의: 아이콘을 바꾸면 `build_release.py --installer`로 다시 빌드해야 `dist`의 설치 파일과 zip에 반영됨(이전 빌드는 구아이콘).
+- **테스트:** `tests/test_branding.py` 갱신 — 받침판 모양(모서리 투명/판 불투명), 캔버스 가로·세로 85% 이상, 작은 그림 기하(틈·삼각형), ICO 항목이 크기별로 올바른 그림인지, 빛줄이 사각형인지, 16px에서 흰 삼각형이 남는지, 로고 색이 앱 색과 독립인지. 이전의 "타일 없음/가로 폭" 검사는 새 구조에 맞게 교체. 전체 191 passed, 9 skipped.
+
 ### Windows 설치 프로그램 (Inno Setup) (2026-10-04)
 - **결정(사용자):** Inno Setup으로 진행, **바탕화면 바로가기는 설치 시 선택(기본 해제)**, **영상 파일 연결은 등록**(설치 화면에서 끌 수 있게 기본 체크).
 - **구성:** `installer/pane.iss` + 자동 생성 `installer/extensions.iss`(확장자 13개, `core/media_types.py`가 단일 출처 — 열기 대화상자 필터와 공유). `python tools/build_release.py --installer`로 `dist/Pane-1.0.0-setup.exe`(69MB, zip은 98MB) 생성. Inno Setup 6.7.3은 `winget install JRSoftware.InnoSetup`.

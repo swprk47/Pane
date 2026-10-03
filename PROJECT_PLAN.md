@@ -140,7 +140,7 @@ Video_Player/
 │   └── icons.py             # SVG 선 아이콘 세트
 ├── styles/
 │   ├── __init__.py
-│   ├── palette.py           # 포인트 색(바이올렛) 단일 출처
+│   ├── palette.py           # 앱 포인트 색(세레니티) 단일 출처
 │   └── glass_theme.py       # 글라스모피즘 스타일시트 (QSS) & 컬러 팔레트
 ├── assets/                  # 로고 (svg / png / ico)
 ├── tools/
@@ -209,5 +209,5 @@ Video_Player/
 - [x] `- / □ / X` 타이틀바 더블클릭(최대화): 누르자마자 드래그를 시작하던 문제 수정 *(임계 거리 이상 끌 때만 이동 시작)*
 - [x] 고해상도 영상에서 렌더 API 전환 후 성능 측정 *(UHD/QHD/FHD 여유, 4K60 전체화면만 5~8% 드랍. PROGRESS.md 참고)*
 - [ ] (선택) 4K 60fps 전체화면 드랍과 전체화면 진입 시 ~200ms 멈칫 개선 — 전체화면 표시 경로 손보기
-- [x] 앱 로고 디자인 *(assets/pane_logo.svg 단독 유리 패널 아이콘, 로고·앱 포인트 색 모두 세레니티 `#B3CEE5`)*
+- [x] 앱 로고 디자인 *(assets/pane_logo.svg: 유리 받침판 위 두 패널 + 재생 삼각형, 로고 색은 tools/make_icons.py 전용(파랑~보라), 앱 UI 포인트 색은 세레니티 `#B3CEE5`)*
 - [ ] 자막 싱크 조절, 다중 오디오 트랙
