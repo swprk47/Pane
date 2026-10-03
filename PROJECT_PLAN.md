@@ -140,7 +140,8 @@ Video_Player/
 │   └── glass_theme.py       # 글라스모피즘 스타일시트 (QSS) & 컬러 팔레트
 ├── assets/                  # 로고 (svg / png / ico)
 ├── tools/
-│   └── make_icons.py        # 팔레트로부터 로고·ICO 생성
+│   ├── make_icons.py        # 팔레트로부터 로고·ICO 생성
+│   └── flicker_probe.py     # 깜빡임/프레임 공백·렌더 시간 측정 (UI 시나리오 자동 실행)
 └── tests/
     ├── conftest.py          # 공용 fixture (설정 격리, 샘플 영상, 엔진/창)
     ├── assets/sample.mp4    # 실제 파일 테스트용 3초 영상

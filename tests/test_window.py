@@ -19,6 +19,14 @@ def test_viewport_is_the_render_surface(window):
     assert window.viewport._mpv is window.engine.mpv
 
 
+def test_render_does_not_block_the_gui_thread():
+    """mpv's render() blocks until the frame's display time by default, which kept the GUI
+    thread waiting ~21 ms per 30 fps frame (measured with tools/flicker_probe.py). We render
+    without blocking. A timing test could not tell the two apart on the short sample clip, so
+    this checks the setting itself."""
+    assert MpvGLWidget.BLOCK_FOR_TARGET_TIME is False
+
+
 def test_theme_survives_the_acrylic_call(window):
     """Regression: pywinstyles.apply_style() replaces the window stylesheet with
     'background-color: transparent;', which wiped the theme and left the title bar
@@ -119,6 +127,37 @@ def test_pip_roundtrip_keeps_badge_style(window, qapp, pump):
     assert not window._is_pip
     assert badge.styleSheet() == before_qss
     assert badge.grab().toImage() == before_img, "badge looks different after leaving PIP"
+
+
+def test_pip_does_not_recreate_the_native_window(window, qapp, pump):
+    """Regression: toggling Qt's WindowStaysOnTopHint recreated the native window, which blanked
+    the video for ~60 ms on every PIP toggle (measured with tools/flicker_probe.py)."""
+    from PySide6.QtCore import QEvent, QObject
+
+    class Watch(QObject):
+        def __init__(self):
+            super().__init__()
+            self.recreated = 0
+
+        def eventFilter(self, obj, event):
+            if event.type() == QEvent.WinIdChange:
+                self.recreated += 1
+            return False
+
+    watch = Watch()
+    window.installEventFilter(watch)
+    hwnd = int(window.winId())
+    assert not window.is_always_on_top()
+
+    window.toggle_pip_mode()
+    pump(timeout=0.3)
+    assert window.is_always_on_top()
+    window.toggle_pip_mode()
+    pump(timeout=0.3)
+    assert not window.is_always_on_top()
+
+    assert watch.recreated == 0
+    assert int(window.winId()) == hwnd
 
 
 def test_render_context_survives_window_recreation(window, sample_video, pump):

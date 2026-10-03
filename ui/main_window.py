@@ -571,22 +571,37 @@ class MainWindow(QMainWindow):
             self.osd.show_message("전체화면 (F/ESC)", "fullscreen")
         self._reposition_floating_widgets()
 
+    def _set_always_on_top(self, on: bool):
+        """Topmost via the Win32 API. Changing Qt's WindowStaysOnTopHint recreates the
+        native window, which blanked the video (and re-created the GL context) on every
+        PIP toggle."""
+        HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
+        user32 = ctypes.windll.user32
+        user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
+                                        ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+        user32.SetWindowPos(ctypes.c_void_p(int(self.winId())),
+                            ctypes.c_void_p(HWND_TOPMOST if on else HWND_NOTOPMOST),
+                            0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+
+    def is_always_on_top(self) -> bool:
+        GWL_EXSTYLE, WS_EX_TOPMOST = -20, 0x00000008
+        return bool(ctypes.windll.user32.GetWindowLongW(int(self.winId()), GWL_EXSTYLE) & WS_EX_TOPMOST)
+
     def toggle_pip_mode(self):
         if not self._is_pip:
             self._saved_geometry = self.geometry()
             self._is_pip = True
-            self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+            self._set_always_on_top(True)
             self.resize(480, 270)
             self.title_bar.set_pip_active(True)
-            self.show()
             self.osd.show_message("PIP 항상 위 모드 (P)", "pip")
         else:
             self._is_pip = False
-            self.setWindowFlags(self.windowFlags() & ~Qt.WindowStaysOnTopHint)
+            self._set_always_on_top(False)
             if self._saved_geometry:
                 self.setGeometry(self._saved_geometry)
             self.title_bar.set_pip_active(False)
-            self.show()
             self.osd.show_message("일반 모드 복원", "pip")
         self._reposition_floating_widgets()
 

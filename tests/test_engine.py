@@ -138,3 +138,19 @@ def test_end_of_file_signal_fires_once(engine, sample_video, pump):
     assert pump(lambda: ended, timeout=6.0), "file_ended was not emitted"
     pump(timeout=0.5)
     assert ended == [True], "file_ended must fire exactly once"
+
+
+def test_start_time_is_applied_when_loading(engine, sample_video, pump):
+    """Regression: seeking right after loadfile failed (file not loaded yet), so 'resume where
+    you left off' showed its OSD but always started at 0."""
+    engine.set_speed(0.5)
+    assert engine.load_file(sample_video, start_time=1.8) is True
+    assert pump(lambda: engine._time_pos > 1.8), f"time_pos={engine._time_pos}: start position ignored"
+    assert engine._time_pos < 2.8
+
+
+def test_no_start_time_begins_at_the_start(engine, sample_video, pump):
+    engine.set_speed(0.5)
+    engine.load_file(sample_video)
+    assert pump(lambda: engine._time_pos > 0.1)
+    assert engine._time_pos < 1.0

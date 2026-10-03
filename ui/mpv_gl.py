@@ -20,6 +20,12 @@ IDLE_RGB = (14 / 255, 14 / 255, 18 / 255)
 class MpvGLWidget(QOpenGLWidget):
     _frame_ready = Signal()  # emitted from mpv's thread, handled on the GUI thread
 
+    # mpv's render() blocks by default until the frame's display time. On the GUI thread that
+    # meant ~21 ms of waiting per frame at 30 fps (measured with tools/flicker_probe.py), i.e.
+    # the UI thread was idle-blocked about two thirds of the time. Frame pacing is unchanged
+    # (the update callback fires when a frame is due), so don't block.
+    BLOCK_FOR_TARGET_TIME = False
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._mpv = None
@@ -101,6 +107,7 @@ class MpvGLWidget(QOpenGLWidget):
         self._ctx.render(
             opengl_fbo={"w": w, "h": h, "fbo": self.defaultFramebufferObject()},
             flip_y=True,
+            block_for_target_time=self.BLOCK_FOR_TARGET_TIME,
         )
         # mpv leaves GL state dirty; restore what Qt's compositor relies on.
         f.glUseProgram(0)

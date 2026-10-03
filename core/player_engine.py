@@ -152,10 +152,12 @@ class PlayerEngine(QObject):
         self._current_file = file_path
         self._eof_emitted = False
         try:
-            # mpv loadfile command
-            self.mpv.loadfile(file_path)
+            # Start position goes in as a load option. Seeking right after loadfile fails
+            # (the file isn't loaded yet), which silently broke "resume where you left off".
             if start_time > 0:
-                self.seek(start_time, reference="absolute")
+                self.mpv.loadfile(file_path, start=f"{start_time:.3f}")
+            else:
+                self.mpv.loadfile(file_path)
             self.file_loaded.emit(os.path.basename(file_path))
             return True
         except Exception as e:
