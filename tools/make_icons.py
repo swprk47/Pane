@@ -10,7 +10,7 @@ Design (design "Q"): a thick glass slab (blue-violet) carrying two glass panes, 
 white play triangle, and a thin light line along the lower edge. The logo has its own colors (below);
 the app's UI accent in styles/palette.py is independent of it. Sizes up to 32 px use a slightly
 different drawing (narrower big pane = wider gap, bigger triangle, heavier lines) so the gap and the
-triangle still read; 48 px and up use the large drawing. See PROGRESS.md.
+triangle still read; 48 px and up use the large drawing. See docs/HISTORY.md.
 """
 import struct
 import sys

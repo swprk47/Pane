@@ -1,5 +1,5 @@
 """Installer script (installer/pane.iss) stays consistent with the app. Static checks only:
-the real install / upgrade / uninstall cycle is run by hand (see PROGRESS.md)."""
+the real install / upgrade / uninstall cycle is run by hand (see docs/HISTORY.md)."""
 import re
 from pathlib import Path
 

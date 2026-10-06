@@ -71,7 +71,7 @@ python -m venv .venv
 
 설치 프로그램을 만들려면 Inno Setup 6이 필요합니다 (`winget install JRSoftware.InnoSetup`).
 
-문서: [PROJECT_PLAN.md](PROJECT_PLAN.md)(계획과 구조), [PROGRESS.md](PROGRESS.md)(진행 기록), [CHANGELOG.md](CHANGELOG.md)(버전별 변경).
+문서: [PROJECT_PLAN.md](PROJECT_PLAN.md)(계획과 구조), [PROGRESS.md](PROGRESS.md)(현재 상태와 다음 할 일), [docs/HISTORY.md](docs/HISTORY.md)(상세 이력), [CHANGELOG.md](CHANGELOG.md)(버전별 변경).
 
 ## 라이선스
 

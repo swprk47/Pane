@@ -111,7 +111,9 @@
 ```text
 Pane/
 ├── PROJECT_PLAN.md          # 프로젝트 종합 계획서 (본 파일)
-├── PROGRESS.md              # 진행 상황 기록
+├── PROGRESS.md              # 현재 상태 요약, 규칙, 핵심 함정, 다음 할 일
+├── docs/
+│   └── HISTORY.md           # 날짜별 상세 이력 (보관용)
 ├── CHANGELOG.md             # 버전별 변경 이력
 ├── release/                 # 배포 zip/설치 파일에 동봉되는 문서 (README, 라이선스 고지)
 ├── installer/               # Inno Setup 설치 프로그램 스크립트 (pane.iss, 자동 생성 extensions.iss)
