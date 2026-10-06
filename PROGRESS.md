@@ -133,6 +133,12 @@
 - 타이틀바의 `Pane · 파일이름.mp4` 중 파일 이름은 영상 위쪽 스크림에 이미 나오므로 중복이라 삭제. 타이틀바에는 앱 이름 `Pane`만 남음. `GlassTitleBar.file_label`/`set_media_title`, 테마의 `#SubTitleLabel` 규칙 삭제.
 - 테스트: 파일을 열어도 타이틀바 글자는 `Pane`뿐이고 파일 이름은 상단 스크림에 있음.
 
+### 작업 폴더를 GitHub 저장소로 이전 (2026-10-08)
+- **왜:** 작업은 홈 폴더(`C:\Users\47sha`) 전체가 저장소인 `...\바탕화면\취미\AI\Video_Player`에서 했고 GitHub에는 따로 만든 저장소를 옮겨 올렸음 → 같은 커밋이 두 저장소에 다른 해시로 존재하고 올릴 때마다 옮겨야 했음.
+- **지금 작업 폴더: `C:\Users\47sha\source\repos\Pane`** (원격 `origin` = https://github.com/swprk47/Pane, 비공개). 경로에 한글이 없어 인코딩 문제도 줄어듦. 홈 저장소의 마지막 4커밋(`a98079e`…`0a77760`)을 작성자·날짜·메시지 그대로 이 저장소에 재현했고(`92ee92d`…`2400bf1`) 파일 트리가 완전히 같음을 확인. **아직 푸시 안 함**(`origin/main`보다 4커밋 앞섬).
+- **환경:** `.venv`와 `lib/mpv`를 복사해 와서 새 위치에서 `python -m pytest` 249 passed, 9 skipped, `main.py` 실행 확인. 가상환경 안의 `pip.exe` 같은 실행 파일은 예전 경로를 품고 있을 수 있으니 `python -m pip`/`python -m pytest`처럼 `python.exe`로 실행할 것. 새로 만들려면 README의 개발 절차(`venv` → `requirements*.txt` → `tools/setup_mpv.py`).
+- **옛 폴더(`...\바탕화면\취미\AI\Video_Player`)와 홈 저장소는 그대로 둠**(백업, `dist/`의 이전 설치 파일 포함). 더는 거기서 작업·커밋하지 말 것. 이전 `dist/`는 새 폴더에 없으므로 설치 파일은 `python tools/build_release.py --installer`로 다시 빌드.
+
 ### 상단 바를 영상 위에 떠 있는 바로 + 컨트롤과 함께 자동 숨김 (2026-10-08, 시안 C 승인)
 - **구조 변경(사전 상의함):** 타이틀바가 레이아웃의 불투명한 띠였던 것을 `central_widget` 위의 **오버레이**로 바꿈. 영상(`viewport`)이 창 전체를 쓰고, 바는 자기 배경 없이(`#GlassTitleBar { background: transparent }`) 위쪽 스크림(`TopScrim`, 높이 124, 가장 진한 쪽 alpha 176) 위에 얹힘. 파일 이름은 바 바로 아래(`set_bar_inset`: 바가 있으면 38px 아래, 전체화면에서는 맨 위). `MainWindow._reposition_floating_widgets`가 바를 배치하고 OSD/정보 패널 위치도 바 아래로 밀어 줌.
 - **자동 숨김:** 바와 스크림이 컨트롤의 투명도(`opacity_changed`)를 따라 같이 사라지고 나타남. 재생 중 2.8초 가만히 있으면 위·아래가 모두 사라지고 얇은 진행선만 남음. 일시정지 중, 영상이 없을 때, 마우스가 바 위에 있을 때, 배속 패널이 열려 있을 때는 유지. 숨어 있는 동안 바 위에서 마우스가 움직이면(`activity`) 다시 나타남.

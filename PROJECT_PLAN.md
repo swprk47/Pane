@@ -109,7 +109,7 @@
 ## 6. 프로젝트 디렉토리 구조
 
 ```text
-Video_Player/
+Pane/
 ├── PROJECT_PLAN.md          # 프로젝트 종합 계획서 (본 파일)
 ├── PROGRESS.md              # 진행 상황 기록
 ├── CHANGELOG.md             # 버전별 변경 이력
