@@ -36,8 +36,16 @@ def test_theme_survives_the_acrylic_call(window):
     assert "GlassTitleBar" in qss
 
 
-def test_title_bar_paints_its_background(window):
-    assert window.title_bar.testAttribute(Qt.WA_StyledBackground)
+def test_title_bar_floats_over_a_video_that_fills_the_window(window, qapp):
+    """The bar is an overlay (no layout space), the video fills the whole window, and the bar paints no
+    background of its own, so the window area under it is the opaque viewport (no click-through)."""
+    qapp.processEvents()
+    central = window.central_widget
+    assert window.viewport.geometry() == central.rect()
+    assert window.title_bar.geometry().top() == 0 and window.title_bar.height() == window.title_bar.HEIGHT
+    assert window.title_bar.width() == central.width()
+    assert not window.title_bar.testAttribute(Qt.WA_StyledBackground)
+    assert window.title_bar.parentWidget() is central
 
 
 def test_no_emoji_left_in_ui_source():
@@ -67,7 +75,8 @@ def test_loading_a_file_switches_to_player_state(window, sample_video, pump):
     assert not window.viewport.notice_widget.isVisible()
     assert window.controller.isVisible()
     assert window.top_scrim.isVisible()
-    assert "sample.mp4" in window.title_bar.file_label.text()
+    assert "sample.mp4" in window.top_scrim._title        # the file name is shown on the video, not in the title bar
+    assert not hasattr(window.title_bar, "file_label")
     assert pump(lambda: window.engine._time_pos > 0.2)
     assert sample_video in window.app_settings.get_recent_files() \
         if hasattr(window.app_settings, "get_recent_files") else True
@@ -375,3 +384,11 @@ def test_double_click_undoes_the_first_click_toggle_only_within_the_window(windo
     window.viewport.double_clicked.emit()
     assert not window.engine.is_playing(), "late double-click must not undo anything"
     window.toggle_fullscreen()
+
+
+def test_title_bar_shows_only_the_app_name(window, sample_video):
+    """The file name already sits on the video's top scrim, so the bar no longer repeats it."""
+    labels = [w.text() for w in window.title_bar.findChildren(type(window.title_bar.title_label))]
+    window.load_media_file(sample_video)
+    after = [w.text() for w in window.title_bar.findChildren(type(window.title_bar.title_label))]
+    assert after == labels == ["Pane"]

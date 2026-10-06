@@ -205,11 +205,11 @@ class MainWindow(QMainWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # 1. Custom Glass Title Bar
-        self.title_bar = GlassTitleBar(self)
+        # 1. Custom Glass Title Bar: floats over the top of the video (placed in
+        #    _reposition_floating_widgets), so the video uses the whole window.
+        self.title_bar = GlassTitleBar(self, self.central_widget)
         self.title_bar.pip_toggled.connect(self.toggle_pip_mode)
         self.title_bar.close_requested.connect(self._on_close)
-        self.main_layout.addWidget(self.title_bar)
 
         # 2. Video Viewport
         self.viewport = VideoViewport(self)
@@ -246,9 +246,12 @@ class MainWindow(QMainWindow):
         self.controller.forward_target = self.viewport
         self.controller.set_media_loaded(False)
         # keep the controls on screen while the speed panel is open
-        self.controller.hold_visible = lambda: self.speed_popup.isVisible()
+        # (and while the mouse is on the title bar, which fades with them)
+        self.controller.hold_visible = lambda: self.speed_popup.isVisible() or self.title_bar.underMouse()
         self.controller.visibility_changed.connect(self._on_controls_visibility)
-        self.controller.opacity_changed.connect(self.top_scrim.set_opacity)
+        self.controller.opacity_changed.connect(self._on_controls_opacity)
+        self.title_bar.activity.connect(self.controller.trigger_activity)
+        self.title_bar.installEventFilter(self)
         self.top_scrim.hide()
 
         self.osd = GlassOSDWidget(self.central_widget)
@@ -466,7 +469,6 @@ class MainWindow(QMainWindow):
         self._current_file = file_path
         self.center_badge.reset()
         file_name = os.path.basename(file_path)
-        self.title_bar.set_media_title(file_name)
         self.viewport.show_empty_notice(False)
         self.viewport.set_has_frame(True)
         self.top_scrim.set_title(file_name)
@@ -481,6 +483,9 @@ class MainWindow(QMainWindow):
 
         self.engine.load_file(file_path, start_time=start_time)
         self.engine.play()
+        # mpv reports no change when it was already un-paused, so tell the controller it is playing: without
+        # this the controls (and the title bar) never auto-hide until the first pause / resume.
+        self.controller.set_playback_state(True)
 
         self._auto_load_subtitle(file_path)
         self.app_settings.add_recent_file(file_path)
@@ -504,12 +509,19 @@ class MainWindow(QMainWindow):
         self.center_badge.set_playing(is_playing, self._current_file is not None)
         self._reposition_floating_widgets()
 
+    def _on_controls_opacity(self, value: float):
+        # The shade behind the top and the title bar fade together with the controls.
+        self.top_scrim.set_opacity(value)
+        self.title_bar.set_opacity(value)
+
     def _on_controls_visibility(self, visible: bool):
         # While controls are hidden a thin progress line stays at the bottom edge.
         has_media = self._current_file is not None
         self.mini_progress.setVisible(has_media and not visible)
         if not visible:
             self.top_scrim.set_opacity(0.0)
+            # without media the bar stays (nothing to hide the controls for); with media it goes with them
+            self.title_bar.set_opacity(0.0 if has_media else 1.0)
         self.mini_progress.raise_()
 
     def _on_time_pos_changed(self, time_pos: float):
@@ -782,6 +794,10 @@ class MainWindow(QMainWindow):
 
         strip_h = min(c.STRIP_HEIGHT, vp.height())
         c.setGeometry(vp.x(), vp.bottom() + 1 - strip_h, vp.width(), strip_h)
+        bar_shown = not self.title_bar.isHidden()
+        inset = self.title_bar.height() if bar_shown else 0
+        self.title_bar.setGeometry(vp.x(), vp.y(), vp.width(), self.title_bar.height())
+        self.top_scrim.set_bar_inset(inset)
         self.top_scrim.setGeometry(vp.x(), vp.y(), vp.width(), self.top_scrim.height())
         self.mini_progress.setGeometry(vp.x(), vp.bottom() + 1 - self.mini_progress.height(),
                                        vp.width(), self.mini_progress.height())
@@ -789,15 +805,17 @@ class MainWindow(QMainWindow):
                                vp.y() + (vp.height() - self.center_badge.height()) // 2)
 
         if hasattr(self, "osd"):
-            self.osd.move(vp.x() + (vp.width() - self.osd.width()) // 2, vp.y() + 17)
+            self.osd.move(vp.x() + (vp.width() - self.osd.width()) // 2, vp.y() + inset + 12)
 
         # media info: top-right corner of the video area
         if self.info_panel.isVisible():
             self.info_panel.adjustSize()
-            self.info_panel.move(max(vp.x() + 8, vp.right() - self.info_panel.width() - 14), vp.y() + 14)
+            self.info_panel.move(max(vp.x() + 8, vp.right() - self.info_panel.width() - 14), vp.y() + inset + 10)
 
         # stacking order, bottom to top
         self.top_scrim.raise_()
+        if bar_shown:
+            self.title_bar.raise_()
         self.center_badge.raise_()
         self.mini_progress.raise_()
         c.raise_()

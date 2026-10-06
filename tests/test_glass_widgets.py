@@ -390,3 +390,73 @@ def test_center_badge_shows_play_after_a_resume_but_not_for_a_fresh_start(qapp, 
     assert pump(lambda: not b.isVisible(), timeout=2.5)
     b.set_playing(True, True)                       # user resumes after the symbol is gone
     assert b.isVisible() and b._mode == "play"
+
+
+# --- the title bar floats over the video and hides together with the controls -----------------
+
+def test_controls_and_title_bar_auto_hide_after_a_file_starts_playing(window, sample_video):
+    """Regression: opening a file never told the controller it was playing, so nothing auto-hid until the
+    first pause / resume."""
+    window.load_media_file(sample_video)
+    assert window.controller._is_playing
+    assert window.controller.autohide_timer.isActive()
+
+
+def test_title_bar_fades_with_the_controls(window, pump, monkeypatch, sample_video):
+    monkeypatch.setattr(window.controller, "_mouse_over_controls", lambda: False)
+    window.load_media_file(sample_video)
+    window.controller.hold_visible = None
+    tb = window.title_bar
+    assert tb.opacity() > 0.99
+    window.controller._fade_out()
+    assert pump(lambda: tb.opacity() < 0.01, timeout=1.5)
+    assert tb.btn_close.testAttribute(Qt.WA_TransparentForMouseEvents), "an invisible close button must not be clickable"
+    assert not tb.testAttribute(Qt.WA_TransparentForMouseEvents), "the bar's empty part still drags the window"
+    tb.activity.emit()                                       # the mouse moved over the hidden bar
+    assert pump(lambda: tb.opacity() > 0.99, timeout=1.5)
+    assert not tb.btn_close.testAttribute(Qt.WA_TransparentForMouseEvents)
+
+
+def test_title_bar_stays_while_the_mouse_is_on_it(window, pump, monkeypatch, sample_video):
+    monkeypatch.setattr(window.controller, "_mouse_over_controls", lambda: False)
+    window.load_media_file(sample_video)
+    monkeypatch.setattr(window.title_bar, "underMouse", lambda: True)
+    window.controller.hold_visible = lambda: window.speed_popup.isVisible() or window.title_bar.underMouse()
+    window.controller._fade_out()
+    pump(timeout=0.5)
+    assert window.title_bar.opacity() > 0.99 and window.controller.isVisible()
+
+
+def test_title_bar_stays_visible_without_media(window, qapp):
+    qapp.processEvents()
+    assert window.title_bar.opacity() > 0.99
+    assert not window.controller.isVisible()
+
+
+def test_paused_video_keeps_the_title_bar_visible(window, sample_video, pump):
+    window.load_media_file(sample_video)
+    assert pump(lambda: window.engine._time_pos > 0.3, timeout=3.0)
+    window.engine.pause()
+    pump(timeout=0.6)
+    assert window.title_bar.opacity() > 0.99 and window.controller.isVisible()
+
+
+def test_pausing_while_everything_is_hidden_brings_controls_and_bar_back(window, sample_video, pump, monkeypatch):
+    """Regression: the controls stayed hidden after a pause that came while they were faded out."""
+    monkeypatch.setattr(window.controller, "_mouse_over_controls", lambda: False)
+    window.load_media_file(sample_video)
+    window.controller.hold_visible = None
+    window.controller._fade_out()
+    assert pump(lambda: not window.controller.isVisible() and window.title_bar.opacity() < 0.01, timeout=1.5)
+    window.controller.set_playback_state(False)
+    assert pump(lambda: window.controller.isVisible() and window.title_bar.opacity() > 0.99, timeout=1.5)
+
+
+def test_file_name_sits_below_the_title_bar_and_moves_up_in_fullscreen(window, qapp, pump):
+    assert window.top_scrim._inset == window.title_bar.height()
+    window.toggle_fullscreen()
+    pump(timeout=0.4)
+    assert window.top_scrim._inset == 0
+    window.toggle_fullscreen()
+    pump(timeout=0.4)
+    assert window.top_scrim._inset == window.title_bar.height()

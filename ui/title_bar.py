@@ -1,5 +1,5 @@
 import ctypes
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QApplication
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QApplication, QGraphicsOpacityEffect
 from PySide6.QtCore import Qt, QPoint, Signal, QSize
 from ui.icons import get_svg_icon, get_logo_icon
 from ui.glass_button import GlassButton
@@ -18,22 +18,30 @@ def native_start_window_drag(hwnd):
 
 class GlassTitleBar(QWidget):
     """
-    Apple Glass-styled custom frameless title bar.
-    Uses native Windows dragging and modern SVG vector icons.
+    Apple Glass-styled custom frameless title bar that floats over the top of the video.
+    It paints no background of its own (the top scrim behind it supplies the shade) and fades together with
+    the controls; while it is faded out its buttons ignore the mouse, but its empty part still drags the
+    window. Uses native Windows dragging and modern SVG vector icons.
     """
     pip_toggled = Signal()
     close_requested = Signal()
+    activity = Signal()                 # the mouse moved over the bar: bring the controls back
 
-    def __init__(self, parent_window):
-        super().__init__(parent_window)
+    HEIGHT = 38
+    INTERACTIVE_ABOVE = 0.25            # buttons only react while the bar is at least this visible
+
+    def __init__(self, parent_window, parent=None):
+        super().__init__(parent or parent_window)
         self.parent_window = parent_window
         self.setObjectName("GlassTitleBar")
-        # Needed for the #GlassTitleBar QSS background to paint; otherwise the
-        # bar is alpha 0 and clicks fall through the translucent window.
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setFixedHeight(38)
+        self.setFixedHeight(self.HEIGHT)
+        self.setMouseTracking(True)
         self._press_pos = None
         self._drag_started = False
+        self._interactive = True
+        self._fx = QGraphicsOpacityEffect(self)
+        self._fx.setOpacity(1.0)
+        self.setGraphicsEffect(self._fx)
 
         self._init_ui()
 
@@ -55,11 +63,6 @@ class GlassTitleBar(QWidget):
         self.title_label = QLabel("Pane", self)
         self.title_label.setObjectName("TitleLabel")
         layout.addWidget(self.title_label)
-
-        # Media filename label
-        self.file_label = QLabel("", self)
-        self.file_label.setObjectName("SubTitleLabel")
-        layout.addWidget(self.file_label)
 
         layout.addStretch()
 
@@ -92,16 +95,25 @@ class GlassTitleBar(QWidget):
         self.btn_close.clicked.connect(self._on_close_clicked)
         layout.addWidget(self.btn_close)
 
+    def _buttons(self):
+        return (self.logo_btn, self.btn_pip, self.btn_min, self.btn_max, self.btn_close)
+
+    def set_opacity(self, value: float):
+        value = max(0.0, min(1.0, value))
+        self._fx.setOpacity(value)
+        interactive = value >= self.INTERACTIVE_ABOVE
+        if interactive != self._interactive:
+            self._interactive = interactive
+            for b in self._buttons():                  # an invisible close button must not be clickable
+                b.setAttribute(Qt.WA_TransparentForMouseEvents, not interactive)
+
+    def opacity(self) -> float:
+        return self._fx.opacity()
+
     def set_pip_active(self, active: bool):
         """Highlight the PIP badge without replacing its own stylesheet."""
         self.btn_pip.setProperty("active", "true" if active else "false")
         self.btn_pip.setActive(active)
-
-    def set_media_title(self, title: str):
-        if title:
-            self.file_label.setText(f"· {title}")
-        else:
-            self.file_label.setText("")
 
     def _toggle_maximize(self):
         if self.parent_window.isMaximized():
@@ -134,6 +146,7 @@ class GlassTitleBar(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        self.activity.emit()
         if (event.buttons() & Qt.LeftButton and self._press_pos is not None and not self._drag_started
                 and not self.parent_window.isMaximized()):
             moved = (event.position().toPoint() - self._press_pos).manhattanLength()

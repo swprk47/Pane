@@ -524,6 +524,8 @@ class GlassController(QWidget):
             self.trigger_activity()
         else:
             self.autohide_timer.stop()
+            if self._has_media and not self.isVisible():
+                self.show()                 # paused while the controls were hidden: bring them back
             self._fade_in()
 
     def set_speed_display(self, speed: float):

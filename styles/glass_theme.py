@@ -19,10 +19,7 @@ QWidget {
 
 /* Custom Glass Title Bar */
 #GlassTitleBar {
-    background-color: rgba(22, 22, 28, 0.70);
-    border-top-left-radius: 18px;
-    border-top-right-radius: 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
 }
 
 #TitleLabel {
@@ -30,11 +27,6 @@ QWidget {
     font-weight: 500;
     color: rgba(255, 255, 255, 0.85);
     letter-spacing: 0.2px;
-}
-
-#SubTitleLabel {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.45);
 }
 
 /* Title Bar Window Action Buttons */

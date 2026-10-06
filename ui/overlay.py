@@ -23,12 +23,14 @@ class _OverlayBase(QWidget):
 
 
 class TopScrim(_OverlayBase):
-    """Dark gradient at the top edge with the media title on it."""
-    HEIGHT = 110
+    """Dark gradient at the top edge: the shade behind the floating title bar, with the media title under it."""
+    HEIGHT = 124
+    TEXT_LEFT = 16
 
     def __init__(self, parent):
         super().__init__(parent)
         self._title = ""
+        self._inset = 0              # height of the title bar above the file name (0 in fullscreen)
         self.setFixedHeight(self.HEIGHT)
         self._fx = QGraphicsOpacityEffect(self)
         self._fx.setOpacity(1.0)
@@ -38,24 +40,31 @@ class TopScrim(_OverlayBase):
         self._title = title
         self.update()
 
+    def set_bar_inset(self, inset: int):
+        if inset != self._inset:
+            self._inset = inset
+            self.update()
+
     def set_opacity(self, value: float):
         self._fx.setOpacity(max(0.0, min(1.0, value)))
 
     def paintEvent(self, event):
         p = QPainter(self)
         g = QLinearGradient(0, 0, 0, self.height())
-        g.setColorAt(0.0, QColor(0, 0, 0, 150))
+        g.setColorAt(0.0, QColor(0, 0, 0, 176))
+        g.setColorAt(0.5, QColor(0, 0, 0, 84))
         g.setColorAt(1.0, QColor(0, 0, 0, 0))
         p.fillRect(self.rect(), g)
         if self._title:
             font = QFont("Segoe UI Variable Text", 11)
             font.setWeight(QFont.DemiBold)
             p.setFont(font)
-            text = QFontMetrics(font).elidedText(self._title, Qt.ElideRight, self.width() - 48)
+            text = QFontMetrics(font).elidedText(self._title, Qt.ElideRight, self.width() - 2 * self.TEXT_LEFT)
+            base = self._inset + 22                 # just below the title bar
             p.setPen(QColor(0, 0, 0, 120))          # soft shadow
-            p.drawText(25, 29, text)
+            p.drawText(self.TEXT_LEFT + 1, base + 1, text)
             p.setPen(QColor(255, 255, 255, 240))
-            p.drawText(24, 28, text)
+            p.drawText(self.TEXT_LEFT, base, text)
 
 
 class MiniProgress(_OverlayBase):
