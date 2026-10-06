@@ -464,6 +464,7 @@ class MainWindow(QMainWindow):
             return
 
         self._current_file = file_path
+        self.center_badge.reset()
         file_name = os.path.basename(file_path)
         self.title_bar.set_media_title(file_name)
         self.viewport.show_empty_notice(False)
@@ -499,8 +500,8 @@ class MainWindow(QMainWindow):
         self._duration = duration
 
     def _on_playback_state(self, is_playing: bool):
-        # Big play badge only while paused with a file loaded.
-        self.center_badge.setVisible(not is_playing and self._current_file is not None)
+        # Big symbol over the picture: PAUSE while paused, PLAY for a moment after resuming.
+        self.center_badge.set_playing(is_playing, self._current_file is not None)
         self._reposition_floating_widgets()
 
     def _on_controls_visibility(self, visible: bool):
@@ -512,6 +513,8 @@ class MainWindow(QMainWindow):
         self.mini_progress.raise_()
 
     def _on_time_pos_changed(self, time_pos: float):
+        if time_pos > 0.0 and not self.center_badge.armed:
+            self.center_badge.arm()
         self.controller.set_time_pos(time_pos)
         if self._duration > 0:
             self.mini_progress.set_ratio(time_pos / self._duration)

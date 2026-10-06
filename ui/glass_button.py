@@ -46,6 +46,12 @@ DANGER = (232, 17, 35)                    # close button highlight
 TEXT_COLOR = QColor(255, 255, 255, 235)
 ACCENT_TEXT = QColor(208, 225, 239)
 
+# the dark version of the glass (the big play / pause symbol over the picture): charcoal body, softer frost
+DARK_TOP = (14, 18, 28, 150)
+DARK_BOTTOM = (8, 11, 18, 128)
+DARK_FROST_ALPHA = 0.16
+DARK_SHADE = (0, 0, 0, 70)
+
 # panels (speed / volume popups): dark enough to read over any video, same rim and frost
 PANEL_FILL = (22, 24, 33, 218)
 PANEL_FROST_ALPHA = 0.16
@@ -120,7 +126,8 @@ def _frost_band(p: QPainter, rect: QRectF, kind: str, radius: float, band: float
         p.drawRoundedRect(rect.adjusted(inset, inset, -inset, -inset), r, r)
 
 
-def _build_base(kind: str, w: int, h: int, margin: int, radius: float, shadow: bool, dpr: float) -> QPixmap:
+def _build_base(kind: str, w: int, h: int, margin: int, radius: float, shadow: bool, dpr: float,
+                dark: bool = False) -> QPixmap:
     """Shadow + body + frost + shade + rim of a resting glass shape."""
     tw, th = w + 2 * margin, h + 2 * margin
     pm = QPixmap(int(tw * dpr), int(th * dpr))
@@ -156,12 +163,12 @@ def _build_base(kind: str, w: int, h: int, margin: int, radius: float, shadow: b
     p.save()
     p.setClipPath(path)
     bg = QLinearGradient(rect.topLeft(), rect.bottomRight())
-    bg.setColorAt(0.0, _c(BODY_TOP))
-    bg.setColorAt(1.0, _c(BODY_BOTTOM))
+    bg.setColorAt(0.0, _c(DARK_TOP if dark else BODY_TOP))
+    bg.setColorAt(1.0, _c(DARK_BOTTOM if dark else BODY_BOTTOM))
     p.fillPath(path, QBrush(bg))
-    _frost_band(p, rect, kind, radius, min(13.0, short * 0.36), FROST_ALPHA)
+    _frost_band(p, rect, kind, radius, min(13.0, short * 0.36), DARK_FROST_ALPHA if dark else FROST_ALPHA)
     shifted = _shape(rect.translated(1.5, 1.5), kind, radius)
-    p.fillPath(path.subtracted(shifted), _c(SHADE))
+    p.fillPath(path.subtracted(shifted), _c(DARK_SHADE if dark else SHADE))
     p.restore()
 
     rim_w = 2.0 if short >= 60 else 1.5
@@ -174,6 +181,16 @@ def _build_base(kind: str, w: int, h: int, margin: int, radius: float, shadow: b
         rr = max(0.0, radius - rim_w / 2)
         p.drawRoundedRect(inner, rr, rr)
     p.end()
+    return pm
+
+
+def glass_disc_pixmap(diameter: int, margin: int, dpr: float, shadow: bool = True, dark: bool = False) -> QPixmap:
+    """The resting glass disc (shadow included) shared with GlassButton, for widgets that draw their own.
+    ``dark`` is the charcoal version used over the picture."""
+    key = ("disc", diameter, diameter, margin, diameter / 2.0, shadow, dpr) + (("dark",) if dark else ())
+    pm = _base_cache.get(key)
+    if pm is None:
+        pm = _base_cache[key] = _build_base("disc", diameter, diameter, margin, diameter / 2.0, shadow, dpr, dark)
     return pm
 
 

@@ -1,7 +1,7 @@
 """Glass sliders, pills, panels and the title bar / popups built from them."""
 import pytest
 from PySide6.QtCore import QPoint, QPointF, Qt, QRectF
-from PySide6.QtGui import QColor, QImage, QPainter
+from PySide6.QtGui import QColor, QImage, QPainter, QRegion
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidget
 
@@ -101,6 +101,8 @@ def test_slider_handle_grows_and_the_press_halo_appears(host, pump):
     s = GlassSlider(Qt.Horizontal, host)
     s.setFixedSize(300, 26)
     s.show()
+    s._stop_tweens()
+    s._hover = 0.0                      # the real cursor may be over the widget: start from rest
     assert s.handle_diameter() == glass_slider.HANDLE
     s._animate("hover", 1.0, 40)
     assert pump(lambda: s._hover > 0.99, timeout=1.0)
@@ -258,3 +260,133 @@ def test_speed_pill_text_is_bold_so_it_reads_on_the_scrim(window):
     assert f.weight() >= QFont.Bold and f.pixelSize() >= 14
     chip = GlassButton(window, "pill", 30, text_px=12)
     assert chip.font().weight() < QFont.Bold, "only the speed pill is bold"
+
+
+# --- the big play symbol shown while paused ----------------------------------
+
+def test_center_badge_is_the_same_glass_disc_as_the_play_button(window, qapp):
+    from ui.overlay import CenterBadge
+    b = window.center_badge
+    assert isinstance(b, CenterBadge)
+    assert b.testAttribute(Qt.WA_TransparentForMouseEvents), "clicks must still reach the video"
+    # it draws the cached disc that GlassButton uses (same pixmap object for the same size)
+    assert glass_button.glass_disc_pixmap(b.DISC, b.MARGIN, 1.0) is glass_button.glass_disc_pixmap(b.DISC, b.MARGIN, 1.0)
+    assert b.width() == b.DISC + 2 * b.MARGIN
+
+
+def test_center_badge_fades_and_grows_in_then_fades_out(window, sample_video, pump):
+    b = window.center_badge
+    window.load_media_file(sample_video)
+    assert pump(lambda: window.engine._time_pos > 0.2, timeout=3.0)
+    window.engine.pause()
+    assert pump(lambda: b.isVisible(), timeout=1.0)
+    assert pump(lambda: b._vis > 0.99, timeout=1.5)
+    window.engine.play()
+    assert pump(lambda: not b.isVisible(), timeout=1.5)
+    assert b._vis <= 0.01
+
+
+def test_center_badge_draws_nothing_at_zero_and_something_at_full_visibility(qapp):
+    from ui.overlay import CenterBadge
+    host = QWidget()
+    host.resize(300, 300)
+    b = CenterBadge(host)
+    host.show()
+    b.setVisible(True)
+
+    def painted(vis):
+        b._vis = vis
+        img = QImage(b.size(), QImage.Format_ARGB32)
+        img.fill(QColor(120, 120, 120))
+        q = QPainter(img)
+        b.render(q, QPoint(0, 0), QRegion(), QWidget.RenderFlag.DrawChildren)    # no window background
+        q.end()
+        return sum(1 for x in range(0, b.width(), 3) for y in range(0, b.height(), 3)
+                   if abs(_luma(img.pixelColor(x, y)) - 120) > 6)
+    assert painted(0.0) == 0
+    half, full = painted(0.5), painted(1.0)
+    assert full > 100 and half > 0
+
+
+def test_dark_glass_disc_is_darker_than_the_light_one(qapp):
+    light = glass_button.glass_disc_pixmap(88, 14, 1.0).toImage()
+    dark = glass_button.glass_disc_pixmap(88, 14, 1.0, dark=True).toImage()
+    c = 14 + 44
+
+    def over_white(img, x, y):                              # composite on white so alpha counts
+        px = img.pixelColor(x, y)
+        a = px.alphaF()
+        return 255 * (1 - a) + 0.299 * px.red() * a + 0.587 * px.green() * a + 0.114 * px.blue() * a
+    assert over_white(dark, c, c) < over_white(light, c, c) - 60
+    assert dark.pixelColor(c, c).alpha() > light.pixelColor(c, c).alpha()
+
+
+def test_center_badge_shows_pause_while_paused_and_play_after_resuming(window, sample_video, pump):
+    b = window.center_badge
+    window.load_media_file(sample_video)
+    assert pump(lambda: window.engine._time_pos > 0.3, timeout=3.0)
+    assert b.armed and not b.isVisible(), "nothing flashes when a file just starts playing"
+    window.engine.pause()
+    assert pump(lambda: b.isVisible() and b._mode == "pause", timeout=1.5)
+    assert pump(lambda: b._vis > 0.99, timeout=1.5)
+    assert pump(lambda: not b.isVisible(), timeout=2.5), "the PAUSE symbol fades out after the same moment"
+    window.engine.play()                                     # resuming after the pause symbol is long gone
+    assert pump(lambda: b.isVisible() and b._mode == "play", timeout=1.5), "a resume still shows PLAY"
+    assert pump(lambda: not b.isVisible(), timeout=2.5)
+
+
+def test_center_badge_play_symbol_after_resuming_while_the_pause_symbol_is_still_up(window, sample_video, pump):
+    b = window.center_badge
+    window.load_media_file(sample_video)
+    assert pump(lambda: window.engine._time_pos > 0.3, timeout=3.0)
+    window.engine.pause()
+    assert pump(lambda: b.isVisible() and b._mode == "pause", timeout=1.5)
+    window.engine.play()
+    assert pump(lambda: b._mode == "play", timeout=1.5), "resuming swaps the symbol to PLAY"
+    assert pump(lambda: not b.isVisible(), timeout=2.5), "the PLAY symbol fades out too"
+
+
+def test_center_badge_ignores_the_pause_of_loading_a_file(qapp):
+    from ui.overlay import CenterBadge
+    host = QWidget()
+    host.resize(300, 300)
+    host.show()
+    b = CenterBadge(host)
+    b.reset()
+    b.set_playing(False, True)                      # the pause that comes with loading
+    assert not b.isVisible()
+    b.arm()
+    b.set_playing(False, True)
+    assert b.isVisible()
+
+
+def test_center_badge_pause_again_during_the_play_flash_goes_back_to_pause(qapp, pump):
+    from ui.overlay import CenterBadge
+    host = QWidget()
+    host.resize(300, 300)
+    host.show()
+    b = CenterBadge(host)
+    b.arm()
+    b.set_playing(False, True)
+    pump(lambda: b._vis > 0.99, timeout=1.0)
+    b.set_playing(True, True)
+    assert b._mode == "play"
+    b.set_playing(False, True)
+    assert b._mode == "pause" and b._hold.isActive(), "the hold time restarts for the pause symbol"
+    assert pump(lambda: not b.isVisible(), timeout=2.5)
+
+
+def test_center_badge_shows_play_after_a_resume_but_not_for_a_fresh_start(qapp, pump):
+    from ui.overlay import CenterBadge
+    host = QWidget()
+    host.resize(300, 300)
+    host.show()
+    b = CenterBadge(host)
+    b.reset()
+    b.set_playing(True, True)                       # a file that just started playing
+    assert not b.isVisible()
+    b.set_playing(False, True)                      # user pauses
+    assert pump(lambda: not b.isVisible() or b._vis > 0.99, timeout=1.0)
+    assert pump(lambda: not b.isVisible(), timeout=2.5)
+    b.set_playing(True, True)                       # user resumes after the symbol is gone
+    assert b.isVisible() and b._mode == "play"
