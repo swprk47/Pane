@@ -25,6 +25,7 @@
 | 빌드 | `python tools/build_release.py --installer` → `dist/Pane-<버전>-setup.exe`, `-win64.zip` (Inno Setup: `winget install JRSoftware.InnoSetup`) |
 | 환경 만들기 | `python -m venv .venv` → `-m pip install -r requirements-dev.txt` → `python tools/setup_mpv.py`. `.venv`의 `pip.exe` 같은 실행 파일은 경로를 품으므로 항상 `python -m pip` |
 | 버전 | `core/version.py` 한 곳 |
+| 브랜치 | **큰 기능은 `feature/<이름>` 브랜치에서** 작업하고(PR은 쓰지 않음), 테스트 통과 + 사용자 확인 뒤 `git checkout main && git merge --no-ff feature/<이름>`로 합침. 문구·한 줄 버그 같은 작은 수정은 `main`에 바로 커밋. **병합과 푸시는 사용자가 말할 때만**. `main`은 항상 테스트가 통과하는 상태로 유지 |
 | 커밋 | 사용자가 요청할 때만, **영어 메시지**, 끝에 `Co-Authored-By` 줄. 줄바꿈은 `autocrlf=true`(LF→CRLF 경고는 정상). 스크립트로 파일을 고칠 땐 CRLF를 보존할 것 |
 | 진행 방식 | 한 번에 하나씩 하고 **실제로 실행해서 확인**. 직접 눌러 봐야 하는 항목은 확인 방법을 단계별로 알려 줌. 큰 구조 변경은 먼저 물어봄. 버그를 고치면 회귀 테스트(되돌려서 실패하는지 확인). 디자인은 /design 시안 → **승인 후 앱 코드까지 반영**(시안에만 반영해 지적받은 적 있음). 측정·시험 도구가 사용자의 마우스·창·레지스트리를 건드리면 먼저 말하고, 설정을 지우는 시험은 백업 후 복원 |
 | 셸 주의 | Bash 도구에서 한글/백슬래시/작은따옴표 세 개가 섞인 heredoc은 깨짐 → 패치 스크립트는 **Write로 파일을 만들어 실행**. PowerShell 도구는 `Remove-Item`과 `C:\Windows` 같은 문자열이 한 명령에 있으면 막힘 → 삭제는 별도 호출 |
