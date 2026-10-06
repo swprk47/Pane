@@ -98,7 +98,8 @@ def test_paused_state_shows_center_badge(window, sample_video, pump):
     assert pump(lambda: not window.center_badge.isVisible())
 
 
-def test_mini_progress_shows_only_while_controls_hidden(window, sample_video, pump):
+def test_mini_progress_shows_only_while_controls_hidden(window, sample_video, pump, monkeypatch):
+    monkeypatch.setattr(window.controller, "_mouse_over_controls", lambda: False)   # not the real cursor
     window.load_media_file(sample_video)
     pump(timeout=0.3)
     assert not window.mini_progress.isVisible()
@@ -277,9 +278,13 @@ def test_paused_seek_updates_position(window, sample_video, pump):
     pump(lambda: window.engine._time_pos > 0.3)
     window.engine.pause()
     pump(timeout=0.3)
+    seen = []
+    window.engine.time_pos_changed.connect(seen.append)
     window.engine.seek(2.0, "absolute")
-    assert pump(lambda: abs(window.engine._time_pos - 2.0) < 0.2, timeout=2.0), \
-        f"time_pos stayed at {window.engine._time_pos}"
+    # Record every update instead of polling: with this 3 s sample mpv reports 2.0 for a moment and then
+    # falls back to 0.0, so a poll could miss it depending on timing (the test used to pass by luck).
+    assert pump(lambda: any(abs(v - 2.0) < 0.2 for v in seen), timeout=2.0), \
+        f"time_pos never reached 2.0, saw {seen}"
 
 
 # --- title bar: drag vs double-click ---------------------------------------
@@ -348,3 +353,25 @@ def test_title_bar_does_not_drag_a_maximized_window(window, title_drag, pump):
     QTest.mouseRelease(tb, Qt.LeftButton, Qt.NoModifier, pos)
     assert title_drag == []
     window.showNormal()
+
+
+def test_single_click_toggles_at_once(window, sample_video, pump):
+    """The click used to wait 260 ms to rule out a double-click; now it reacts immediately."""
+    window.load_media_file(sample_video)
+    assert pump(lambda: window.engine._time_pos > 0.2, timeout=3.0)
+    assert window.engine.is_playing()
+    window.viewport.clicked.emit()
+    assert not window.engine.is_playing(), "the click must pause right away, not after a delay"
+    window.viewport.clicked.emit()
+    assert window.engine.is_playing()
+
+
+def test_double_click_undoes_the_first_click_toggle_only_within_the_window(window, sample_video, pump):
+    window.load_media_file(sample_video)
+    assert pump(lambda: window.engine._time_pos > 0.2, timeout=3.0)
+    window.viewport.clicked.emit()                       # toggles now (paused)
+    assert window._click_undo_armed
+    window._disarm_click_undo()                          # the double-click window passed
+    window.viewport.double_clicked.emit()
+    assert not window.engine.is_playing(), "late double-click must not undo anything"
+    window.toggle_fullscreen()

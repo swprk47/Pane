@@ -177,10 +177,14 @@ class MainWindow(QMainWindow):
 
         self.app_settings = AppSettings()
 
+        # A click toggles play/pause AT ONCE (no waiting to see whether a second click follows). If the
+        # second click does come (double-click = fullscreen), the toggle is undone. The timer is the window
+        # in which a double-click can still arrive.
         self._click_timer = QTimer(self)
         self._click_timer.setSingleShot(True)
-        self._click_timer.setInterval(260)
-        self._click_timer.timeout.connect(self._toggle_play_from_click)
+        self._click_timer.setInterval(QApplication.doubleClickInterval())
+        self._click_timer.timeout.connect(self._disarm_click_undo)
+        self._click_undo_armed = False
 
         self._init_layout()
         self._init_engine()
@@ -576,16 +580,20 @@ class MainWindow(QMainWindow):
         if self.viewport.notice_widget.isVisible():
             self._open_file_dialog()
             return
-        # Wait briefly: a second click means "fullscreen", not "pause".
-        self._click_timer.start()
+        if self._current_file:
+            self.engine.toggle_play()
+            self._click_undo_armed = True
+            self._click_timer.start()
 
     def _on_viewport_double_clicked(self):
         self._click_timer.stop()
+        if self._click_undo_armed and self._current_file:
+            self.engine.toggle_play()           # the first click of this pair already toggled: undo it
+        self._click_undo_armed = False
         self.toggle_fullscreen()
 
-    def _toggle_play_from_click(self):
-        if self._current_file:
-            self.engine.toggle_play()
+    def _disarm_click_undo(self):
+        self._click_undo_armed = False
 
     # --- Fullscreen & PIP Modes ---
 

@@ -200,7 +200,8 @@ def test_visibility_signal(host, qapp):
     assert seen == [True, False]
 
 
-def test_fade_out_and_back(controller, pump):
+def test_fade_out_and_back(controller, pump, monkeypatch):
+    monkeypatch.setattr(controller, "_mouse_over_controls", lambda: False)    # the real cursor must not matter
     controller.set_playback_state(True)
     controller.volume_popup.hide()
     controller.hold_visible = None
@@ -219,7 +220,8 @@ def test_hold_visible_blocks_auto_hide(controller, pump):
     controller.autohide_timer.stop()
 
 
-def test_opacity_signal_follows_fade(controller, pump):
+def test_opacity_signal_follows_fade(controller, pump, monkeypatch):
+    monkeypatch.setattr(controller, "_mouse_over_controls", lambda: False)
     seen = []
     controller.opacity_changed.connect(seen.append)
     controller.set_playback_state(True)
@@ -246,3 +248,13 @@ def test_empty_area_clicks_go_to_forward_target(controller, qapp):
     ev = QMouseEvent(QEvent.MouseButtonPress, pos, gpos, Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
     qapp.sendEvent(controller, ev)
     assert seen == ["press"]
+
+
+def test_fade_out_is_postponed_while_the_mouse_is_over_the_controls(controller, pump, monkeypatch):
+    monkeypatch.setattr(controller, "_mouse_over_controls", lambda: True)
+    controller.set_playback_state(True)
+    controller.volume_popup.hide()
+    controller.hold_visible = None
+    controller._fade_out()
+    pump(timeout=0.4)
+    assert controller.isVisible() and controller.opacity_effect.opacity() > 0.99

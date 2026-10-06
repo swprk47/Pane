@@ -11,6 +11,7 @@ from ui.timeline_slider import TimelineSlider
 from ui.volume_popup import VolumePopup
 from core.settings import open_settings
 from ui.icons import get_svg_icon
+from ui.glass_button import GlassButton, DISC_MARGIN
 
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
@@ -35,6 +36,11 @@ BUTTON_METADATA = {
     "fullscreen": {"name": "전체화면 토글", "icon_name": "fullscreen"},
     "settings": {"name": "버튼 배열 설정", "icon_name": "settings"}
 }
+
+
+# Transport glass buttons: disc diameter / icon size in px (the widget adds DISC_MARGIN around the disc for the shadow)
+PLAY_DISC, PLAY_ICON = 72, 52
+SIDE_DISC, SIDE_ICON = 48, 32
 
 
 class ControllerSettingsDialog(QDialog):
@@ -214,7 +220,7 @@ class GlassController(QWidget):
     # Height of the bottom strip that carries the scrim gradient, and of the
     # part of it that counts as "the controls" for hover / auto-hide.
     STRIP_HEIGHT = 230
-    CONTROLS_HEIGHT = 112
+    CONTROLS_HEIGHT = 140
     SCRIM_ALPHA = 0.85
 
     def __init__(self, parent=None):
@@ -407,45 +413,46 @@ class GlassController(QWidget):
         self.left_zone.setFixedWidth(side)
         self.right_zone.setFixedWidth(side)
 
+    ICON_COLOR = "#F2FBFF"
+
+    def _plain_button(self, icon_name: str, tooltip: str, icon_px: int = 16, color: str = None) -> GlassButton:
+        """Icon-only round button without a disc: a soft highlight fades in on hover / press."""
+        btn = GlassButton(self, "plain", 40, icon_px)
+        btn.setIcon(get_svg_icon(icon_name, size=icon_px, color=color))
+        btn.setToolTip(tooltip)
+        return btn
+
+    def _disc_button(self, icon_name: str, tooltip: str, diameter: int, icon_px: int) -> GlassButton:
+        """Clear glass disc (transport buttons)."""
+        btn = GlassButton(self, "disc", diameter, icon_px)
+        btn.setIcon(get_svg_icon(icon_name, size=icon_px, color=self.ICON_COLOR))
+        btn.setToolTip(tooltip)
+        return btn
+
     def _create_widget_for_key(self, key: str) -> QWidget:
         if key == "play_pause":
-            self.btn_play = QPushButton(self)
-            self.btn_play.setObjectName("PlayButton")
+            self.btn_play = self._disc_button("play_glass", "재생 / 일시정지 (Space)", PLAY_DISC, PLAY_ICON)
             self._update_play_button_icon()
-            self.btn_play.setIconSize(QSize(20, 20))
-            self.btn_play.setToolTip("재생 / 일시정지 (Space)")
             self.btn_play.clicked.connect(self.play_pause_clicked.emit)
             return self.btn_play
 
         elif key == "prev_frame":
-            btn = QPushButton(self)
-            btn.setIcon(get_svg_icon("prev_frame", size=16))
-            btn.setIconSize(QSize(16, 16))
-            btn.setToolTip("1프레임 이전 (,)")
+            btn = self._plain_button("prev_frame_glass", "1프레임 이전 (,)", 20, self.ICON_COLOR)
             btn.clicked.connect(self.prev_frame_clicked.emit)
             return btn
 
         elif key == "next_frame":
-            btn = QPushButton(self)
-            btn.setIcon(get_svg_icon("next_frame", size=16))
-            btn.setIconSize(QSize(16, 16))
-            btn.setToolTip("1프레임 다음 (.)")
+            btn = self._plain_button("next_frame_glass", "1프레임 다음 (.)", 20, self.ICON_COLOR)
             btn.clicked.connect(self.next_frame_clicked.emit)
             return btn
 
         elif key == "seek_backward":
-            btn = QPushButton(self)
-            btn.setIcon(get_svg_icon("backward_5", size=18))
-            btn.setIconSize(QSize(18, 18))
-            btn.setToolTip("5초 뒤로 (←)")
+            btn = self._disc_button("backward_glass", "5초 뒤로 (←)", SIDE_DISC, SIDE_ICON)
             btn.clicked.connect(lambda: self.seek_backward_clicked.emit(5.0))
             return btn
 
         elif key == "seek_forward":
-            btn = QPushButton(self)
-            btn.setIcon(get_svg_icon("forward_5", size=18))
-            btn.setIconSize(QSize(18, 18))
-            btn.setToolTip("5초 앞으로 (→)")
+            btn = self._disc_button("forward_glass", "5초 앞으로 (→)", SIDE_DISC, SIDE_ICON)
             btn.clicked.connect(lambda: self.seek_forward_clicked.emit(5.0))
             return btn
 
@@ -488,43 +495,29 @@ class GlassController(QWidget):
             return self.btn_speed
 
         elif key == "screenshot":
-            btn = QPushButton(self)
-            btn.setIcon(get_svg_icon("screenshot", size=16))
-            btn.setIconSize(QSize(16, 16))
-            btn.setToolTip("화면 캡처 (Ctrl + S)")
+            btn = self._plain_button("screenshot", "화면 캡처 (Ctrl + S)")
             btn.clicked.connect(self.screenshot_clicked.emit)
             return btn
 
         elif key == "subtitle":
-            btn = QPushButton(self)
-            btn.setIcon(get_svg_icon("subtitle", size=16))
-            btn.setIconSize(QSize(16, 16))
-            btn.setToolTip("자막 토글 (C)")
+            btn = self._plain_button("subtitle", "자막 토글 (C)")
             btn.clicked.connect(self.subtitle_clicked.emit)
             return btn
 
         elif key == "volume":
-            self.btn_mute = QPushButton(self)
+            self.btn_mute = self._plain_button("volume_high", "음소거 토글 (M) / 마우스를 올리면 볼륨 조절")
             self._update_volume_icon()
-            self.btn_mute.setIconSize(QSize(16, 16))
-            self.btn_mute.setToolTip("음소거 토글 (M) / 마우스를 올리면 볼륨 조절")
             self.btn_mute.clicked.connect(self.mute_clicked.emit)
             self.btn_mute.installEventFilter(self)
             return self.btn_mute
 
         elif key == "fullscreen":
-            btn = QPushButton(self)
-            btn.setIcon(get_svg_icon("fullscreen", size=16))
-            btn.setIconSize(QSize(16, 16))
-            btn.setToolTip("전체화면 (F)")
+            btn = self._plain_button("fullscreen", "전체화면 (F)")
             btn.clicked.connect(self.fullscreen_clicked.emit)
             return btn
 
         elif key == "settings":
-            btn = QPushButton(self)
-            btn.setIcon(get_svg_icon("settings", size=16))
-            btn.setIconSize(QSize(16, 16))
-            btn.setToolTip("컨트롤러 버튼 배열 설정")
+            btn = self._plain_button("settings", "컨트롤러 버튼 배열 설정")
             btn.clicked.connect(self._open_settings_dialog)
             return btn
 
@@ -539,8 +532,8 @@ class GlassController(QWidget):
 
     def _update_play_button_icon(self):
         if hasattr(self, "btn_play"):
-            icon_name = "pause" if self._is_playing else "play"
-            self.btn_play.setIcon(get_svg_icon(icon_name, size=20))
+            icon_name = "pause_glass" if self._is_playing else "play_glass"
+            self.btn_play.setIcon(get_svg_icon(icon_name, size=PLAY_ICON, color=self.ICON_COLOR))
 
     def _update_volume_icon(self):
         if hasattr(self, "btn_mute"):

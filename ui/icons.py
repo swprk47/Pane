@@ -125,6 +125,32 @@ SVG_ICONS = {
         <rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>
     </svg>""",
 
+    # --- rounded outline icons for the glass transport buttons (drawn on a 24 grid, white) ---
+    "play_glass": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linejoin="round">
+        <path d="M8 8.3 Q8 5.5 10.41 6.93 L16.59 10.57 Q19 12 16.59 13.43 L10.41 17.07 Q8 18.5 8 15.7 Z"/>
+    </svg>""",
+
+    "pause_glass": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.7">
+        <rect x="6.2" y="4.8" width="4" height="14.4" rx="2"/><rect x="13.8" y="4.8" width="4" height="14.4" rx="2"/>
+    </svg>""",
+
+    # two rounded triangles; optically centred (the flat bases carry the weight, so shift away from them)
+    "backward_glass": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round">
+        <g transform="translate(-0.4 0)"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/><path d="M19 8.8 Q19 6.6 17.24 7.92 L13.56 10.68 Q11.8 12 13.56 13.32 L17.24 16.08 Q19 17.4 19 15.2 Z"/></g>
+    </svg>""",
+
+    "forward_glass": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round">
+        <g transform="translate(24 0) scale(-1 1) translate(-0.4 0)"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/><path d="M19 8.8 Q19 6.6 17.24 7.92 L13.56 10.68 Q11.8 12 13.56 13.32 L17.24 16.08 Q19 17.4 19 15.2 Z"/></g>
+    </svg>""",
+
+    "prev_frame_glass": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M6.4 6 V18"/><g transform="translate(7.4 0)"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/></g>
+    </svg>""",
+
+    "next_frame_glass": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M17.6 6 V18"/><g transform="translate(24 0) scale(-1 1) translate(7.4 0)"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/></g>
+    </svg>""",
+
     "close": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round">
         <line x1="18" y1="6" x2="6" y2="18"/>
         <line x1="6" y1="6" x2="18" y2="18"/>
