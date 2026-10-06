@@ -2,99 +2,45 @@ import json
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QApplication
 )
-from PySide6.QtCore import Qt, Signal, QPoint, QSize, QTimer, QEvent
+from PySide6.QtCore import Qt, Signal, QPoint, QPointF, QRectF, QSize, QTimer, QEvent
+from PySide6.QtGui import QPainter
 from core.settings import open_settings
-from styles.palette import ACCENT, ACCENT_LIGHT
 from ui.icons import get_svg_icon
+from ui.glass_button import GlassButton, paint_glass_panel
+from ui.glass_slider import GlassSlider
 
 DEFAULT_PRESETS = [1.0, 1.2, 1.25, 1.5, 2.0]
 MAX_PRESETS = 6          # more chips than this stop being readable
 
 POPUP_QSS = """
-    QWidget#SpeedPopupWidget {
-        background-color: rgba(24, 25, 34, 0.96);
-        border: 1px solid rgba(255, 255, 255, 0.28);
-        border-radius: 18px;
-    }
     QLabel {
         color: #FFFFFF;
         font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
         background: transparent;
     }
-    QSlider::groove:horizontal {
-        height: 4px;
-        background: rgba(255, 255, 255, 0.24);
-        border-radius: 2px;
-    }
-    QSlider::sub-page:horizontal {
-        background: #B3CEE5;
-        border-radius: 2px;
-    }
-    QSlider::handle:horizontal {
-        background: #FFFFFF;
-        width: 14px;
-        height: 14px;
-        margin-top: -5px;
-        margin-bottom: -5px;
-        border-radius: 7px;
-    }
-    QSlider::handle:horizontal:hover {
-        background: #F0F6FB;
-    }
 """
 
 
-class PresetChip(QPushButton):
+class PresetChip(GlassButton):
     """
-    One speed preset. Hovering it reveals a small x in its top-right corner
-    that removes just this preset.
+    One speed preset (a glass pill; the active one is lit). Hovering it reveals a small x in its top-right
+    corner that removes just this preset.
     """
     delete_requested = Signal(float)
     chosen = Signal(float)
 
     def __init__(self, speed: float, active: bool, parent=None):
-        super().__init__(f"{speed:g}x", parent)
+        super().__init__(parent, "pill", 36, width=54, text_px=13)
         self.speed = speed
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFocusPolicy(Qt.NoFocus)
-        self.setFixedSize(54, 36)
+        self.setText(f"{speed:g}x")
+        self.setActive(active)
+        self._act = 1.0 if active else 0.0           # no fade-in for a freshly built chip
         self.setToolTip(f"{speed:g}x 배속 적용")
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background: {'rgba(179, 206, 229, 0.55)' if active else 'rgba(255, 255, 255, 0.09)'};
-                border: 1px solid {ACCENT if active else 'rgba(255, 255, 255, 0.20)'};
-                border-radius: 18px;
-                color: #FFFFFF;
-                font-size: 13px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background: {'rgba(179, 206, 229, 0.70)' if active else 'rgba(255, 255, 255, 0.20)'};
-                border: 1px solid {'#D0E1EF' if active else 'rgba(255, 255, 255, 0.42)'};
-            }}
-        """)
         self.clicked.connect(lambda: self.chosen.emit(self.speed))
 
-        self.btn_x = QPushButton(self)
-        self.btn_x.setFocusPolicy(Qt.NoFocus)
-        self.btn_x.setCursor(Qt.PointingHandCursor)
+        self.btn_x = GlassButton(self, "flat", 16, icon_px=8, radius=8, danger=True, base=(40, 40, 52, 242))
         self.btn_x.setIcon(get_svg_icon("close", size=8))
-        self.btn_x.setIconSize(QSize(8, 8))
-        self.btn_x.setFixedSize(16, 16)
         self.btn_x.setToolTip(f"{speed:g}x 프리셋 삭제")
-        self.btn_x.setStyleSheet("""
-            QPushButton {
-                background: rgba(40, 40, 52, 0.95);
-                border: 1px solid rgba(255, 255, 255, 0.45);
-                border-radius: 8px;
-                padding: 0px;
-                min-width: 0px; min-height: 0px;
-            }
-            QPushButton:hover {
-                background: #E81123;
-                border: 1px solid #FF6B76;
-            }
-        """)
         self.btn_x.move(self.width() - 19, 3)
         self.btn_x.hide()
         self.btn_x.clicked.connect(lambda: self.delete_requested.emit(self.speed))
@@ -133,7 +79,6 @@ class SpeedPopup(QWidget):
         # translucent Qt.Popup window rendered garbled here (video showing
         # through, stale chips), so the panel lives inside the window instead.
         # Without WA_StyledBackground a plain QWidget ignores the QSS background.
-        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFixedWidth(396)
         self._anchor = None
         self.hide()
@@ -143,6 +88,10 @@ class SpeedPopup(QWidget):
         self.presets = self._load_presets()
 
         self._init_ui()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        paint_glass_panel(p, QRectF(self.rect()), 18)
 
     # --- persistence ------------------------------------------------------
 
@@ -178,30 +127,13 @@ class SpeedPopup(QWidget):
         header.addWidget(title)
 
         self.lbl_speed_val = QLabel("1.00x", self)
-        self.lbl_speed_val.setStyleSheet(f"font-size: 20px; font-weight: 700; color: {ACCENT};")
+        self.lbl_speed_val.setStyleSheet(f"font-size: 20px; font-weight: 700; color: #FFFFFF;")
         header.addWidget(self.lbl_speed_val)
         header.addStretch()
 
-        self.btn_reset = QPushButton("기본값", self)
-        self.btn_reset.setCursor(Qt.PointingHandCursor)
-        self.btn_reset.setFocusPolicy(Qt.NoFocus)
+        self.btn_reset = GlassButton(self, "pill", 26, text_px=12, text_pad=12)
+        self.btn_reset.setText("기본값")
         self.btn_reset.setToolTip("프리셋을 기본 구성으로 되돌리기")
-        self.btn_reset.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(255, 255, 255, 0.20);
-                border-radius: 13px;
-                color: rgba(255, 255, 255, 0.78);
-                font-size: 12px;
-                padding: 0px 12px;
-                min-height: 26px;
-                max-height: 26px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.18);
-                color: #FFFFFF;
-            }
-        """)
         self.btn_reset.clicked.connect(self._reset_to_default_presets)
         header.addWidget(self.btn_reset)
         main.addLayout(header)
@@ -217,31 +149,16 @@ class SpeedPopup(QWidget):
         # Slider row: 0.25x .. 3.00x in 0.05x steps (25..300, step 5)
         slider_row = QHBoxLayout()
         slider_row.setSpacing(12)
-        self.slider = QSlider(Qt.Horizontal, self)
+        self.slider = GlassSlider(Qt.Horizontal, self, snap_step=5)
         self.slider.setRange(25, 300)
         self.slider.setSingleStep(5)
         self.slider.setPageStep(10)
         self.slider.setValue(100)
-        self.slider.setCursor(Qt.PointingHandCursor)
+        self.slider.setFixedHeight(26)
         self.slider.valueChanged.connect(self._on_slider_value_changed)
         slider_row.addWidget(self.slider, stretch=1)
 
-        self.btn_pin = QPushButton(self)
-        self.btn_pin.setCursor(Qt.PointingHandCursor)
-        self.btn_pin.setFocusPolicy(Qt.NoFocus)
-        self.btn_pin.setIconSize(QSize(16, 16))
-        self.btn_pin.setFixedSize(34, 34)
-        self.btn_pin.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(255, 255, 255, 0.20);
-                border-radius: 17px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.20);
-                border: 1px solid rgba(255, 255, 255, 0.42);
-            }
-        """)
+        self.btn_pin = GlassButton(self, "disc", 34, icon_px=16, shadow=False)
         self.btn_pin.clicked.connect(self._on_pin_clicked)
         slider_row.addWidget(self.btn_pin)
 
@@ -303,7 +220,7 @@ class SpeedPopup(QWidget):
         full = len(self.presets) >= MAX_PRESETS
         pinned = self._is_pinned(self._current_speed)
         if pinned:
-            self.btn_pin.setIcon(get_svg_icon("pin_fill", size=16, color=ACCENT))
+            self.btn_pin.setIcon(get_svg_icon("pin_fill", size=16, color="#FFFFFF"))
             self.btn_pin.setToolTip("고정 해제 (프리셋에서 제거)")
         elif full:
             self.btn_pin.setIcon(get_svg_icon("pin", size=16, color="#7A7F8C"))

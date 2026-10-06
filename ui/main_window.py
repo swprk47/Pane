@@ -327,8 +327,8 @@ class MainWindow(QMainWindow):
                 margin: 1px 0;
             }
             QMenu::item:selected {
-                background-color: #B3CEE5;
-                color: #16212E;
+                background-color: rgba(255, 255, 255, 0.16);
+                color: #FFFFFF;
             }
             QMenu::separator {
                 height: 1px;

@@ -57,11 +57,22 @@ def test_accent_is_readable_on_the_dark_ui():
 
 
 def test_text_on_a_solid_accent_fill_is_dark():
-    """White on a pale accent is unreadable (selected menu item, save button, active PIP badge)."""
+    """White on a pale accent is unreadable; the dark ON_ACCENT colour stays defined for any solid accent fill."""
     assert _contrast(palette.ON_ACCENT, palette.ACCENT) >= 7.0
     assert _contrast("#FFFFFF", palette.ACCENT) < 3.0
-    for rel in ("ui/title_bar.py", "ui/main_window.py", "ui/glass_controller.py"):
-        assert palette.ON_ACCENT.lower() in (ROOT / rel).read_text(encoding="utf-8").lower(), rel
+
+
+def test_serenity_is_kept_for_the_speed_and_pip_buttons_only():
+    """The controls are clear glass with a white rim; the serenity accent is not sprinkled around."""
+    offenders = []
+    for path in (ROOT / "ui").glob("*.py"):
+        if path.name in ("glass_button.py", "icons.py"):          # the two pills that keep it, and the icon set
+            continue
+        text = path.read_text(encoding="utf-8")
+        for lit in ("B3CEE5", "179, 206, 229", "208, 225, 239", "D0E1EF", "styles.palette import ACCENT"):
+            if lit.lower() in text.lower():
+                offenders.append(f"{path.name}: {lit}")
+    assert not offenders, "\n".join(offenders)
 
 
 def test_no_legacy_blue_left_in_source():
@@ -75,9 +86,10 @@ def test_no_legacy_blue_left_in_source():
     assert not offenders, "\n".join(offenders)
 
 
-def test_accent_is_actually_used_in_the_theme():
+def test_theme_has_no_rules_for_the_painted_buttons():
+    """A `.GlassButton` rule in the global QSS matched the GlassButton class and overrode the pills' font."""
     from styles.glass_theme import GLASS_THEME_QSS
-    assert palette.ACCENT_RGB in GLASS_THEME_QSS
+    assert ".GlassButton" not in GLASS_THEME_QSS and "#SpeedButton" not in GLASS_THEME_QSS
 
 
 # --- logo files ------------------------------------------------------------

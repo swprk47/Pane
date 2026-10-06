@@ -75,49 +75,8 @@ QWidget {
     border-radius: 24px;
 }
 
-/* Glass Buttons */
-.GlassButton {
-    background-color: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 10px;
-    color: #F5F5F7;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 6px 12px;
-}
-
-.GlassButton:hover {
-    background-color: rgba(255, 255, 255, 0.16);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    color: #FFFFFF;
-}
-
-.GlassButton:pressed {
-    background-color: rgba(255, 255, 255, 0.25);
-}
-
-.GlassButton:checked {
-    background-color: rgba(179, 206, 229, 0.45);
-    border: 1px solid rgba(179, 206, 229, 0.8);
-    color: #FFFFFF;
-}
-
-/* Accent Badge / Speed Button */
-#SpeedButton {
-    background-color: rgba(179, 206, 229, 0.22);
-    border: 1px solid rgba(179, 206, 229, 0.45);
-    border-radius: 10px;
-    color: #D0E1EF;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 4px 10px;
-}
-
-#SpeedButton:hover {
-    background-color: rgba(179, 206, 229, 0.35);
-    border: 1px solid rgba(179, 206, 229, 0.75);
-    color: #FFFFFF;
-}
+/* (The round / pill buttons are painted by ui/glass_button.py and get no rules here: a class rule for
+   them once leaked its font into every pill.) */
 
 /* Glass OSD Notification Badge */
 #GlassOSD {

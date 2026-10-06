@@ -151,6 +151,9 @@ def test_click_toggles_pause_but_drag_does_not(screen_window, sample_video, pump
     mouse.click(p.x(), p.y())
     assert pump(lambda: w.engine.is_playing(), timeout=1.0)
 
+    # A press within the double-click time of the last click IS a double-click (and undoes that click's
+    # toggle), so let that time pass before testing a plain drag.
+    pump(timeout=user32.GetDoubleClickTime() / 1000 + 0.2)
     before = w.engine.is_playing()
     mouse.drag(p.x(), p.y())
     pump(timeout=0.5)

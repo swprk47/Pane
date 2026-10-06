@@ -1,13 +1,15 @@
 from html import escape
 
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QApplication
-from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtGui import QPainter
+from ui.glass_button import GlassButton, paint_glass_panel
+from PySide6.QtCore import Qt, QTimer, QSize, QRectF
 
 from core.media_info import describe, to_plain_text
-from styles.palette import ACCENT
 from ui.icons import get_svg_icon
 
 WARN = "#FFB340"
+GPU_OK = "#5FD68A"      # hardware decoding: the one green on the panel
 
 
 class MediaInfoPanel(QFrame):
@@ -18,32 +20,20 @@ class MediaInfoPanel(QFrame):
     """
     WIDTH = 392
 
+    def paintEvent(self, event):
+        p = QPainter(self)
+        paint_glass_panel(p, QRectF(self.rect()), 18)
+
     def __init__(self, parent):
         super().__init__(parent)
         self.setObjectName("MediaInfoPanel")
-        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFixedWidth(self.WIDTH)
         self._provider = None
         self._sections = []
 
         self.setStyleSheet("""
-            QFrame#MediaInfoPanel {
-                background-color: rgba(24, 25, 34, 0.985);
-                border: 1px solid rgba(255, 255, 255, 0.28);
-                border-radius: 18px;
-            }
             QLabel { background: transparent; color: #FFFFFF;
                      font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; }
-            QPushButton {
-                background: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(255, 255, 255, 0.20);
-                border-radius: 13px;
-                color: rgba(255, 255, 255, 0.82);
-                font-size: 12px;
-                padding: 0px 12px;
-                min-height: 26px; max-height: 26px;
-            }
-            QPushButton:hover { background: rgba(255, 255, 255, 0.18); color: #FFFFFF; }
         """)
 
         lay = QVBoxLayout(self)
@@ -57,20 +47,14 @@ class MediaInfoPanel(QFrame):
         header.addWidget(title)
         header.addStretch()
 
-        self.btn_copy = QPushButton("복사", self)
-        self.btn_copy.setCursor(Qt.PointingHandCursor)
-        self.btn_copy.setFocusPolicy(Qt.NoFocus)
+        self.btn_copy = GlassButton(self, "pill", 26, text_px=12, text_pad=12)
+        self.btn_copy.setText("복사")
         self.btn_copy.setToolTip("이 정보를 텍스트로 복사")
         self.btn_copy.clicked.connect(self.copy_to_clipboard)
         header.addWidget(self.btn_copy)
 
-        self.btn_close = QPushButton(self)
-        self.btn_close.setCursor(Qt.PointingHandCursor)
-        self.btn_close.setFocusPolicy(Qt.NoFocus)
+        self.btn_close = GlassButton(self, "flat", 26, icon_px=10, radius=13, danger=True)
         self.btn_close.setIcon(get_svg_icon("close", size=10))
-        self.btn_close.setIconSize(QSize(10, 10))
-        self.btn_close.setFixedSize(26, 26)
-        self.btn_close.setStyleSheet("padding: 0px; min-width: 0px;")
         self.btn_close.setToolTip("닫기 (I)")
         self.btn_close.clicked.connect(self.hide)
         header.addWidget(self.btn_close)
@@ -115,7 +99,7 @@ class MediaInfoPanel(QFrame):
     def _value_html(label: str, value: str) -> str:
         text = escape(value)
         if label == "디코더":
-            color = ACCENT if value.startswith("GPU") else WARN
+            color = GPU_OK if value.startswith("GPU") else WARN
             return f'<span style="color:{color}; font-weight:600">{text}</span>'
         if label == "버려진 프레임" and not value.startswith("0 "):
             return f'<span style="color:{WARN}; font-weight:600">{text}</span>'
@@ -125,7 +109,7 @@ class MediaInfoPanel(QFrame):
         parts = ['<table cellspacing="0" cellpadding="2" style="font-size:12px">']
         for i, (title, rows) in enumerate(sections):
             pad = "" if i == 0 else "padding-top:8px;"
-            parts.append(f'<tr><td colspan="2" style="{pad} color:{ACCENT}; font-size:11px; font-weight:700">{escape(title)}</td></tr>')
+            parts.append(f'<tr><td colspan="2" style="{pad} color:rgba(255,255,255,0.62); font-size:11px; font-weight:700">{escape(title)}</td></tr>')
             for label, value in rows:
                 parts.append(
                     f'<tr><td width="92" style="color:rgba(255,255,255,0.55)">{escape(label)}</td>'

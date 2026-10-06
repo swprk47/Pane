@@ -133,7 +133,8 @@ Video_Player/
 │   ├── media_info_panel.py  # 재생 정보(코덱/디코더/통계) 패널
 │   ├── overlay.py           # 상단 스크림, 하단 진행선, 중앙 재생 표시
 │   ├── glass_controller.py  # 영상 위 오버레이 컨트롤러 (하단 스크림 + 아이콘)
-│   ├── glass_button.py      # 호버/눌림/아이콘 전환이 애니메이션되는 둥근 유리 버튼 (재생 컨트롤)
+│   ├── glass_button.py      # 유리 버튼(disc/pill/plain/flat) + 패널 유리 + 전환 애니메이션
+│   ├── glass_slider.py      # 호버에 커지는 유리 슬라이더 (타임라인, 볼륨, 배속)
 │   ├── volume_popup.py      # 음소거 버튼 호버 시 뜨는 세로 볼륨 슬라이더
 │   ├── speed_popup.py       # 배속 패널 (프리셋 최대 6개, 칩별 ✕, 핀, 0.05x 슬라이더)
 │   ├── timeline_slider.py   # 타임라인 바
@@ -162,6 +163,7 @@ Video_Player/
     ├── test_branding.py     # 로고/아이콘/팔레트
     ├── test_media_info.py   # 코덱/디코더 정보 패널
     ├── test_glass_button.py # 유리 버튼 (크기, 밝기 반응, 크로스페이드)
+    ├── test_glass_widgets.py # 유리 슬라이더/알약/패널과 이를 쓰는 화면
     ├── test_release.py      # 버전/경로/로그/정보 창/배포 문서
     ├── test_installer.py    # 설치 스크립트와 앱의 일관성
     └── test_input_e2e.py    # 실제 마우스 입력 (--run-e2e)

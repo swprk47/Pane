@@ -1,5 +1,9 @@
-from PySide6.QtWidgets import QFrame, QVBoxLayout, QSlider, QLabel
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt, Signal, QTimer, QRectF
+from PySide6.QtGui import QPainter
+
+from ui.glass_button import paint_glass_panel
+from ui.glass_slider import GlassSlider
 
 
 class VolumePopup(QFrame):
@@ -9,61 +13,32 @@ class VolumePopup(QFrame):
     the popup itself, then closes after a short grace period.
     """
     value_changed = Signal(int)
+    RADIUS = 19
 
     def __init__(self, parent):
         super().__init__(parent)
         self.setObjectName("VolumePopup")
-        self.setAttribute(Qt.WA_StyledBackground, True)
         self.setFixedSize(38, 144)
         self.hide()
 
+        # the glass panel is painted in paintEvent; only the label needs a style
         self.setStyleSheet("""
-            QFrame#VolumePopup {
-                background-color: rgba(26, 27, 36, 0.94);
-                border: 1px solid rgba(255, 255, 255, 0.24);
-                border-radius: 19px;
-            }
             QLabel {
                 color: rgba(255, 255, 255, 0.85);
                 font-size: 11px;
                 font-weight: 600;
                 background: transparent;
             }
-            /* thin track, small round thumb */
-            QSlider::groove:vertical {
-                width: 3px;
-                background: rgba(255, 255, 255, 0.28);
-                border-radius: 2px;
-            }
-            QSlider::sub-page:vertical {
-                background: rgba(255, 255, 255, 0.28);
-                border-radius: 2px;
-            }
-            QSlider::add-page:vertical {
-                background: #B3CEE5;
-                border-radius: 2px;
-            }
-            QSlider::handle:vertical {
-                background: #FFFFFF;
-                height: 13px;
-                margin-left: -5px;
-                margin-right: -5px;
-                border-radius: 6px;
-            }
-            QSlider::handle:vertical:hover {
-                background: #F0F6FB;
-            }
         """)
 
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 14, 0, 9)
-        lay.setSpacing(8)
+        lay.setContentsMargins(0, 12, 0, 9)
+        lay.setSpacing(6)
 
-        self.slider = QSlider(Qt.Vertical, self)
+        self.slider = GlassSlider(Qt.Vertical, self)
         self.slider.setRange(0, 100)
         self.slider.setValue(100)
-        self.slider.setCursor(Qt.PointingHandCursor)
-        self.slider.setFixedWidth(22)          # comfortable hit area around the thin track
+        self.slider.setFixedWidth(28)          # comfortable hit area around the thin track
         self.slider.valueChanged.connect(self._on_value)
         lay.addWidget(self.slider, 1, Qt.AlignHCenter)
 
@@ -76,6 +51,10 @@ class VolumePopup(QFrame):
         self._hide_timer.setInterval(280)
         self._hide_timer.timeout.connect(self.hide)
 
+    def paintEvent(self, event):
+        p = QPainter(self)
+        paint_glass_panel(p, QRectF(self.rect()), self.RADIUS)
+
     def _on_value(self, v: int):
         self.label.setText(str(v))
         self.value_changed.emit(v)
@@ -84,6 +63,7 @@ class VolumePopup(QFrame):
         self.slider.blockSignals(True)
         self.slider.setValue(int(v))
         self.slider.blockSignals(False)
+        self.slider.update()
         self.label.setText(str(int(v)))
 
     def open_above(self, anchor):

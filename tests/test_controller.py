@@ -2,6 +2,7 @@
 import json
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget, QPushButton
 
 from core.settings import open_settings
@@ -145,24 +146,35 @@ def test_volume_popup_sync_and_signal(controller, qapp):
     assert got == [80.0]
 
 
-def test_timeline_thumb_is_a_single_white_circle(controller):
+def test_slider_handle_is_a_single_white_circle():
     """Regression: an accent dot with a translucent 3px border looked like two overlapping circles."""
-    qss = controller.timeline.styleSheet()
-    handle = qss[qss.index("QSlider::handle:horizontal {"):]
-    handle = handle[:handle.index("}")]
-    assert "#FFFFFF" in handle
-    assert "border" not in handle.replace("border-radius", "")
-    assert "width: 14px" in handle and "height: 14px" in handle
+    from ui import glass_slider
+    assert glass_slider.HANDLE == 14.0
+    assert (glass_slider.HANDLE_COLOR.red(), glass_slider.HANDLE_COLOR.green(), glass_slider.HANDLE_COLOR.blue()) == (255, 255, 255)
+    src = open(glass_slider.__file__, encoding="utf-8").read()
+    handle_draw = src[src.rindex("p.setBrush(col)"):]
+    assert "setPen" not in handle_draw, "the handle is one filled circle, no outline ring"
+
+
+def test_timeline_handle_and_track_grow_on_hover(controller, pump):
+    from ui import glass_slider
+    t = controller.timeline
+    rest_h, rest_t = t.handle_diameter(), t.track_thickness()
+    assert rest_h == glass_slider.HANDLE and rest_t == glass_slider.TRACK
+    t._animate("hover", 1.0, 60)
+    assert pump(lambda: t._hover > 0.99, timeout=1.0)
+    assert t.handle_diameter() == glass_slider.HANDLE_HOVER > rest_h
+    assert t.track_thickness() == glass_slider.TRACK_HOVER > rest_t
 
 
 def test_volume_popup_is_slim(controller):
     """Thin track and small round thumb (the thick pill version was the old look)."""
+    from ui import glass_slider
     pop = controller.volume_popup
     assert pop.width() <= 40
-    qss = pop.styleSheet()
-    assert "width: 3px" in qss                       # 3 px track
-    assert "height: 13px" in qss                     # 13 px round thumb
-    assert "width: 8px" not in qss
+    assert glass_slider.TRACK <= 4.0                 # thin track
+    assert glass_slider.HANDLE <= 14.0               # small round thumb
+    assert pop.slider.orientation() == Qt.Vertical
 
 
 def test_volume_popup_opens_above_mute_button(controller):

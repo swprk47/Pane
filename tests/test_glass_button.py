@@ -59,8 +59,8 @@ def test_transport_buttons_are_glass_discs_with_the_designed_sizes(controller):
 def test_controller_qss_does_not_resize_the_glass_buttons(controller):
     """Regression: QSS min/max sizes beat setFixedSize, which squeezed every button to its icon."""
     for b in controller.findChildren(GlassButton):
-        want = b._d + 2 * b._m
-        assert b.width() == want and b.height() == want, (b.toolTip(), b.size())
+        want_w, want_h = b._content_width() + 2 * b._m, b._d + 2 * b._m
+        assert (b.width(), b.height()) == (want_w, want_h), (b.toolTip(), b.size())
 
 
 def test_every_icon_button_animates(controller):

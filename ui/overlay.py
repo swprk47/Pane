@@ -9,9 +9,8 @@ from PySide6.QtGui import (
     QPainter, QLinearGradient, QColor, QFont, QFontMetrics, QPen, QPolygonF
 )
 
-from styles.palette import ACCENT as _ACCENT_HEX
 
-ACCENT = QColor(_ACCENT_HEX)
+PROGRESS_COLOR = QColor(255, 255, 255, 235)      # plain white, like the timeline fill
 
 
 class _OverlayBase(QWidget):
@@ -71,7 +70,7 @@ class MiniProgress(_OverlayBase):
     def paintEvent(self, event):
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(255, 255, 255, 56))
-        p.fillRect(0, 0, int(self.width() * self._ratio), self.height(), ACCENT)
+        p.fillRect(0, 0, int(self.width() * self._ratio), self.height(), PROGRESS_COLOR)
 
 
 class CenterBadge(_OverlayBase):

@@ -5,8 +5,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
 
 from core import media_info as mi
-from ui.media_info_panel import MediaInfoPanel, WARN
-from styles.palette import ACCENT
+from ui.media_info_panel import MediaInfoPanel, WARN, GPU_OK
 
 
 def info(**over):
@@ -179,7 +178,7 @@ def test_close_button_hides_the_panel(panel):
 def test_hardware_is_accented_and_software_is_flagged():
     gpu = MediaInfoPanel._value_html("디코더", "GPU · d3d11va-copy (프레임 복사)")
     cpu = MediaInfoPanel._value_html("디코더", "CPU (소프트웨어)")
-    assert ACCENT in gpu and WARN not in gpu
+    assert GPU_OK in gpu and WARN not in gpu
     assert WARN in cpu
 
 

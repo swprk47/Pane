@@ -2,6 +2,7 @@ import ctypes
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QApplication
 from PySide6.QtCore import Qt, QPoint, Signal, QSize
 from ui.icons import get_svg_icon, get_logo_icon
+from ui.glass_button import GlassButton
 
 
 def native_start_window_drag(hwnd):
@@ -63,73 +64,30 @@ class GlassTitleBar(QWidget):
         layout.addStretch()
 
         # PIP Button (Clean Text Capsule instead of Pin emoji)
-        self.btn_pip = QPushButton("PIP", self)
-        self.btn_pip.setFocusPolicy(Qt.NoFocus)
-        self.btn_pip.setCursor(Qt.PointingHandCursor)
+        self.btn_pip = GlassButton(self, "pill", 22, text_px=11, text_pad=9, tint=True)
+        self.btn_pip.setText("PIP")
         self.btn_pip.setObjectName("PipBadgeButton")
         self.btn_pip.setToolTip("PIP 항상 위 미니 모드 (P)")
-        self.btn_pip.setStyleSheet("""
-            QPushButton#PipBadgeButton {
-                background: rgba(255, 255, 255, 0.10);
-                border: 1px solid rgba(255, 255, 255, 0.18);
-                border-radius: 6px;
-                color: rgba(255, 255, 255, 0.85);
-                font-size: 11px;
-                font-weight: 700;
-                letter-spacing: 0.5px;
-                padding: 3px 8px;
-            }
-            QPushButton#PipBadgeButton:hover {
-                background: rgba(179, 206, 229, 0.35);
-                border: 1px solid #B3CEE5;
-                color: #FFFFFF;
-            }
-            QPushButton#PipBadgeButton[active="true"] {
-                background: #B3CEE5;
-                border: 1px solid #B3CEE5;
-                color: #16212E;
-            }
-            QPushButton#PipBadgeButton:pressed {
-                background: rgba(179, 206, 229, 0.70);
-                border: 1px solid #D0E1EF;
-                color: #FFFFFF;
-                padding-top: 4px;
-                padding-bottom: 2px;
-            }
-        """)
         self.btn_pip.clicked.connect(self.pip_toggled.emit)
         layout.addWidget(self.btn_pip)
 
         # Minimize Button (SVG)
-        self.btn_min = QPushButton(self)
-        self.btn_min.setFocusPolicy(Qt.NoFocus)
-        self.btn_min.setCursor(Qt.PointingHandCursor)
-        self.btn_min.setProperty("class", "TitleButton")
+        self.btn_min = GlassButton(self, "flat", 28, icon_px=12, radius=8)
         self.btn_min.setIcon(get_svg_icon("minimize", size=12))
-        self.btn_min.setIconSize(QSize(12, 12))
         self.btn_min.setToolTip("최소화")
         self.btn_min.clicked.connect(self._minimize_window)
         layout.addWidget(self.btn_min)
 
         # Maximize / Restore Button (SVG)
-        self.btn_max = QPushButton(self)
-        self.btn_max.setFocusPolicy(Qt.NoFocus)
-        self.btn_max.setCursor(Qt.PointingHandCursor)
-        self.btn_max.setProperty("class", "TitleButton")
+        self.btn_max = GlassButton(self, "flat", 28, icon_px=12, radius=8)
         self.btn_max.setIcon(get_svg_icon("maximize", size=12))
-        self.btn_max.setIconSize(QSize(12, 12))
         self.btn_max.setToolTip("최대화 / 이전 크기")
         self.btn_max.clicked.connect(self._toggle_maximize)
         layout.addWidget(self.btn_max)
 
         # Close Button (SVG)
-        self.btn_close = QPushButton(self)
-        self.btn_close.setFocusPolicy(Qt.NoFocus)
-        self.btn_close.setCursor(Qt.PointingHandCursor)
-        self.btn_close.setObjectName("CloseButton")
-        self.btn_close.setProperty("class", "TitleButton")
+        self.btn_close = GlassButton(self, "flat", 28, icon_px=12, radius=8, danger=True)
         self.btn_close.setIcon(get_svg_icon("close", size=12))
-        self.btn_close.setIconSize(QSize(12, 12))
         self.btn_close.setToolTip("닫기")
         self.btn_close.clicked.connect(self._on_close_clicked)
         layout.addWidget(self.btn_close)
@@ -137,8 +95,7 @@ class GlassTitleBar(QWidget):
     def set_pip_active(self, active: bool):
         """Highlight the PIP badge without replacing its own stylesheet."""
         self.btn_pip.setProperty("active", "true" if active else "false")
-        self.btn_pip.style().unpolish(self.btn_pip)
-        self.btn_pip.style().polish(self.btn_pip)
+        self.btn_pip.setActive(active)
 
     def set_media_title(self, title: str):
         if title:
