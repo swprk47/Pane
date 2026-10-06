@@ -57,6 +57,13 @@ class AppSettings:
         except Exception:
             return []
 
+    def get_auto_next(self) -> bool:
+        """Play the next video of the folder when one ends (on by default)."""
+        return str(self.settings.value("auto_next", True)).lower() not in ("false", "0")
+
+    def set_auto_next(self, enabled: bool):
+        self.settings.setValue("auto_next", bool(enabled))
+
     def get_volume(self) -> float:
         return float(self.settings.value("last_volume", 100.0))
 

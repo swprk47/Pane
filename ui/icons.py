@@ -150,6 +150,22 @@ SVG_ICONS = {
         <path d="M17.6 6 V18"/><g transform="translate(24 0) scale(-1 1) translate(7.4 0)"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/></g>
     </svg>""",
 
+    "skip_prev_glass": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M4.2 6 V18"/><g transform="translate(6.6 12) scale(0.8) translate(-3.8 -12)" stroke-width="2.4"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/><path d="M19 8.8 Q19 6.6 17.24 7.92 L13.56 10.68 Q11.8 12 13.56 13.32 L17.24 16.08 Q19 17.4 19 15.2 Z"/></g>
+    </svg>""",
+
+    "skip_next_glass": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M19.8 6 V18"/><g transform="translate(24 0) scale(-1 1) translate(6.6 12) scale(0.8) translate(-3.8 -12)" stroke-width="2.4"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/><path d="M19 8.8 Q19 6.6 17.24 7.92 L13.56 10.68 Q11.8 12 13.56 13.32 L17.24 16.08 Q19 17.4 19 15.2 Z"/></g>
+    </svg>""",
+
+    "skip_prev": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M4.2 6 V18"/><g transform="translate(6.6 12) scale(0.8) translate(-3.8 -12)" stroke-width="2.4"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/><path d="M19 8.8 Q19 6.6 17.24 7.92 L13.56 10.68 Q11.8 12 13.56 13.32 L17.24 16.08 Q19 17.4 19 15.2 Z"/></g>
+    </svg>""",
+
+    "skip_next": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M19.8 6 V18"/><g transform="translate(24 0) scale(-1 1) translate(6.6 12) scale(0.8) translate(-3.8 -12)" stroke-width="2.4"><path d="M11 8.8 Q11 6.6 9.24 7.92 L5.56 10.68 Q3.8 12 5.56 13.32 L9.24 16.08 Q11 17.4 11 15.2 Z"/><path d="M19 8.8 Q19 6.6 17.24 7.92 L13.56 10.68 Q11.8 12 13.56 13.32 L17.24 16.08 Q19 17.4 19 15.2 Z"/></g>
+    </svg>""",
+
     "close": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round">
         <line x1="18" y1="6" x2="6" y2="18"/>
         <line x1="6" y1="6" x2="18" y2="18"/>

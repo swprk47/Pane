@@ -66,7 +66,9 @@ def test_controller_qss_does_not_resize_the_glass_buttons(controller):
 def test_every_icon_button_animates(controller):
     kinds = {b.toolTip().split(" ")[0]: b.kind for b in controller.findChildren(GlassButton)}
     assert len(kinds) >= 8
-    assert all(b.cursor().shape() == Qt.PointingHandCursor for b in controller.findChildren(GlassButton))
+    usable = [b for b in controller.findChildren(GlassButton) if b.isEnabled()]
+    assert all(b.cursor().shape() == Qt.PointingHandCursor for b in usable)
+    assert all(b.cursor().shape() == Qt.ArrowCursor for b in controller.findChildren(GlassButton) if not b.isEnabled())
 
 
 def test_play_controls_fit_inside_the_hover_zone(controller):

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- Continuous play: when a video ends, the next video in the same folder (natural file-name order) plays after a 3 s card with Cancel / Play now; Shift+, / Shift+. (or PageUp / PageDown) and new controller buttons move between videos; the right-click menu can turn auto-play off
+- Pressing play on a finished video watches it again
+- New glass look for all controls with smooth transitions, floating title bar that hides with the controls, dark glass pause / play symbol, new app icon
+- Fixes: controls never auto-hid until the first pause / resume; controls stayed hidden after a pause while hidden; clicking the video reacts at once
+
 ## 1.0.0 - 2026-10-04 (first release, private sharing)
 - Video player built on libmpv, rendered through the OpenGL render API into a Qt widget
 - 0.05x precision speed with up to 6 pinned presets, per-chip delete, fine slider

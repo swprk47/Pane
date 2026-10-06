@@ -14,7 +14,7 @@ cached pixmap; only the brightness overlay, the icon and the text are painted pe
 """
 import time
 
-from PySide6.QtCore import Qt, QEasingCurve, QPointF, QRectF, QSize, QTimer
+from PySide6.QtCore import Qt, QEasingCurve, QEvent, QPointF, QRectF, QSize, QTimer
 from PySide6.QtGui import (QBrush, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen,
                            QPixmap, QRadialGradient)
 from PySide6.QtWidgets import QPushButton
@@ -26,6 +26,7 @@ PRESS_OUT_MS = 320      # and settles back slowly
 ICON_FADE_MS = 300      # play <-> pause swap (old icon shrinks away, new one grows in)
 ICON_SWAP_SCALE = 0.78  # how small the icons get at the far end of the swap
 ACTIVE_MS = 220         # a pill turning "on" (selected preset, PIP active)
+DISABLED_OPACITY = 0.32  # a button that cannot be used right now (no previous / next video)
 
 # --- glass material (design "R2": clear glass, white -> pale serenity rim) -----------------------
 DISC_MARGIN = 10        # transparent room around a disc for the shadow
@@ -383,7 +384,7 @@ class GlassButton(QPushButton, Tweening):
         px = self.iconSize().width()
         pm = icon.pixmap(QSize(px, px), dpr)
         p.save()
-        p.setOpacity(opacity)
+        p.setOpacity(p.opacity() * opacity)       # (multiply: a disabled button is dimmed as a whole)
         p.translate(self.width() / 2.0, self.height() / 2.0)
         p.scale(scale, scale)
         p.drawPixmap(QPointF(-px / 2.0, -px / 2.0), pm)
@@ -420,10 +421,20 @@ class GlassButton(QPushButton, Tweening):
                 r = max(0.0, self._radius - 1)
                 p.drawRoundedRect(inner, r, r)
 
+    def changeEvent(self, event):
+        if event.type() == QEvent.EnabledChange:
+            self.setCursor(Qt.PointingHandCursor if self.isEnabled() else Qt.ArrowCursor)
+            if not self.isEnabled():
+                self._hover = self._press = 0.0
+            self.update()
+        super().changeEvent(event)
+
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        if not self.isEnabled():
+            p.setOpacity(DISABLED_OPACITY)
         h, pr = self._hover, self._press
         rect = self._glass_rect()
         if self.kind in ("disc", "pill"):

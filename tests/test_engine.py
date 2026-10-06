@@ -171,3 +171,39 @@ def test_default_screenshot_lands_in_the_capture_dir(engine, sample_video, pump,
     out = engine.take_screenshot()                       # no explicit path: the default location
     assert out and out.startswith(str(tmp_path))
     assert (tmp_path / out.split("\\")[-1].split("/")[-1]).exists()
+
+
+# --- the end of a file -------------------------------------------------------
+
+def _run_to_the_end(engine, sample_video, pump):
+    engine.load_file(sample_video)
+    engine.play()
+    engine.set_speed(4.0)
+    assert pump(lambda: engine.at_end(), timeout=8.0), "the sample never reached its end"
+
+
+def test_play_at_the_end_starts_the_file_again(engine, sample_video, pump):
+    ended = []
+    engine.file_ended.connect(lambda: ended.append(1))
+    _run_to_the_end(engine, sample_video, pump)
+    assert not engine.is_playing(), "keep_open leaves it paused on the last frame"
+    engine.toggle_play()
+    assert pump(lambda: not engine.at_end() and engine.is_playing(), timeout=2.0)
+    assert engine._time_pos < 2.0, "it started again from the beginning"
+    assert len(ended) == 1
+
+
+def test_the_end_is_reported_again_after_a_replay(engine, sample_video, pump):
+    ended = []
+    engine.file_ended.connect(lambda: ended.append(1))
+    _run_to_the_end(engine, sample_video, pump)
+    engine.toggle_play()
+    assert pump(lambda: len(ended) >= 2, timeout=8.0), "the second end of the same file was not reported"
+
+
+def test_toggle_in_the_middle_still_just_pauses(engine, sample_video, pump):
+    engine.load_file(sample_video)
+    engine.play()
+    assert pump(lambda: engine._time_pos > 0.2, timeout=3.0)
+    engine.toggle_play()
+    assert not engine.is_playing() and not engine.at_end()

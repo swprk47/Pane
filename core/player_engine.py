@@ -120,6 +120,8 @@ class PlayerEngine(QObject):
         def _on_eof_reached(_name, value):
             if value is True:
                 self._emit_file_ended()
+            elif value is False:
+                self._eof_emitted = False        # left the end (seek / replay): the next end counts again
 
         @self.mpv.event_callback("end-file")
         def _on_end_file(event):
@@ -163,8 +165,25 @@ class PlayerEngine(QObject):
         """Pause playback."""
         self.mpv.pause = True
 
+    def at_end(self) -> bool:
+        """True while the file sits at its last frame (keep_open)."""
+        try:
+            return bool(self.mpv._get_property("eof-reached"))
+        except Exception:
+            return False
+
+    def replay(self):
+        """Start the file again from the beginning."""
+        self._eof_emitted = False
+        self.mpv.seek(0, reference="absolute")
+        self.mpv.pause = False
+
     def toggle_play(self):
-        """Toggle between play and pause."""
+        """Toggle between play and pause. At the end of the file, play starts it again (mpv would just stay
+        paused on the last frame)."""
+        if self.at_end():
+            self.replay()
+            return
         self.mpv.pause = not self.mpv.pause
 
     def is_playing(self) -> bool:
