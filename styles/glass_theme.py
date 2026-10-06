@@ -29,44 +29,6 @@ QWidget {
     letter-spacing: 0.2px;
 }
 
-/* Title Bar Window Action Buttons */
-.TitleButton {
-    background-color: transparent;
-    border: none;
-    border-radius: 8px;
-    color: rgba(255, 255, 255, 0.75);
-    font-size: 13px;
-    min-width: 34px;
-    min-height: 28px;
-    max-width: 34px;
-    max-height: 28px;
-}
-
-.TitleButton:hover {
-    background-color: rgba(255, 255, 255, 0.12);
-    color: #FFFFFF;
-}
-
-.TitleButton:pressed {
-    background-color: rgba(255, 255, 255, 0.20);
-}
-
-#CloseButton:hover {
-    background-color: #E81123;
-    color: #FFFFFF;
-}
-
-#CloseButton:pressed {
-    background-color: #BF0F1D;
-}
-
-/* Floating Glass Capsule & Popups */
-.GlassCapsule {
-    background-color: rgba(24, 24, 32, 0.90);
-    border: 1px solid rgba(255, 255, 255, 0.20);
-    border-radius: 24px;
-}
-
 /* (The round / pill buttons are painted by ui/glass_button.py and get no rules here: a class rule for
    them once leaked its font into every pill.) */
 
@@ -79,13 +41,6 @@ QWidget {
     font-size: 16px;
     font-weight: 600;
     padding: 8px 18px;
-}
-
-/* Dropdown / Popups */
-#SpeedPopupWidget {
-    background-color: rgba(28, 28, 36, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 14px;
 }
 
 /* Empty Video Viewport placeholder */

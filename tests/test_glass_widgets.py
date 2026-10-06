@@ -106,7 +106,7 @@ def test_slider_handle_grows_and_the_press_halo_appears(host, pump):
     assert s.handle_diameter() == glass_slider.HANDLE
     s._animate("hover", 1.0, 40)
     assert pump(lambda: s._hover > 0.99, timeout=1.0)
-    assert s.handle_diameter() == glass_slider.HANDLE_HOVER
+    assert abs(s.handle_diameter() - glass_slider.HANDLE_HOVER) < 0.1      # (the tween is within 1% of its end)
 
 
 # --- pills and flat buttons -------------------------------------------------

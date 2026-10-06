@@ -1,12 +1,11 @@
 import os
 import ctypes
-from pathlib import Path
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QLabel,
     QFileDialog, QMenu, QApplication
 )
-from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QSize, QTimer
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent, QAction
+from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QTimer
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent
 
 import pywinstyles
 from styles.glass_theme import GLASS_THEME_QSS

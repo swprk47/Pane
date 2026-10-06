@@ -1,17 +1,15 @@
 import json
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QSlider, QDialog, QListWidget,
-    QListWidgetItem, QGraphicsOpacityEffect
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QDialog, QListWidget, QListWidgetItem, QGraphicsOpacityEffect
 )
 from PySide6.QtGui import QPainter, QLinearGradient, QColor, QCursor, QMouseEvent, QContextMenuEvent
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QSettings, QSize
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QPropertyAnimation, QEasingCurve
 from ui.timeline_slider import TimelineSlider
 from ui.volume_popup import VolumePopup
 from core.settings import open_settings
 from ui.icons import get_svg_icon
-from ui.glass_button import GlassButton, DISC_MARGIN
+from ui.glass_button import GlassButton
 
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
@@ -83,6 +81,10 @@ class ControllerSettingsDialog(QDialog):
                 border-radius: 8px;
                 color: #FFFFFF;
                 padding: 6px 14px;
+                min-width: 20px;
+                min-height: 40px;
+                max-height: 40px;
+                outline: none;
             }
             QPushButton:hover {
                 background: rgba(255, 255, 255, 0.20);
@@ -284,40 +286,8 @@ class GlassController(QWidget):
 
     def _init_ui(self):
         self.setStyleSheet("""
-            /* Overlay style: icons sit directly on the video scrim, no bar. */
-            QPushButton {
-                background: transparent;
-                border: none;
-                border-radius: 20px;
-                color: #FFFFFF;
-                padding: 0px 10px;
-                min-width: 20px;
-                min-height: 40px;
-                max-height: 40px;
-                outline: none;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.16);
-            }
-            QPushButton:pressed {
-                background: rgba(255, 255, 255, 0.26);
-            }
-            QPushButton#PlayButton {
-                background: rgba(255, 255, 255, 0.16);
-                border: 1px solid rgba(255, 255, 255, 0.42);
-                border-radius: 28px;
-                min-width: 36px;
-                min-height: 56px;
-                max-height: 56px;
-            }
-            QPushButton#PlayButton:hover {
-                background: rgba(255, 255, 255, 0.26);
-                border: 1px solid rgba(255, 255, 255, 0.65);
-            }
-            QPushButton#PlayButton:pressed {
-                background: rgba(255, 255, 255, 0.34);
-                border: 1px solid rgba(255, 255, 255, 0.8);
-            }
+            /* Overlay style: icons sit directly on the video scrim, no bar. The buttons are GlassButtons
+               (painted, with their own stylesheet), so only the labels are styled here. */
             QLabel {
                 color: rgba(255, 255, 255, 0.92);
                 font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;

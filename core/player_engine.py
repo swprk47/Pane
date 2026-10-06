@@ -1,5 +1,4 @@
 import os
-import sys
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
@@ -81,14 +80,6 @@ class PlayerEngine(QObject):
             raise RuntimeError(f"Failed to initialize MPV engine: {e}")
 
         self._bind_mpv_observers()
-
-    def set_wid(self, wid: int):
-        """Set or update the native window handle for video rendering."""
-        self.wid = wid
-        try:
-            self.mpv.wid = wid
-        except Exception as e:
-            print(f"[PlayerEngine] Warning setting wid: {e}")
 
     def _bind_mpv_observers(self):
         """Bind property observers to emit Qt signals asynchronously."""

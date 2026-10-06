@@ -160,11 +160,9 @@ def test_pip_does_not_recreate_the_native_window(window, qapp, pump):
     assert not window.is_always_on_top()
 
     window.toggle_pip_mode()
-    pump(timeout=0.3)
-    assert window.is_always_on_top()
+    assert pump(lambda: window.is_always_on_top(), timeout=2.0)
     window.toggle_pip_mode()
-    pump(timeout=0.3)
-    assert not window.is_always_on_top()
+    assert pump(lambda: not window.is_always_on_top(), timeout=2.0)
 
     assert watch.recreated == 0
     assert int(window.winId()) == hwnd

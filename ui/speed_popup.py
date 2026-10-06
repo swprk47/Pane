@@ -1,8 +1,8 @@
 import json
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider, QApplication
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication
 )
-from PySide6.QtCore import Qt, Signal, QPoint, QPointF, QRectF, QSize, QTimer, QEvent
+from PySide6.QtCore import Qt, Signal, QPoint, QRectF, QTimer, QEvent
 from PySide6.QtGui import QPainter
 from core.settings import open_settings
 from ui.icons import get_svg_icon
@@ -127,7 +127,7 @@ class SpeedPopup(QWidget):
         header.addWidget(title)
 
         self.lbl_speed_val = QLabel("1.00x", self)
-        self.lbl_speed_val.setStyleSheet(f"font-size: 20px; font-weight: 700; color: #FFFFFF;")
+        self.lbl_speed_val.setStyleSheet("font-size: 20px; font-weight: 700; color: #FFFFFF;")
         header.addWidget(self.lbl_speed_val)
         header.addStretch()
 

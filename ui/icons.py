@@ -1,10 +1,9 @@
 """
 Vector SVG icons with Apple SF Symbols minimalist aesthetic.
 """
-from pathlib import Path
 from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtCore import Qt, QByteArray, QSize, QRectF
+from PySide6.QtCore import Qt, QByteArray, QRectF
 
 # Minimalist modern white SVG icons
 SVG_ICONS = {

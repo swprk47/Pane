@@ -1,6 +1,6 @@
 import ctypes
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QApplication, QGraphicsOpacityEffect
-from PySide6.QtCore import Qt, QPoint, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize
 from ui.icons import get_svg_icon, get_logo_icon
 from ui.glass_button import GlassButton
 

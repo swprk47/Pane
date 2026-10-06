@@ -1,9 +1,9 @@
 from html import escape
 
-from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QApplication
+from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QApplication
 from PySide6.QtGui import QPainter
 from ui.glass_button import GlassButton, paint_glass_panel
-from PySide6.QtCore import Qt, QTimer, QSize, QRectF
+from PySide6.QtCore import Qt, QTimer, QRectF
 
 from core.media_info import describe, to_plain_text
 from ui.icons import get_svg_icon

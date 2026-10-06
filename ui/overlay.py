@@ -4,9 +4,9 @@ file name, the thin progress line shown while the controls are hidden, and the
 big pause / play symbol shown over the picture.
 """
 from PySide6.QtWidgets import QWidget, QGraphicsOpacityEffect
-from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QEasingCurve, QTimer
+from PySide6.QtCore import Qt, QPointF, QSize, QEasingCurve, QTimer
 from PySide6.QtGui import (
-    QPainter, QLinearGradient, QColor, QFont, QFontMetrics, QPen, QPolygonF
+    QPainter, QLinearGradient, QColor, QFont, QFontMetrics
 )
 
 from ui.glass_button import Tweening, glass_disc_pixmap, icon_swap_params
@@ -221,7 +221,6 @@ class CenterBadge(_OverlayBase, Tweening):
         p.translate(-self.width() / 2.0, -self.height() / 2.0)
         p.drawPixmap(0, 0, glass_disc_pixmap(self.DISC, self.MARGIN, dpr, dark=True))
         px = self.ICON
-        x, y = (self.width() - px) / 2.0, (self.height() - px) / 2.0
 
         def draw_icon(mode, opacity, scale):
             if opacity <= 0.002:

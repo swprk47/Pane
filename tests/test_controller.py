@@ -163,8 +163,8 @@ def test_timeline_handle_and_track_grow_on_hover(controller, pump):
     assert rest_h == glass_slider.HANDLE and rest_t == glass_slider.TRACK
     t._animate("hover", 1.0, 60)
     assert pump(lambda: t._hover > 0.99, timeout=1.0)
-    assert t.handle_diameter() == glass_slider.HANDLE_HOVER > rest_h
-    assert t.track_thickness() == glass_slider.TRACK_HOVER > rest_t
+    assert abs(t.handle_diameter() - glass_slider.HANDLE_HOVER) < 0.1 and t.handle_diameter() > rest_h
+    assert abs(t.track_thickness() - glass_slider.TRACK_HOVER) < 0.1 and t.track_thickness() > rest_t
 
 
 def test_volume_popup_is_slim(controller):
