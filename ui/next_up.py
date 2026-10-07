@@ -49,8 +49,8 @@ class NextUpCard(QWidget, Tweening):
         self._ring_box = QRectF(self.WIDTH - self.PAD - self.RING + 4, self.HEIGHT - 8 - self.RING, self.RING, self.RING)
         cx, cy = self._ring_box.center().x(), self._ring_box.center().y()
 
-        self.btn_play = GlassButton(self, "disc", self.DISC, 19, shadow=False)
-        self.btn_play.setIcon(get_svg_icon("skip_next_glass", size=19, color="#F2FBFF"))
+        self.btn_play = GlassButton(self, "disc", self.DISC, 22, shadow=False)
+        self.btn_play.setIcon(get_svg_icon("next_frame_glass", size=22, color="#F2FBFF"))
         self.btn_play.setToolTip("기다리지 않고 바로 재생")
         self.btn_play.move(round(cx - self.btn_play.width() / 2), round(cy - self.btn_play.height() / 2))
         self.btn_cancel = GlassButton(self, "pill", 30, text_px=12, text_pad=14)
