@@ -41,6 +41,22 @@ class AppSettings:
             del positions[oldest_key]
         self._set_dict("resume_positions", positions)
 
+    def get_duration(self, file_path: str) -> float:
+        """Length in seconds remembered for a file (0.0 when never seen): the start screen's progress line."""
+        return float(self._get_dict("durations").get(file_path, 0.0))
+
+    def save_duration(self, file_path: str, duration: float):
+        if not file_path or duration <= 0:
+            return
+        durations = self._get_dict("durations")
+        if durations.get(file_path) == round(duration, 2):
+            return
+        durations.pop(file_path, None)
+        durations[file_path] = round(duration, 2)
+        while len(durations) > 50:
+            del durations[next(iter(durations))]
+        self._set_dict("durations", durations)
+
     def add_recent_file(self, file_path: str):
         """Add file path to recent files list (max 10)."""
         recent = self.get_recent_files()
