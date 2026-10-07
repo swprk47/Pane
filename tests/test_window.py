@@ -67,6 +67,7 @@ def test_empty_state(window):
     assert window.viewport.notice_widget.isVisible()
     assert not window.controller.isVisible(), "controls must stay hidden without media"
     assert not window.top_scrim.isVisible()
+    assert not window.center_badge.isVisible(), "no pause symbol over the start screen"
     assert not window.viewport.start_screen._logo.isNull()
 
 
