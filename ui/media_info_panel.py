@@ -22,7 +22,7 @@ class MediaInfoPanel(QFrame):
 
     def paintEvent(self, event):
         p = QPainter(self)
-        paint_glass_panel(p, QRectF(self.rect()), 18)
+        paint_glass_panel(p, QRectF(self.rect()), 18, calm=True)
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -47,7 +47,7 @@ class MediaInfoPanel(QFrame):
         header.addWidget(title)
         header.addStretch()
 
-        self.btn_copy = GlassButton(self, "pill", 26, text_px=12, text_pad=12)
+        self.btn_copy = GlassButton(self, "pill", 26, text_px=12, text_pad=12, calm=True)
         self.btn_copy.setText("복사")
         self.btn_copy.setToolTip("이 정보를 텍스트로 복사")
         self.btn_copy.clicked.connect(self.copy_to_clipboard)

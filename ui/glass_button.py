@@ -60,6 +60,13 @@ CALM_FROST = 0.30
 CALM_SHADE = 0.5
 CALM_ACTIVE_RIM = 0.85
 
+# the calm panel body: a scrim like the one behind the controls (black, denser downwards) + a touch of top light;
+# its rim is a little thicker than the main glass's so the panel's edge stays readable over any picture
+SCRIM_PANEL_TOP, SCRIM_PANEL_BOTTOM = 0.46, 0.68
+SCRIM_PANEL_GLOW = 0.12
+CALM_PANEL_RIM_W = 2.2
+CALM_PANEL_RIM = 0.45
+
 # panels (speed / volume popups): dark enough to read over any video, same rim and frost
 PANEL_FILL = (22, 24, 33, 218)
 PANEL_FROST_ALPHA = 0.16
@@ -220,18 +227,30 @@ def paint_glass_panel(p: QPainter, rect: QRectF, radius: float, calm: bool = Fal
         path = _shape(r, "panel", radius)
         q.save()
         q.setClipPath(path)
-        q.fillPath(path, _c(PANEL_FILL))
-        bg = QLinearGradient(r.topLeft(), r.bottomRight())
-        bg.setColorAt(0.0, _c(BODY_TOP, 1.3))
-        bg.setColorAt(1.0, _c(BODY_BOTTOM, 1.0))
-        q.fillPath(path, QBrush(bg))
-        _frost_band(q, r, "panel", radius, 12.0, PANEL_FROST_ALPHA * (CALM_FROST if calm else 1.0))
-        q.fillPath(path.subtracted(_shape(r.translated(1.5, 1.5), "panel", radius)),
-                   _c(SHADE, 0.7 * (CALM_SHADE if calm else 1.0)))
+        if calm:
+            # like the scrim behind the controls: black that gets denser downwards, a little light at the top
+            scrim = QLinearGradient(r.topLeft(), r.bottomLeft())
+            scrim.setColorAt(0.0, QColor(0, 0, 0, int(255 * SCRIM_PANEL_TOP)))
+            scrim.setColorAt(1.0, QColor(0, 0, 0, int(255 * SCRIM_PANEL_BOTTOM)))
+            q.fillPath(path, QBrush(scrim))
+            glow = QLinearGradient(r.topLeft(), r.bottomLeft())
+            glow.setColorAt(0.0, QColor(255, 255, 255, int(255 * SCRIM_PANEL_GLOW)))
+            glow.setColorAt(0.35, QColor(255, 255, 255, 0))
+            q.fillPath(path, QBrush(glow))
+            rim_w, rim_scale = CALM_PANEL_RIM_W, CALM_PANEL_RIM
+        else:
+            q.fillPath(path, _c(PANEL_FILL))
+            bg = QLinearGradient(r.topLeft(), r.bottomRight())
+            bg.setColorAt(0.0, _c(BODY_TOP, 1.3))
+            bg.setColorAt(1.0, _c(BODY_BOTTOM, 1.0))
+            q.fillPath(path, QBrush(bg))
+            _frost_band(q, r, "panel", radius, 12.0, PANEL_FROST_ALPHA)
+            q.fillPath(path.subtracted(_shape(r.translated(1.5, 1.5), "panel", radius)), _c(SHADE, 0.7))
+            rim_w, rim_scale = 1.5, 1.0
         q.restore()
-        q.setPen(QPen(_rim_brush(r, CALM_RIM if calm else 1.0), 1.5))
+        q.setPen(QPen(_rim_brush(r, rim_scale), rim_w))
         q.setBrush(Qt.NoBrush)
-        q.drawRoundedRect(r.adjusted(0.75, 0.75, -0.75, -0.75), radius - 0.75, radius - 0.75)
+        q.drawRoundedRect(r.adjusted(rim_w / 2, rim_w / 2, -rim_w / 2, -rim_w / 2), radius - rim_w / 2, radius - rim_w / 2)
         q.end()
         _panel_cache[key] = pm
     p.drawPixmap(rect.topLeft(), pm)
