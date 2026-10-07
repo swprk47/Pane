@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QWidget
 
 import ui.main_window as mw
 from core.settings import AppSettings
-from ui.next_up import NextUpCard
+from ui.next_up import NextUpCard, NEXT_UP_SECONDS
 
 
 @pytest.fixture
@@ -24,6 +24,12 @@ def episodes(tmp_path, sample_video):
 
 def current(window):
     return os.path.basename(window._current_file or "")
+
+
+@pytest.fixture(autouse=True)
+def mouse_away_from_card(monkeypatch):
+    """Where the real cursor happens to be must not hold a countdown (tests that need it over the card say so)."""
+    monkeypatch.setattr(NextUpCard, "_mouse_over", lambda self: False)
 
 
 # --- the card on its own ----------------------------------------------------
@@ -42,6 +48,30 @@ def test_card_counts_down_and_then_finishes(qapp, pump):
     assert card.remaining() < first
     assert pump(lambda: done, timeout=2.0)
     assert not card.isVisible() and not card.is_counting()
+
+
+def test_card_holds_while_the_mouse_is_on_it_and_goes_on_from_there(qapp, pump, monkeypatch):
+    host = QWidget()
+    host.resize(600, 400)
+    host.show()
+    card = NextUpCard(host)
+    done = []
+    card.finished.connect(lambda: done.append("finished"))
+    card.start("ep3.mp4", 0.5)
+    monkeypatch.setattr(NextUpCard, "_mouse_over", lambda self: True)
+    pump(timeout=0.15)
+    assert card.is_held()
+    held_at = card.remaining()
+    pump(timeout=0.8)                                # longer than the whole countdown
+    assert not done and card.is_counting()
+    assert card.remaining() == pytest.approx(held_at, abs=0.05), "the time stands still under the mouse"
+    monkeypatch.setattr(NextUpCard, "_mouse_over", lambda self: False)
+    assert pump(lambda: done, timeout=2.0), "it finishes after the mouse leaves"
+    assert not card.is_held()
+
+
+def test_card_counts_five_seconds_by_default():
+    assert NEXT_UP_SECONDS == 5.0
 
 
 def test_card_cancel_and_play_now_each_end_it_once(qapp):
@@ -232,7 +262,8 @@ def test_default_layout_has_the_video_buttons_at_the_two_ends():
     from ui.glass_controller import DEFAULT_LAYOUT, LAYOUT_VERSION
     center = DEFAULT_LAYOUT["center"]
     assert center[0] == "prev_file" and center[-1] == "next_file" and "play_pause" in center
-    assert LAYOUT_VERSION >= 4, "an older saved layout must be reset once so the new buttons appear"
+    assert LAYOUT_VERSION >= 5, "an older saved layout must be reset once so the new buttons appear"
+    assert "prev_frame" not in center and "next_frame" not in center, "frame stepping stays on , and . (buttons are optional)"
 
 
 def test_a_disabled_button_is_dimmed_and_shows_the_arrow_cursor(qapp):

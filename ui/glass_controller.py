@@ -13,12 +13,12 @@ from ui.glass_button import GlassButton
 
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
-    "center": ["prev_file", "prev_frame", "seek_backward", "play_pause", "seek_forward", "next_frame", "next_file"],
+    "center": ["prev_file", "seek_backward", "play_pause", "seek_forward", "next_file"],
     "right": ["screenshot", "subtitle", "volume", "fullscreen", "settings"]
 }
 
 # Bump when DEFAULT_LAYOUT changes so stale saved layouts get replaced once.
-LAYOUT_VERSION = 4
+LAYOUT_VERSION = 5
 
 BUTTON_METADATA = {
     "play_pause": {"name": "재생 / 일시정지", "icon_name": "play"},
@@ -41,6 +41,7 @@ BUTTON_METADATA = {
 # Transport glass buttons: disc diameter / icon size in px (the widget adds DISC_MARGIN around the disc for the shadow)
 PLAY_DISC, PLAY_ICON = 72, 52
 SIDE_DISC, SIDE_ICON = 48, 32
+VIDEO_STEP_DIAMETER, VIDEO_STEP_ICON = 48, 30     # previous / next video (the hover highlight is a disc this big)
 
 
 class ControllerSettingsDialog(QDialog):
@@ -391,9 +392,10 @@ class GlassController(QWidget):
 
     ICON_COLOR = "#F2FBFF"
 
-    def _plain_button(self, icon_name: str, tooltip: str, icon_px: int = 16, color: str = None) -> GlassButton:
+    def _plain_button(self, icon_name: str, tooltip: str, icon_px: int = 16, color: str = None,
+                      diameter: int = 40) -> GlassButton:
         """Icon-only round button without a disc: a soft highlight fades in on hover / press."""
-        btn = GlassButton(self, "plain", 40, icon_px)
+        btn = GlassButton(self, "plain", diameter, icon_px)
         btn.setIcon(get_svg_icon(icon_name, size=icon_px, color=color))
         btn.setToolTip(tooltip)
         return btn
@@ -413,13 +415,15 @@ class GlassController(QWidget):
             return self.btn_play
 
         elif key == "prev_file":
-            self.btn_prev_file = self._plain_button("skip_prev_glass", "이전 영상 (Shift+,)", 22, self.ICON_COLOR)
+            self.btn_prev_file = self._plain_button("skip_prev_glass", "이전 영상 (Shift+,)", VIDEO_STEP_ICON, self.ICON_COLOR,
+                                                VIDEO_STEP_DIAMETER)
             self.btn_prev_file.setEnabled(self._has_prev)
             self.btn_prev_file.clicked.connect(self.prev_file_clicked.emit)
             return self.btn_prev_file
 
         elif key == "next_file":
-            self.btn_next_file = self._plain_button("skip_next_glass", "다음 영상 (Shift+.)", 22, self.ICON_COLOR)
+            self.btn_next_file = self._plain_button("skip_next_glass", "다음 영상 (Shift+.)", VIDEO_STEP_ICON, self.ICON_COLOR,
+                                                VIDEO_STEP_DIAMETER)
             self.btn_next_file.setEnabled(self._has_next)
             self.btn_next_file.clicked.connect(self.next_file_clicked.emit)
             return self.btn_next_file
