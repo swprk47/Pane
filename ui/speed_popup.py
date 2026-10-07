@@ -182,6 +182,7 @@ class SpeedPopup(QWidget):
         # Without WA_StyledBackground a plain QWidget ignores the QSS background.
         self.setFixedWidth(PANEL_WIDTH)
         self._anchor = None
+        self._align_to = None          # the panel's left edge lines up with this widget's left edge (when it is shown)
         self.hide()
 
         self.settings = open_settings("SpeedSettings")
@@ -430,30 +431,36 @@ class SpeedPopup(QWidget):
     # --- showing / dismissing --------------------------------------------
 
     def _place(self):
-        """Float above the anchor, kept inside the parent window."""
+        """Float above the anchor, kept inside the parent window: its left edge on the ``align_to`` widget's left
+        edge (the controls' left margin, so the panel sits in the bottom-left corner), else centred on the anchor."""
         target, parent = self._anchor, self.parentWidget()
         if target is None or parent is None:
             return
         pos = target.mapTo(parent, QPoint(0, 0))
-        x = pos.x() + (target.width() - self.width()) // 2
+        align = self._align_to
+        if align is not None and align.isVisible():
+            x = align.mapTo(parent, QPoint(0, 0)).x()
+        else:
+            x = pos.x() + (target.width() - self.width()) // 2
         y = pos.y() - self.height() - 10
         x = max(8, min(x, parent.width() - self.width() - 8))
         y = max(8, y)
         self.move(x, y)
 
-    def show_above_widget(self, target_widget: QWidget):
-        """Float the panel above `target_widget`, kept inside the parent window."""
+    def show_above_widget(self, target_widget: QWidget, align_to: QWidget = None):
+        """Float the panel above `target_widget`, kept inside the parent window (see ``_place``)."""
         self._anchor = target_widget
+        self._align_to = align_to
         self.adjustSize()
         self._place()
         self.show()
         self.raise_()
 
-    def toggle_above_widget(self, target_widget: QWidget):
+    def toggle_above_widget(self, target_widget: QWidget, align_to: QWidget = None):
         if self.isVisible():
             self.hide()
         else:
-            self.show_above_widget(target_widget)
+            self.show_above_widget(target_widget, align_to)
 
     def showEvent(self, event):
         super().showEvent(event)

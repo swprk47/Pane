@@ -95,3 +95,13 @@ def test_finish_then_open_another_file(window, sample_video, pump):
     window.engine.set_speed(1.0)
     window.load_media_file(sample_video)                   # replay after EOF
     assert pump(lambda: window.engine.is_playing() and window.engine._time_pos > 0.3, timeout=3.0)
+
+
+def test_speed_panel_opens_in_the_bottom_left_corner_above_the_controls(playing, pump):
+    w = playing
+    assert pump(lambda: w.controller.left_zone.isVisible())
+    w._show_speed_popup()
+    left = w.controller.left_zone.mapTo(w.central_widget, w.controller.left_zone.rect().topLeft()).x()
+    assert w.speed_popup.isVisible() and w.speed_popup.x() == left
+    assert w.speed_popup.y() + w.speed_popup.height() <= w.controller.btn_speed.mapTo(
+        w.central_widget, w.controller.btn_speed.rect().topLeft()).y()

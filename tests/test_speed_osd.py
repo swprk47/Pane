@@ -273,3 +273,27 @@ def test_osd_without_or_with_unknown_icon_hides_icon(osd):
 def test_osd_fades_out_after_hold(osd, pump):
     osd.show_message("bye", "check")
     assert pump(lambda: not osd.isVisible(), timeout=2.5), "OSD did not fade out"
+
+
+# --- where the panel opens -----------------------------------------------------
+
+def test_panel_opens_at_the_left_margin_when_asked_else_centred_on_the_anchor(qapp):
+    host = QWidget()
+    host.resize(700, 400)
+    anchor = QWidget(host)
+    anchor.setGeometry(300, 350, 60, 30)
+    margin = QWidget(host)
+    margin.setGeometry(24, 350, 150, 30)
+    popup = SpeedPopup(host)
+    host.show()
+    popup.show_above_widget(anchor, align_to=margin)
+    assert popup.x() == 24, "left edge on the controls' left margin: the bottom-left corner"
+    assert popup.y() + popup.height() < anchor.y()
+    popup.hide()
+    popup.show_above_widget(anchor)
+    assert popup.x() == anchor.x() + (anchor.width() - popup.width()) // 2
+    popup.hide()
+    margin.hide()
+    popup.show_above_widget(anchor, align_to=margin)
+    assert popup.x() == anchor.x() + (anchor.width() - popup.width()) // 2, "a hidden margin widget is ignored"
+    host.close()
