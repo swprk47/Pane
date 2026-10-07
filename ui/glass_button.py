@@ -53,6 +53,20 @@ DARK_BOTTOM = (8, 11, 18, 128)
 DARK_FROST_ALPHA = 0.16
 DARK_SHADE = (0, 0, 0, 70)
 
+# the calm version (inside the speed panel): same material, but the rim, the frost band and the shade are turned
+# down so a list of rows does not glow; the lit (selected) row keeps a clear white rim
+CALM_RIM = 0.38
+CALM_FROST = 0.30
+CALM_SHADE = 0.5
+CALM_ACTIVE_RIM = 0.85
+
+# the calm panel body: a scrim like the one behind the controls (black, denser downwards) + a touch of top light;
+# its rim is a little thicker than the main glass's so the panel's edge stays readable over any picture
+SCRIM_PANEL_TOP, SCRIM_PANEL_BOTTOM = 0.46, 0.68
+SCRIM_PANEL_GLOW = 0.12
+CALM_PANEL_RIM_W = 2.2
+CALM_PANEL_RIM = 0.45
+
 # panels (speed / volume popups): dark enough to read over any video, same rim and frost
 PANEL_FILL = (22, 24, 33, 218)
 PANEL_FROST_ALPHA = 0.16
@@ -99,10 +113,10 @@ def _shape(rect: QRectF, kind: str, radius: float) -> QPainterPath:
     return path
 
 
-def _rim_brush(rect: QRectF) -> QBrush:
+def _rim_brush(rect: QRectF, scale: float = 1.0) -> QBrush:
     g = QLinearGradient(rect.topLeft(), rect.bottomRight())
     for pos, col in RIM_STOPS:
-        g.setColorAt(pos, _c(col))
+        g.setColorAt(pos, _c(col, scale))
     return QBrush(g)
 
 
@@ -128,7 +142,7 @@ def _frost_band(p: QPainter, rect: QRectF, kind: str, radius: float, band: float
 
 
 def _build_base(kind: str, w: int, h: int, margin: int, radius: float, shadow: bool, dpr: float,
-                dark: bool = False) -> QPixmap:
+                dark: bool = False, calm: bool = False) -> QPixmap:
     """Shadow + body + frost + shade + rim of a resting glass shape."""
     tw, th = w + 2 * margin, h + 2 * margin
     pm = QPixmap(int(tw * dpr), int(th * dpr))
@@ -167,13 +181,14 @@ def _build_base(kind: str, w: int, h: int, margin: int, radius: float, shadow: b
     bg.setColorAt(0.0, _c(DARK_TOP if dark else BODY_TOP))
     bg.setColorAt(1.0, _c(DARK_BOTTOM if dark else BODY_BOTTOM))
     p.fillPath(path, QBrush(bg))
-    _frost_band(p, rect, kind, radius, min(13.0, short * 0.36), DARK_FROST_ALPHA if dark else FROST_ALPHA)
+    frost = DARK_FROST_ALPHA if dark else FROST_ALPHA
+    _frost_band(p, rect, kind, radius, min(13.0, short * 0.36), frost * (CALM_FROST if calm else 1.0))
     shifted = _shape(rect.translated(1.5, 1.5), kind, radius)
-    p.fillPath(path.subtracted(shifted), _c(DARK_SHADE if dark else SHADE))
+    p.fillPath(path.subtracted(shifted), _c(DARK_SHADE if dark else SHADE, CALM_SHADE if calm else 1.0))
     p.restore()
 
     rim_w = 2.0 if short >= 60 else 1.5
-    p.setPen(QPen(_rim_brush(rect), rim_w))
+    p.setPen(QPen(_rim_brush(rect, CALM_RIM if calm else 1.0), rim_w))
     p.setBrush(Qt.NoBrush)
     inner = rect.adjusted(rim_w / 2, rim_w / 2, -rim_w / 2, -rim_w / 2)
     if kind == "disc":
@@ -195,10 +210,11 @@ def glass_disc_pixmap(diameter: int, margin: int, dpr: float, shadow: bool = Tru
     return pm
 
 
-def paint_glass_panel(p: QPainter, rect: QRectF, radius: float):
-    """The glass material as a floating panel: dark clear body, frosted edge, thin light rim."""
+def paint_glass_panel(p: QPainter, rect: QRectF, radius: float, calm: bool = False):
+    """The glass material as a floating panel: dark clear body, frosted edge, thin light rim
+    (``calm``: the edge light turned down)."""
     dpr = p.device().devicePixelRatioF() if hasattr(p.device(), "devicePixelRatioF") else 1.0
-    key = (int(rect.width()), int(rect.height()), radius, dpr)
+    key = (int(rect.width()), int(rect.height()), radius, dpr, calm)
     pm = _panel_cache.get(key)
     if pm is None:
         w, h = int(rect.width()), int(rect.height())
@@ -211,17 +227,30 @@ def paint_glass_panel(p: QPainter, rect: QRectF, radius: float):
         path = _shape(r, "panel", radius)
         q.save()
         q.setClipPath(path)
-        q.fillPath(path, _c(PANEL_FILL))
-        bg = QLinearGradient(r.topLeft(), r.bottomRight())
-        bg.setColorAt(0.0, _c(BODY_TOP, 1.3))
-        bg.setColorAt(1.0, _c(BODY_BOTTOM, 1.0))
-        q.fillPath(path, QBrush(bg))
-        _frost_band(q, r, "panel", radius, 12.0, PANEL_FROST_ALPHA)
-        q.fillPath(path.subtracted(_shape(r.translated(1.5, 1.5), "panel", radius)), _c(SHADE, 0.7))
+        if calm:
+            # like the scrim behind the controls: black that gets denser downwards, a little light at the top
+            scrim = QLinearGradient(r.topLeft(), r.bottomLeft())
+            scrim.setColorAt(0.0, QColor(0, 0, 0, int(255 * SCRIM_PANEL_TOP)))
+            scrim.setColorAt(1.0, QColor(0, 0, 0, int(255 * SCRIM_PANEL_BOTTOM)))
+            q.fillPath(path, QBrush(scrim))
+            glow = QLinearGradient(r.topLeft(), r.bottomLeft())
+            glow.setColorAt(0.0, QColor(255, 255, 255, int(255 * SCRIM_PANEL_GLOW)))
+            glow.setColorAt(0.35, QColor(255, 255, 255, 0))
+            q.fillPath(path, QBrush(glow))
+            rim_w, rim_scale = CALM_PANEL_RIM_W, CALM_PANEL_RIM
+        else:
+            q.fillPath(path, _c(PANEL_FILL))
+            bg = QLinearGradient(r.topLeft(), r.bottomRight())
+            bg.setColorAt(0.0, _c(BODY_TOP, 1.3))
+            bg.setColorAt(1.0, _c(BODY_BOTTOM, 1.0))
+            q.fillPath(path, QBrush(bg))
+            _frost_band(q, r, "panel", radius, 12.0, PANEL_FROST_ALPHA)
+            q.fillPath(path.subtracted(_shape(r.translated(1.5, 1.5), "panel", radius)), _c(SHADE, 0.7))
+            rim_w, rim_scale = 1.5, 1.0
         q.restore()
-        q.setPen(QPen(_rim_brush(r), 1.5))
+        q.setPen(QPen(_rim_brush(r, rim_scale), rim_w))
         q.setBrush(Qt.NoBrush)
-        q.drawRoundedRect(r.adjusted(0.75, 0.75, -0.75, -0.75), radius - 0.75, radius - 0.75)
+        q.drawRoundedRect(r.adjusted(rim_w / 2, rim_w / 2, -rim_w / 2, -rim_w / 2), radius - rim_w / 2, radius - rim_w / 2)
         q.end()
         _panel_cache[key] = pm
     p.drawPixmap(rect.topLeft(), pm)
@@ -271,9 +300,12 @@ class Tweening:
 class GlassButton(QPushButton, Tweening):
     def __init__(self, parent=None, kind: str = "plain", diameter: int = 40, icon_px: int = 16, *,
                  width: int = None, text_px: int = 13, text_pad: int = 14, shadow: bool = None,
-                 radius: float = None, danger: bool = False, accent_text: bool = False, base=None, tint: bool = False, bold: bool = False):
+                 radius: float = None, danger: bool = False, accent_text: bool = False, base=None, tint: bool = False, bold: bool = False,
+                 align_left: bool = False, calm: bool = False):
         super().__init__(parent)
         self.kind = kind
+        self._align_left = align_left            # text starts at the left padding instead of the centre
+        self._calm = calm                        # panel version of the glass: much less rim / frost light
         self._d = diameter                       # disc diameter, or the height of a pill / flat button
         self._explicit_w = width
         self._text_pad = text_pad
@@ -395,24 +427,25 @@ class GlassButton(QPushButton, Tweening):
 
     def _paint_glass(self, p, rect, h, pr):
         dpr = self.devicePixelRatioF()
-        key = (self.kind, int(rect.width()), int(rect.height()), self._m, self._radius, self._shadow, dpr)
+        key = (self.kind, int(rect.width()), int(rect.height()), self._m, self._radius, self._shadow, dpr, self._calm)
         base = _base_cache.get(key)
         if base is None:
             base = _base_cache[key] = _build_base(self.kind, int(rect.width()), int(rect.height()), self._m,
-                                                   self._radius, self._shadow, dpr)
+                                                   self._radius, self._shadow, dpr, calm=self._calm)
         p.drawPixmap(0, 0, base)
         path = _shape(rect, self.kind, self._radius)
         fill = HOVER_FILL * h + PRESS_FILL * pr + ACTIVE_FILL * self._act
         if fill > 0:
             p.fillPath(path, QColor(255, 255, 255, int(255 * fill)))
-        frost = HOVER_FROST * h + PRESS_FROST * pr
+        frost = (HOVER_FROST * h + PRESS_FROST * pr) * (CALM_FROST if self._calm else 1.0)
         if frost > 0:
             p.save()
             p.setClipPath(path)
             _frost_band(p, rect, self.kind, self._radius, min(13.0, min(rect.width(), rect.height()) * 0.36), frost)
             p.restore()
         if self._act > 0:
-            p.setPen(QPen(QColor(*(ACTIVE_RIM_TINT if self._tint else ACTIVE_RIM), int(235 * self._act)), 1.8))
+            rim_a = 235 * (CALM_ACTIVE_RIM if self._calm else 1.0)
+            p.setPen(QPen(QColor(*(ACTIVE_RIM_TINT if self._tint else ACTIVE_RIM), int(rim_a * self._act)), 1.8))
             p.setBrush(Qt.NoBrush)
             inner = rect.adjusted(1, 1, -1, -1)
             if self.kind == "disc":
@@ -459,7 +492,10 @@ class GlassButton(QPushButton, Tweening):
                 color = QColor(255, 255, 255, 255)
             p.setPen(color)
             p.setFont(self.font())
-            p.drawText(rect, Qt.AlignCenter, self.text())
+            if self._align_left:
+                p.drawText(rect.adjusted(self._text_pad, 0, 0, 0), Qt.AlignLeft | Qt.AlignVCenter, self.text())
+            else:
+                p.drawText(rect, Qt.AlignCenter, self.text())
         if self._prev_icon is not None and self._fade < 1.0:
             old_o, old_s, new_o, new_s = icon_swap_params(self._fade)
             self._draw_icon(p, self._prev_icon, old_o, old_s)

@@ -49,11 +49,11 @@ class NextUpCard(QWidget, Tweening):
         self._ring_box = QRectF(self.WIDTH - self.PAD - self.RING + 4, self.HEIGHT - 8 - self.RING, self.RING, self.RING)
         cx, cy = self._ring_box.center().x(), self._ring_box.center().y()
 
-        self.btn_play = GlassButton(self, "disc", self.DISC, 22, shadow=False)
+        self.btn_play = GlassButton(self, "disc", self.DISC, 22, shadow=False, calm=True)
         self.btn_play.setIcon(get_svg_icon("next_frame_glass", size=22, color="#F2FBFF"))
         self.btn_play.setToolTip("기다리지 않고 바로 재생")
         self.btn_play.move(round(cx - self.btn_play.width() / 2), round(cy - self.btn_play.height() / 2))
-        self.btn_cancel = GlassButton(self, "pill", 30, text_px=12, text_pad=14)
+        self.btn_cancel = GlassButton(self, "pill", 30, text_px=12, text_pad=14, calm=True)
         self.btn_cancel.setText("취소")
         self.btn_cancel.setToolTip("이 영상에 머물기 (Esc)")
         self.btn_cancel.move(round(self._ring_box.left() - 10 - self.btn_cancel.width()), round(cy - self.btn_cancel.height() / 2))
@@ -143,7 +143,7 @@ class NextUpCard(QWidget, Tweening):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
         p.setOpacity(self._vis)
-        paint_glass_panel(p, QRectF(self.rect()), 18)
+        paint_glass_panel(p, QRectF(self.rect()), 18, calm=True)
 
         left = self.remaining()
         secs = max(1, int(left + 0.999))

@@ -177,3 +177,74 @@ def test_icon_swap_shrinks_the_old_icon_and_grows_the_new_one_without_a_muddy_ov
 
 def test_state_transitions_are_not_abrupt():
     assert glass_button.HOVER_MS >= 150 and glass_button.PRESS_OUT_MS >= 250 and glass_button.ICON_FADE_MS >= 250
+
+
+# --- the calm glass inside the speed panel -----------------------------------------------------
+
+def _edge_light(img):
+    """Total alpha along the outline of the shape (rim + the frost band just inside it)."""
+    total = 0
+    for x in range(img.width()):
+        for y in (0, 1, 2, 3, img.height() - 4, img.height() - 3, img.height() - 2, img.height() - 1):
+            total += img.pixelColor(x, y).alpha()
+    return total
+
+
+def test_calm_glass_has_much_less_edge_light_than_the_main_glass():
+    from ui.glass_button import _build_base, paint_glass_panel
+    plain = _build_base("pill", 160, 24, 0, 12, False, 1.0).toImage()
+    calm = _build_base("pill", 160, 24, 0, 12, False, 1.0, calm=True).toImage()
+    assert _edge_light(calm) < 0.6 * _edge_light(plain)
+    assert calm.pixelColor(80, 12).alpha() == plain.pixelColor(80, 12).alpha(), "the body is the same"
+
+
+def test_calm_panel_is_a_see_through_scrim_with_a_thicker_rim(qapp):
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QImage, QPainter
+    from ui.glass_button import paint_glass_panel
+
+    def paint(calm):
+        img = QImage(190, 120, QImage.Format_ARGB32)
+        img.fill(Qt.transparent)
+        p = QPainter(img)
+        paint_glass_panel(p, QRectF(0, 0, 190, 120), 16, calm=calm)
+        p.end()
+        return img
+
+    plain, calm = paint(False), paint(True)
+    assert calm.pixelColor(95, 60).alpha() < plain.pixelColor(95, 60).alpha() - 40, "the calm body lets the picture through"
+    assert calm.pixelColor(95, 110).alpha() > calm.pixelColor(95, 14).alpha() + 25, "...and gets denser downwards, like the control scrim"
+    assert glass_button.CALM_PANEL_RIM_W > 1.5, "the calm panel's edge is a bit thicker than the main glass rim"
+    rim_rows = [calm.pixelColor(95, y).alpha() for y in range(0, 4)]
+    assert min(rim_rows[:2]) > calm.pixelColor(95, 8).alpha(), "the rim is a visible line at the edge"
+
+
+def test_the_speed_panel_uses_the_calm_glass_but_the_main_buttons_do_not(window):
+    sp = window.speed_popup
+    rows = [c for c in sp.preset_container.findChildren(GlassButton) if c.kind == "pill"]
+    assert rows and all(c._calm for c in rows) and sp.btn_reset._calm
+    assert not window.controller.btn_speed._calm and not window.controller.btn_play._calm
+
+
+def test_calm_glass_is_for_the_speed_info_and_next_up_panels_only(window, monkeypatch):
+    import ui.media_info_panel as mip
+    import ui.next_up as nu
+    import ui.speed_popup as sp
+    import ui.volume_popup as vp
+    seen = {}
+
+    def spy(name):
+        real = glass_button.paint_glass_panel
+
+        def f(p, rect, radius, calm=False):
+            seen[name] = calm
+            return real(p, rect, radius, calm)
+        return f
+    for name, mod in (("info", mip), ("next_up", nu), ("speed", sp), ("volume", vp)):
+        monkeypatch.setattr(mod, "paint_glass_panel", spy(name))
+    window.next_up._vis = 1.0
+    for w in (window.info_panel, window.next_up, window.speed_popup, window.controller.volume_popup):
+        w.grab()
+    assert seen == {"info": True, "next_up": True, "speed": True, "volume": False}
+    assert window.info_panel.btn_copy._calm
+    assert window.next_up.btn_cancel._calm and window.next_up.btn_play._calm

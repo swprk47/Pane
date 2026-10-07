@@ -643,7 +643,7 @@ class MainWindow(QMainWindow):
 
     def _show_speed_popup(self):
         if hasattr(self.controller, "btn_speed"):
-            self.speed_popup.toggle_above_widget(self.controller.btn_speed)
+            self.speed_popup.toggle_above_widget(self.controller.btn_speed, align_to=self.controller.left_zone)
 
     def _on_viewport_clicked(self):
         if self.viewport.notice_widget.isVisible():
