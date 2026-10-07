@@ -177,3 +177,47 @@ def test_icon_swap_shrinks_the_old_icon_and_grows_the_new_one_without_a_muddy_ov
 
 def test_state_transitions_are_not_abrupt():
     assert glass_button.HOVER_MS >= 150 and glass_button.PRESS_OUT_MS >= 250 and glass_button.ICON_FADE_MS >= 250
+
+
+# --- the calm glass inside the speed panel -----------------------------------------------------
+
+def _edge_light(img):
+    """Total alpha along the outline of the shape (rim + the frost band just inside it)."""
+    total = 0
+    for x in range(img.width()):
+        for y in (0, 1, 2, 3, img.height() - 4, img.height() - 3, img.height() - 2, img.height() - 1):
+            total += img.pixelColor(x, y).alpha()
+    return total
+
+
+def test_calm_glass_has_much_less_edge_light_than_the_main_glass():
+    from ui.glass_button import _build_base, paint_glass_panel
+    plain = _build_base("pill", 160, 24, 0, 12, False, 1.0).toImage()
+    calm = _build_base("pill", 160, 24, 0, 12, False, 1.0, calm=True).toImage()
+    assert _edge_light(calm) < 0.6 * _edge_light(plain)
+    assert calm.pixelColor(80, 12).alpha() == plain.pixelColor(80, 12).alpha(), "the body is the same"
+
+
+def test_calm_panel_rim_is_quieter(qapp):
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QImage, QPainter
+    from ui.glass_button import paint_glass_panel
+
+    def paint(calm):
+        img = QImage(190, 120, QImage.Format_ARGB32_Premultiplied)
+        img.fill(Qt.transparent)
+        p = QPainter(img)
+        paint_glass_panel(p, QRectF(0, 0, 190, 120), 16, calm=calm)
+        p.end()
+        return img
+
+    def rim(img):
+        return sum(img.pixelColor(x, 0).lightness() + img.pixelColor(x, 1).lightness() for x in range(40, 150))
+    assert rim(paint(True)) < 0.75 * rim(paint(False)), (rim(paint(True)), rim(paint(False)))
+
+
+def test_the_speed_panel_uses_the_calm_glass_but_the_main_buttons_do_not(window):
+    sp = window.speed_popup
+    rows = [c for c in sp.preset_container.findChildren(GlassButton) if c.kind == "pill"]
+    assert rows and all(c._calm for c in rows) and sp.btn_reset._calm
+    assert not window.controller.btn_speed._calm and not window.controller.btn_play._calm

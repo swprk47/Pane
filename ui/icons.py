@@ -92,12 +92,12 @@ SVG_ICONS = {
         <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>
     </svg>""",
 
-    "pin": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/><line x1="12" y1="17" x2="12" y2="22"/>
+    "pin": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9.4 3h5.2v2.4l-1.1 1v4l2.6 2.4v1.4H7.9v-1.4l2.6-2.4v-4l-1.1-1z"/><path d="M12 15v6.5"/>
     </svg>""",
 
-    "pin_fill": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" fill="#FFFFFF"/><line x1="12" y1="17" x2="12" y2="22"/>
+    "pin_fill": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9.4 3h5.2v2.4l-1.1 1v4l2.6 2.4v1.4H7.9v-1.4l2.6-2.4v-4l-1.1-1z" fill="#FFFFFF"/><path d="M12 15v6.5"/>
     </svg>""",
 
     "speed": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

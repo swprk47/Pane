@@ -1,7 +1,8 @@
 """Speed panel (presets, pin limit, per-chip delete) and the OSD badge."""
 import pytest
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QEnterEvent
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidget
 
 from ui.osd_widget import GlassOSDWidget
@@ -70,7 +71,7 @@ def test_pin_button_flashes_hint_when_full(popup):
     popup._pin_current_speed()
     popup.slider.setValue(175)
     popup.btn_pin.click()
-    assert str(MAX_PRESETS) in popup.lbl_hint.text()
+    assert "FFB340" in popup.lbl_count.styleSheet(), "the 6/6 counter lights up"
     assert len(popup.presets) == MAX_PRESETS
 
 
@@ -99,6 +100,90 @@ def test_oversized_saved_list_is_truncated(qapp):
     import json
     open_settings("SpeedSettings").setValue("custom_presets", json.dumps([1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7]))
     assert len(SpeedPopup().presets) == MAX_PRESETS
+
+
+# --- layout: a vertical list, the current speed left of the slider ------------
+
+def test_presets_are_a_vertical_list_above_the_slider_row(popup):
+    cs = chips(popup)
+    assert len(cs) == len(DEFAULT_PRESETS)
+    ys = [c.mapTo(popup, c.rect().topLeft()).y() for c in cs]
+    assert ys == sorted(ys) and len(set(ys)) == len(ys), "one row under the other"
+    assert len({c.x() for c in cs}) == 1
+    row_y = popup.slider.mapTo(popup, popup.slider.rect().topLeft()).y()
+    assert row_y > max(ys), "the slider is under the list"
+    left = popup.lbl_speed_val.mapTo(popup, popup.lbl_speed_val.rect().topLeft()).x()
+    assert popup.btn_pin.x() < left < popup.slider.x(), "pin, current speed, slider - from the left"
+    assert popup.width() == 190
+
+
+def test_panel_grows_downwards_only_when_a_preset_is_added(qapp):
+    host = QWidget()
+    host.resize(700, 500)
+    anchor = QWidget(host)
+    anchor.setGeometry(300, 440, 60, 30)
+    p = SpeedPopup(host)
+    host.show()
+    p.show_above_widget(anchor)
+    bottom, height = p.y() + p.height(), p.height()
+    p.slider.setValue(140)
+    assert p._pin_current_speed() is True
+    assert p.height() > height, "a sixth row makes the panel taller"
+    assert p.y() + p.height() == bottom, "...upwards, so it never creeps over the controls"
+    p._unpin_preset(1.4)
+    assert p.height() == height and p.y() + p.height() == bottom
+    host.close()
+
+
+# --- typing a speed in -------------------------------------------------------
+
+def test_parse_speed_input():
+    from ui.speed_popup import parse_speed_input
+    assert parse_speed_input("1.5") == 1.5
+    assert parse_speed_input(" 1.50x ") == 1.5
+    assert parse_speed_input("1,3") == 1.3
+    assert parse_speed_input("1.33") == 1.35, "snaps to the 0.05 grid"
+    assert parse_speed_input("0.1") == 0.25 and parse_speed_input("9") == 3.0, "stays inside the slider's range"
+    for bad in ("", "x", "abc", "nan", "inf", "1..2"):
+        assert parse_speed_input(bad) is None
+
+
+def type_speed(popup, text):
+    popup.lbl_speed_val.clicked.emit()
+    assert popup.is_editing_speed()
+    popup.edit_speed.setText(text)
+
+
+def test_clicking_the_speed_text_opens_a_box_and_enter_applies(popup):
+    emitted = []
+    popup.speed_selected.connect(emitted.append)
+    popup.lbl_speed_val.clicked.emit()
+    assert popup.is_editing_speed() and popup.edit_speed.text() == "1.00"
+    type_speed(popup, "1.35")
+    QTest.keyClick(popup.edit_speed, Qt.Key_Return)
+    assert not popup.is_editing_speed()
+    assert emitted[-1] == 1.35 and popup.slider.value() == 135
+    assert popup.lbl_speed_val.text() == "1.35x"
+
+
+def test_escape_or_clicking_away_cancels_typing(popup):
+    emitted = []
+    popup.speed_selected.connect(emitted.append)
+    type_speed(popup, "2.5")
+    QTest.keyClick(popup.edit_speed, Qt.Key_Escape)
+    assert not popup.is_editing_speed() and not emitted and popup.slider.value() == 100
+    assert popup.isVisible(), "Esc in the box closes the box, not the panel"
+    type_speed(popup, "2.5")
+    popup.edit_speed.clearFocus()                      # focus leaves the box
+    assert not popup.is_editing_speed() and not emitted
+
+
+def test_nonsense_typed_in_leaves_the_speed_alone(popup):
+    emitted = []
+    popup.speed_selected.connect(emitted.append)
+    type_speed(popup, "fast")
+    QTest.keyClick(popup.edit_speed, Qt.Key_Return)
+    assert not popup.is_editing_speed() and not emitted and popup.lbl_speed_val.text() == "1.00x"
 
 
 # --- per-chip delete -------------------------------------------------------
