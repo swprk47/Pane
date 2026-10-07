@@ -42,16 +42,4 @@ QWidget {
     font-weight: 600;
     padding: 8px 18px;
 }
-
-/* Empty Video Viewport placeholder */
-#EmptyNoticeLabel {
-    font-size: 16px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.88);
-}
-
-#EmptyNoticeSubLabel {
-    font-size: 12px;
-    color: rgba(255, 255, 255, 0.62);
-}
 """

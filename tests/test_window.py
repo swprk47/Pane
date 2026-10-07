@@ -67,7 +67,8 @@ def test_empty_state(window):
     assert window.viewport.notice_widget.isVisible()
     assert not window.controller.isVisible(), "controls must stay hidden without media"
     assert not window.top_scrim.isVisible()
-    assert not window.viewport.lbl_icon.pixmap().isNull()
+    assert not window.center_badge.isVisible(), "no pause symbol over the start screen"
+    assert not window.viewport.start_screen._logo.isNull()
 
 
 def test_loading_a_file_switches_to_player_state(window, sample_video, pump):
@@ -254,10 +255,13 @@ def test_double_click_goes_fullscreen_without_toggling_play(window, sample_video
     window.toggle_fullscreen()
 
 
-def test_click_on_empty_viewport_opens_file_dialog(window, monkeypatch):
+def test_click_on_the_start_screen_does_not_open_the_file_dialog(window, monkeypatch):
+    """Only the "영상 열기" button (and Ctrl+O / the menu) open the dialog; the empty screen is for dragging the window."""
     opened = []
     monkeypatch.setattr(window, "_open_file_dialog", lambda: opened.append(1))
     window._on_viewport_clicked()
+    assert opened == []
+    window.viewport.start_screen.btn_open.click()
     assert opened == [1]
 
 

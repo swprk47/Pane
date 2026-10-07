@@ -1,7 +1,7 @@
 import os
 import ctypes
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QLabel,
+    QMainWindow, QWidget, QVBoxLayout,
     QFileDialog, QMenu, QApplication
 )
 from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QTimer
@@ -14,6 +14,7 @@ from ui.speed_popup import SpeedPopup
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.next_up import NextUpCard, NEXT_UP_SECONDS
+from ui.start_screen import StartScreen
 from core import playlist
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
@@ -21,8 +22,7 @@ from core.media_types import open_dialog_filter
 from core import app_log
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge
-from ui.icons import get_svg_icon, get_svg_pixmap
-from styles.palette import MUTED_ICON
+from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
 from core.settings import AppSettings
 
@@ -64,42 +64,32 @@ class VideoViewport(MpvGLWidget):
         self._drag_started = False
         self._after_double_click = False
 
-        # Empty state notice overlay
-        self.notice_layout = QVBoxLayout(self)
-        self.notice_layout.setAlignment(Qt.AlignCenter)
-        self.notice_widget = QWidget(self)
-        nw_layout = QVBoxLayout(self.notice_widget)
-        nw_layout.setAlignment(Qt.AlignCenter)
-
-        self.lbl_icon = QLabel(self)
-        self.lbl_icon.setPixmap(get_svg_pixmap("film", 56, MUTED_ICON, stroke_width=1.5))
-        self.lbl_icon.setStyleSheet("margin-bottom: 10px;")
-        self.lbl_icon.setAlignment(Qt.AlignCenter)
-        nw_layout.addWidget(self.lbl_icon)
-
-        self.lbl_main = QLabel("재생할 영상을 이곳으로 끌어다 놓으세요", self)
-        self.lbl_main.setObjectName("EmptyNoticeLabel")
-        self.lbl_main.setAlignment(Qt.AlignCenter)
-        nw_layout.addWidget(self.lbl_main)
-
-        self.lbl_sub = QLabel("화면 클릭하여 파일 열기 / 화면 아무 곳이나 드래그하여 창 이동", self)
-        self.lbl_sub.setObjectName("EmptyNoticeSubLabel")
-        self.lbl_sub.setAlignment(Qt.AlignCenter)
-        nw_layout.addWidget(self.lbl_sub)
-
-        self.notice_layout.addWidget(self.notice_widget)
+        # Empty state: the start screen covers the viewport until a video is loaded
+        self.start_screen = StartScreen(self)
+        self.notice_widget = self.start_screen          # (what "is the empty state showing" asks)
+        self.start_screen.setGeometry(self.rect())
+        self.start_screen.show()
 
     def show_empty_notice(self, show: bool):
-        self.notice_widget.setVisible(show)
+        self.start_screen.setVisible(show)
+        if show:
+            self.start_screen.raise_()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self.start_screen.setGeometry(self.rect())
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
+            self.start_screen.set_dragging(True)
             event.acceptProposedAction()
 
+    def dragLeaveEvent(self, event):
+        self.start_screen.set_dragging(False)
+        super().dragLeaveEvent(event)
+
     def dropEvent(self, event: QDropEvent):
+        self.start_screen.set_dragging(False)
         urls = event.mimeData().urls()
         if urls:
             file_path = urls[0].toLocalFile()
@@ -191,6 +181,7 @@ class MainWindow(QMainWindow):
         self._init_engine()
         self._init_floating_widgets()
         self._connect_signals()
+        self._refresh_start_screen()
 
         # Install global event filters for mouse tracking
         self.installEventFilter(self)
@@ -215,6 +206,8 @@ class MainWindow(QMainWindow):
         # 2. Video Viewport
         self.viewport = VideoViewport(self)
         self.viewport.file_dropped.connect(self.load_media_file)
+        self.viewport.start_screen.open_requested.connect(self._open_file_dialog)
+        self.viewport.start_screen.resume_requested.connect(self.load_media_file)
         self.viewport.clicked.connect(self._on_viewport_clicked)
         self.viewport.double_clicked.connect(self._on_viewport_double_clicked)
         self.viewport.context_menu_requested.connect(self.show_context_menu)
@@ -460,6 +453,15 @@ class MainWindow(QMainWindow):
 
     # --- Media Playback Lifecycle ---
 
+    def _refresh_start_screen(self):
+        """The start screen offers the most recent video that is still on disk."""
+        start = self.viewport.start_screen
+        for path in self.app_settings.get_recent_files():
+            if os.path.exists(path):
+                start.set_resume(path, self.app_settings.get_resume_position(path), self.app_settings.get_duration(path))
+                return
+        start.clear_resume()
+
     def _open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -525,6 +527,8 @@ class MainWindow(QMainWindow):
 
     def _on_duration_changed(self, duration: float):
         self._duration = duration
+        if self._current_file and duration > 0:
+            self.app_settings.save_duration(self._current_file, duration)     # (the start screen's progress line)
 
     def _on_playback_state(self, is_playing: bool):
         if is_playing:
@@ -647,8 +651,7 @@ class MainWindow(QMainWindow):
 
     def _on_viewport_clicked(self):
         if self.viewport.notice_widget.isVisible():
-            self._open_file_dialog()
-            return
+            return                        # the start screen: opening a file is the "영상 열기" button's job (and Ctrl+O)
         if self._current_file:
             self.engine.toggle_play()
             self._click_undo_armed = True

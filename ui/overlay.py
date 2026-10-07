@@ -182,6 +182,9 @@ class CenterBadge(_OverlayBase, Tweening):
 
     def _fade_out(self):
         if not self.isVisible():
+            # Already invisible: still mark it hidden for real, else the window's first show() brings it up
+            # (the pause symbol used to appear over the empty start screen).
+            QWidget.setVisible(self, False)
             return
         if not self._hiding:
             self._hiding = True
