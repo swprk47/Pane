@@ -147,6 +147,15 @@
 - **작업 중 발견한 기존 버그 2개:** (1) 파일을 열 때 컨트롤러에 "재생 중"이 전달되지 않아(mpv가 이미 재생 상태라 변경 이벤트가 없음) **첫 일시정지/재개 전에는 컨트롤이 절대 자동으로 숨지 않았음** → `load_media_file`에서 `controller.set_playback_state(True)`. (2) 컨트롤이 숨은 상태에서 일시정지하면 컨트롤이 다시 나타나지 않던 것 → `set_playback_state(False)`가 숨은 컨트롤을 `show()`.
 - **테스트:** 바가 레이아웃 밖 오버레이, 컨트롤과 함께 페이드, 마우스가 위에 있으면 유지, 영상 없을 때·일시정지 때 유지, 숨은 상태에서 일시정지하면 복귀, 파일 이름 위치(바 아래/전체화면 맨 위), 위 두 버그 회귀. 전체 249 passed, 9 skipped.
 
+### 연속 시청: 같은 폴더의 다음 영상 자동 재생 (2026-10-08, `feature/playlist` 브랜치, 임시 커밋 `2b1f9da`)
+- **사용자가 정한 것:** 다음 영상 기준은 **파일 이름 자연 정렬**(숫자는 값으로 비교: `강의2` < `강의10`), 끝나면 **몇 초 안내 뒤 자동으로**, 직접 이동은 **단축키 + 컨트롤 버튼**. (수정한 날짜순·일반 이름순·바로 재생·자동 안 넘김은 선택하지 않음.)
+- **구성:** `core/playlist.py`(폴더의 영상 목록·이전/다음, 저장 안 하고 매번 폴더를 읽음, 열린 파일은 확장자가 목록에 없어도 포함, 대소문자 무시), `ui/next_up.py`(`NextUpCard`: 유리 패널 + 카운트다운 선 + 취소/지금 재생, 상수 `NEXT_UP_SECONDS=3`, `FADE_IN_MS=220`), `MainWindow`(`_on_file_ended`에서 카드 시작, `play_adjacent`, 카드는 새 파일 열기·재생 재개·이동·Esc로 취소), `GlassController`(`prev_file`/`next_file` 버튼을 중앙 양끝에, `set_playlist_state`로 없으면 흐리게, `LAYOUT_VERSION` 3→4라 저장된 배치는 1회 초기화), `AppSettings.get_auto_next/set_auto_next`(기본 켜짐), 단축키 `Shift+,`/`Shift+.`(Qt `Key_Less`/`Key_Greater`)와 PageUp/PageDown(프레임 이동 `,` `.`은 그대로), 우클릭 메뉴의 이전/다음 영상과 "다음 영상 자동 재생" 토글. 아이콘 `skip_prev`/`skip_next`(막대 + 둥근 이중 삼각형: 프레임 이동 = 막대 + 삼각형 하나, 5초 이동 = 이중 삼각형과 구분).
+- **하다가 찾은 기존 문제 2개:** (1) 끝(`keep_open`)에서 재생을 눌러도 mpv가 곧바로 다시 일시정지해서 **아무 일도 안 일어났음** → `PlayerEngine.toggle_play`가 끝에서는 `replay()`(처음으로 이동 + 재생), `at_end()` 추가. (2) 한 번 끝난 파일을 다시 끝까지 봐도 `file_ended`가 두 번째부터는 안 나갔음(`_eof_emitted`가 로드 때만 초기화) → `eof-reached`가 False가 되면 초기화.
+- **`GlassButton` 비활성 표시:** 비활성 버튼은 0.32 투명도로 흐리게 + 화살표 커서. 아이콘 그리기가 `setOpacity(opacity)`로 **덮어써서** 흐려지지 않던 것을 `p.opacity() * opacity`로 곱하도록 고침.
+- **테스트:** `tests/test_playlist.py`(자연 정렬·이웃·끝·확장자·폴더 변화), `tests/test_playlist_ui.py`(카드 단독, 버튼 활성/비활성, 자연 순서 이동, 양 끝 안내, 단축키, 자동 이동, Esc/지금 재생/재생 재개/이동/다른 파일 열기로 취소, 마지막 영상, 설정 끄면 안 넘어감, 기본 배치, 비활성 버튼), `tests/test_engine.py`(끝에서 재생 = 다시 재생, 두 번째 끝도 알림). 전체 288 passed, 9 skipped.
+- **실제 화면 확인:** 4K 영상 위에서 한글 이름 자연 정렬(`02 → 03 → 10`), 첫 영상에서 이전 버튼 흐림, 오른쪽 아래 카드. 사용자도 `C:\Users\47sha\Videos`에서 직접 써 봄: **동작은 괜찮음, 카드의 동작 UI와 지속시간은 바꾸고 싶음(미정)**.
+- **알려진 점:** 하위 폴더는 보지 않음. 이전에 본 영상으로 넘어가면 "이어서 재생"이 작동할 수 있음. 카드 위치는 컨트롤 바로 위 오른쪽 아래(`_reposition_floating_widgets`).
+
 ### 앱 아이콘 개편: 유리 받침판 + 두 패널 (2026-10-04, 시안 Q)
 - **디자인:** 두꺼운 유리 받침판(파랑~보라) 위에 큰 패널과 알약 패널 두 장, 큰 패널에 흰 재생 삼각형, 받침판 아래 가장자리에 얇은 빛줄. 이전 아이콘(타일 없는 세레니티 유리 두 장)을 대체. 시안은 /design Artifact에서 A~F를 비교한 뒤 사용자가 Q(구조 I + 색 N)로 확정.
 - **색은 로고 전용:** 로고 색은 `tools/make_icons.py` 안의 상수(`SLAB_LOW`, `SLAB_TOP`, `PANE_FILL`, `TRI_FILL`, `LINE_STOPS`, `OUTLINE` 등)로 옮겼고, `styles/palette.py`의 `LOGO_ACCENT`/`LOGO_ACCENT_LIGHT`는 삭제함. **앱 UI 색(ACCENT 등)은 그대로 세레니티**이고 나중에 따로 바꿀 예정. 이제 팔레트를 바꿔도 로고는 안 바뀜.

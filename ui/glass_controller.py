@@ -13,15 +13,17 @@ from ui.glass_button import GlassButton
 
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
-    "center": ["prev_frame", "seek_backward", "play_pause", "seek_forward", "next_frame"],
+    "center": ["prev_file", "seek_backward", "play_pause", "seek_forward", "next_file"],
     "right": ["screenshot", "subtitle", "volume", "fullscreen", "settings"]
 }
 
 # Bump when DEFAULT_LAYOUT changes so stale saved layouts get replaced once.
-LAYOUT_VERSION = 3
+LAYOUT_VERSION = 5
 
 BUTTON_METADATA = {
     "play_pause": {"name": "재생 / 일시정지", "icon_name": "play"},
+    "prev_file": {"name": "이전 영상", "icon_name": "skip_prev"},
+    "next_file": {"name": "다음 영상", "icon_name": "skip_next"},
     "prev_frame": {"name": "1프레임 이전", "icon_name": "prev_frame"},
     "next_frame": {"name": "1프레임 다음", "icon_name": "next_frame"},
     "seek_backward": {"name": "5초 뒤로", "icon_name": "backward_5"},
@@ -39,6 +41,7 @@ BUTTON_METADATA = {
 # Transport glass buttons: disc diameter / icon size in px (the widget adds DISC_MARGIN around the disc for the shadow)
 PLAY_DISC, PLAY_ICON = 72, 52
 SIDE_DISC, SIDE_ICON = 48, 32
+VIDEO_STEP_DIAMETER, VIDEO_STEP_ICON = 48, 30     # previous / next video (the hover highlight is a disc this big)
 
 
 class ControllerSettingsDialog(QDialog):
@@ -216,6 +219,8 @@ class GlassController(QWidget):
     screenshot_clicked = Signal()
     fullscreen_clicked = Signal()
     seek_requested = Signal(float)
+    prev_file_clicked = Signal()
+    next_file_clicked = Signal()
     visibility_changed = Signal(bool)   # controls shown / hidden (for the mini progress line)
     opacity_changed = Signal(float)     # follows the fade so the top scrim fades with us
 
@@ -237,6 +242,8 @@ class GlassController(QWidget):
         self.current_layout = self._load_layout()
 
         self._compact = False
+        self._has_prev = False       # a previous / next video exists in the folder
+        self._has_next = False
         self._is_playing = False
         self._is_muted = False
         self._duration = 0.0
@@ -385,9 +392,10 @@ class GlassController(QWidget):
 
     ICON_COLOR = "#F2FBFF"
 
-    def _plain_button(self, icon_name: str, tooltip: str, icon_px: int = 16, color: str = None) -> GlassButton:
+    def _plain_button(self, icon_name: str, tooltip: str, icon_px: int = 16, color: str = None,
+                      diameter: int = 40) -> GlassButton:
         """Icon-only round button without a disc: a soft highlight fades in on hover / press."""
-        btn = GlassButton(self, "plain", 40, icon_px)
+        btn = GlassButton(self, "plain", diameter, icon_px)
         btn.setIcon(get_svg_icon(icon_name, size=icon_px, color=color))
         btn.setToolTip(tooltip)
         return btn
@@ -405,6 +413,20 @@ class GlassController(QWidget):
             self._update_play_button_icon()
             self.btn_play.clicked.connect(self.play_pause_clicked.emit)
             return self.btn_play
+
+        elif key == "prev_file":
+            self.btn_prev_file = self._plain_button("skip_prev_glass", "이전 영상 (Shift+,)", VIDEO_STEP_ICON, self.ICON_COLOR,
+                                                VIDEO_STEP_DIAMETER)
+            self.btn_prev_file.setEnabled(self._has_prev)
+            self.btn_prev_file.clicked.connect(self.prev_file_clicked.emit)
+            return self.btn_prev_file
+
+        elif key == "next_file":
+            self.btn_next_file = self._plain_button("skip_next_glass", "다음 영상 (Shift+.)", VIDEO_STEP_ICON, self.ICON_COLOR,
+                                                VIDEO_STEP_DIAMETER)
+            self.btn_next_file.setEnabled(self._has_next)
+            self.btn_next_file.clicked.connect(self.next_file_clicked.emit)
+            return self.btn_next_file
 
         elif key == "prev_frame":
             btn = self._plain_button("prev_frame_glass", "1프레임 이전 (,)", 20, self.ICON_COLOR)
@@ -472,6 +494,14 @@ class GlassController(QWidget):
         dlg = ControllerSettingsDialog(self.current_layout, self)
         dlg.layout_changed.connect(self._save_layout)
         dlg.exec()
+
+    def set_playlist_state(self, has_prev: bool, has_next: bool):
+        """Which of the previous / next video buttons can be used (the folder has such a video)."""
+        self._has_prev, self._has_next = bool(has_prev), bool(has_next)
+        if hasattr(self, "btn_prev_file"):
+            self.btn_prev_file.setEnabled(self._has_prev)
+        if hasattr(self, "btn_next_file"):
+            self.btn_next_file.setEnabled(self._has_next)
 
     # --- Icon Updates ---
 

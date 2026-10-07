@@ -13,6 +13,8 @@ from ui.title_bar import GlassTitleBar, native_start_window_drag
 from ui.speed_popup import SpeedPopup
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
+from ui.next_up import NextUpCard, NEXT_UP_SECONDS
+from core import playlist
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
@@ -238,6 +240,11 @@ class MainWindow(QMainWindow):
 
         self.speed_popup = SpeedPopup(self.central_widget)
 
+        self.next_up = NextUpCard(self.central_widget)
+        self._next_target = None
+        self.next_up.finished.connect(self._play_next_target)
+        self.next_up.play_now.connect(self._play_next_target)
+
         self.info_panel = MediaInfoPanel(self.central_widget)
         self.info_panel.set_provider(self.engine.get_media_info)
 
@@ -273,6 +280,8 @@ class MainWindow(QMainWindow):
         # Controller -> Engine
         self.controller.play_pause_clicked.connect(self.engine.toggle_play)
         self.controller.prev_frame_clicked.connect(self.engine.step_frame_backward)
+        self.controller.prev_file_clicked.connect(lambda: self.play_adjacent(-1))
+        self.controller.next_file_clicked.connect(lambda: self.play_adjacent(+1))
         self.controller.next_frame_clicked.connect(self.engine.step_frame_forward)
         self.controller.seek_backward_clicked.connect(lambda s: self.seek_relative(-s))
         self.controller.seek_forward_clicked.connect(lambda s: self.seek_relative(s))
@@ -349,6 +358,17 @@ class MainWindow(QMainWindow):
         is_playing = self.engine.is_playing()
         act_play = menu.addAction("일시정지 (Space)" if is_playing else "재생 (Space)")
         act_play.triggered.connect(self.engine.toggle_play)
+        prev_, next_ = playlist.neighbors(self._current_file) if self._current_file else (None, None)
+        act_prev = menu.addAction("이전 영상 (Shift+,)")
+        act_prev.setEnabled(prev_ is not None)
+        act_prev.triggered.connect(lambda: self.play_adjacent(-1))
+        act_next = menu.addAction("다음 영상 (Shift+.)")
+        act_next.setEnabled(next_ is not None)
+        act_next.triggered.connect(lambda: self.play_adjacent(+1))
+        act_auto = menu.addAction("영상이 끝나면 다음 영상 자동 재생")
+        act_auto.setCheckable(True)
+        act_auto.setChecked(self.app_settings.get_auto_next())
+        act_auto.triggered.connect(self.app_settings.set_auto_next)
 
         # 3. Speed Submenu
         speed_menu = menu.addMenu("재생 속도 (배속)")
@@ -466,6 +486,9 @@ class MainWindow(QMainWindow):
             return
 
         self._current_file = file_path
+        self.next_up.cancel()
+        self._next_target = None
+        self._update_playlist_state()
         self.center_badge.reset()
         file_name = os.path.basename(file_path)
         self.viewport.show_empty_notice(False)
@@ -504,6 +527,8 @@ class MainWindow(QMainWindow):
         self._duration = duration
 
     def _on_playback_state(self, is_playing: bool):
+        if is_playing:
+            self.next_up.cancel()            # playing again (the user restarted it): stay on this video
         # Big symbol over the picture: PAUSE while paused, PLAY for a moment after resuming.
         self.center_badge.set_playing(is_playing, self._current_file is not None)
         self._reposition_floating_widgets()
@@ -543,11 +568,41 @@ class MainWindow(QMainWindow):
 
     def _on_file_ended(self):
         self.controller.set_playback_state(False)
-        self.osd.show_message("재생 완료", "check")
+        _, nxt = playlist.neighbors(self._current_file) if self._current_file else (None, None)
+        if nxt and self.app_settings.get_auto_next():
+            self._next_target = nxt
+            self.next_up.start(os.path.basename(nxt), NEXT_UP_SECONDS)
+            self._reposition_floating_widgets()
+        else:
+            self.osd.show_message("재생 완료", "check")
+
+    # --- Previous / next video in the folder ---
+
+    def _play_next_target(self):
+        target, self._next_target = self._next_target, None
+        if target and os.path.exists(target):
+            self.load_media_file(target)
+
+    def play_adjacent(self, step: int):
+        """Open the previous (-1) or next (+1) video of the current file's folder."""
+        if not self._current_file:
+            return
+        prev_, next_ = playlist.neighbors(self._current_file)
+        target = next_ if step > 0 else prev_
+        if not target:
+            self.osd.show_message("마지막 영상입니다" if step > 0 else "첫 영상입니다", "warning")
+            return
+        self.load_media_file(target)
+        self.osd.show_message(os.path.basename(target), "skip_next" if step > 0 else "skip_prev")
+
+    def _update_playlist_state(self):
+        prev_, next_ = playlist.neighbors(self._current_file) if self._current_file else (None, None)
+        self.controller.set_playlist_state(prev_ is not None, next_ is not None)
 
     # --- Actions ---
 
     def seek_relative(self, seconds: float):
+        self.next_up.cancel()
         self.engine.seek(seconds, reference="relative")
         direction = f"+{int(seconds)}s" if seconds > 0 else f"{int(seconds)}s"
         self.osd.show_message(direction, "forward_5" if seconds > 0 else "backward_5")
@@ -685,6 +740,16 @@ class MainWindow(QMainWindow):
             event.accept()
             return
 
+        # Previous / next video: Shift+, / Shift+.  (also PageUp / PageDown)
+        if key in (Qt.Key_Greater, Qt.Key_PageDown):
+            self.play_adjacent(+1)
+            event.accept()
+            return
+        elif key in (Qt.Key_Less, Qt.Key_PageUp):
+            self.play_adjacent(-1)
+            event.accept()
+            return
+
         # Seeking: Left / Right
         if key == Qt.Key_Right:
             step = 1.0 if (modifiers & Qt.ShiftModifier) else 5.0
@@ -755,7 +820,9 @@ class MainWindow(QMainWindow):
             event.accept()
             return
         elif key == Qt.Key_Escape:
-            if self.info_panel.isVisible():
+            if self.next_up.is_counting():
+                self.next_up.cancel()
+            elif self.info_panel.isVisible():
                 self.info_panel.hide()
             elif self.isFullScreen():
                 self.toggle_fullscreen()
@@ -806,6 +873,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "osd"):
             self.osd.move(vp.x() + (vp.width() - self.osd.width()) // 2, vp.y() + inset + 12)
 
+        # the next-video card: bottom right, just above the controls
+        nu = self.next_up
+        nu.move(max(vp.x() + 8, vp.right() - nu.width() - 24),
+                max(vp.y() + 8, vp.bottom() - c.CONTROLS_HEIGHT - nu.height() - 6))
+
         # media info: top-right corner of the video area
         if self.info_panel.isVisible():
             self.info_panel.adjustSize()
@@ -820,6 +892,8 @@ class MainWindow(QMainWindow):
         c.raise_()
         if self.speed_popup.isVisible():
             self.speed_popup.raise_()
+        if self.next_up.isVisible():
+            self.next_up.raise_()
         if self.info_panel.isVisible():
             self.info_panel.raise_()
         if hasattr(self, "osd"):
