@@ -1,6 +1,6 @@
 import json
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QDialog, QListWidget, QListWidgetItem, QGraphicsOpacityEffect
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGraphicsOpacityEffect
 )
 from PySide6.QtGui import QPainter, QLinearGradient, QColor, QCursor, QMouseEvent, QContextMenuEvent
 from PySide6.QtWidgets import QApplication
@@ -10,6 +10,7 @@ from ui.volume_popup import VolumePopup
 from core.settings import open_settings
 from ui.icons import get_svg_icon
 from ui.glass_button import GlassButton
+from ui.layout_dialog import ControlLayoutDialog
 
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
@@ -42,164 +43,6 @@ BUTTON_METADATA = {
 PLAY_DISC, PLAY_ICON = 72, 52
 SIDE_DISC, SIDE_ICON = 48, 32
 VIDEO_STEP_DIAMETER, VIDEO_STEP_ICON = 48, 30     # previous / next video (the hover highlight is a disc this big)
-
-
-class ControllerSettingsDialog(QDialog):
-    """
-    Glass Dialog to customize button layout for Left, Center, and Right zones.
-    """
-    layout_changed = Signal(dict)
-
-    def __init__(self, current_layout: dict, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("컨트롤러 버튼 배열 설정")
-        self.resize(520, 360)
-        self.setStyleSheet("""
-            QDialog {
-                background-color: rgba(28, 28, 38, 0.98);
-                border: 1px solid rgba(255, 255, 255, 0.20);
-                border-radius: 16px;
-            }
-            QLabel {
-                color: #FFFFFF;
-                font-family: "Segoe UI", sans-serif;
-            }
-            QListWidget {
-                background-color: rgba(18, 18, 24, 0.85);
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                border-radius: 10px;
-                color: #FFFFFF;
-                padding: 6px;
-            }
-            QListWidget::item {
-                padding: 6px;
-                border-radius: 6px;
-            }
-            QListWidget::item:selected {
-                background-color: rgba(255, 255, 255, 0.18);
-            }
-            QPushButton {
-                background: rgba(255, 255, 255, 0.10);
-                border: 1px solid rgba(255, 255, 255, 0.15);
-                border-radius: 8px;
-                color: #FFFFFF;
-                padding: 6px 14px;
-                min-width: 20px;
-                min-height: 40px;
-                max-height: 40px;
-                outline: none;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.20);
-            }
-        """)
-
-        self.layout_data = {
-            "left": list(current_layout.get("left", [])),
-            "center": list(current_layout.get("center", [])),
-            "right": list(current_layout.get("right", []))
-        }
-
-        self._init_ui()
-
-    def _init_ui(self):
-        vbox = QVBoxLayout(self)
-        vbox.setContentsMargins(18, 18, 18, 18)
-        vbox.setSpacing(12)
-
-        title = QLabel("컨트롤러 버튼 구역별 배치 설정", self)
-        title.setStyleSheet("font-size: 15px; font-weight: bold;")
-        vbox.addWidget(title)
-
-        desc = QLabel("각 구역(좌/중/우)에 표시할 버튼을 체크하거나 위/아래로 순서를 이동하세요.", self)
-        desc.setStyleSheet("font-size: 12px; color: rgba(255, 255, 255, 0.6);")
-        vbox.addWidget(desc)
-
-        cols_layout = QHBoxLayout()
-        self.lists = {}
-
-        for zone, title_txt in [("left", "좌측 구역"), ("center", "중앙 구역"), ("right", "우측 구역")]:
-            col_box = QVBoxLayout()
-            col_lbl = QLabel(title_txt, self)
-            col_lbl.setStyleSheet("font-size: 13px; font-weight: 600;")
-            col_box.addWidget(col_lbl)
-
-            lw = QListWidget(self)
-            self.lists[zone] = lw
-            col_box.addWidget(lw)
-
-            btn_row = QHBoxLayout()
-            btn_up = QPushButton("▲", self)
-            btn_up.clicked.connect(lambda _, z=zone: self._move_item(z, -1))
-            btn_down = QPushButton("▼", self)
-            btn_down.clicked.connect(lambda _, z=zone: self._move_item(z, 1))
-            btn_row.addWidget(btn_up)
-            btn_row.addWidget(btn_down)
-            col_box.addLayout(btn_row)
-
-            cols_layout.addLayout(col_box)
-
-        vbox.addLayout(cols_layout)
-        self._populate_lists()
-
-        bot_layout = QHBoxLayout()
-        btn_reset = QPushButton("기본값 복원", self)
-        btn_reset.clicked.connect(self._reset_default)
-        bot_layout.addWidget(btn_reset)
-        bot_layout.addStretch()
-
-        btn_save = QPushButton("적용 및 저장", self)
-        btn_save.setStyleSheet("background: rgba(255, 255, 255, 0.20); color: #FFFFFF; border: 1px solid rgba(255, 255, 255, 0.38); font-weight: bold;")
-        btn_save.clicked.connect(self._save_and_close)
-        bot_layout.addWidget(btn_save)
-
-        vbox.addLayout(bot_layout)
-
-    def _populate_lists(self):
-        for zone in ["left", "center", "right"]:
-            lw = self.lists[zone]
-            lw.clear()
-            for key in self.layout_data[zone]:
-                meta = BUTTON_METADATA.get(key, {"name": key})
-                item = QListWidgetItem(meta['name'])
-                if meta.get("icon_name"):
-                    item.setIcon(get_svg_icon(meta["icon_name"], size=14))
-                item.setData(Qt.UserRole, key)
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(Qt.Checked)
-                lw.addItem(item)
-
-    def _move_item(self, zone: str, direction: int):
-        lw = self.lists[zone]
-        row = lw.currentRow()
-        if row < 0:
-            return
-        target_row = row + direction
-        if 0 <= target_row < lw.count():
-            item = lw.takeItem(row)
-            lw.insertItem(target_row, item)
-            lw.setCurrentRow(target_row)
-
-    def _reset_default(self):
-        self.layout_data = {
-            "left": list(DEFAULT_LAYOUT["left"]),
-            "center": list(DEFAULT_LAYOUT["center"]),
-            "right": list(DEFAULT_LAYOUT["right"])
-        }
-        self._populate_lists()
-
-    def _save_and_close(self):
-        new_layout = {}
-        for zone in ["left", "center", "right"]:
-            lw = self.lists[zone]
-            keys = []
-            for i in range(lw.count()):
-                item = lw.item(i)
-                if item.checkState() == Qt.Checked:
-                    keys.append(item.data(Qt.UserRole))
-            new_layout[zone] = keys
-        self.layout_changed.emit(new_layout)
-        self.accept()
 
 
 class GlassController(QWidget):
@@ -351,22 +194,28 @@ class GlassController(QWidget):
                 item = box.takeAt(0)
                 w = item.widget()
                 if w:
+                    w.hide()
                     w.deleteLater()
+
+        def add(box, key):
+            w = self._create_widget_for_key(key)
+            if w:
+                box.addWidget(w)
+                # A widget added to a shown parent only appears a turn later, and a hidden one counts as
+                # zero size: the side zones were measured empty (0 px wide) and the left / right buttons vanished.
+                w.show()
 
         # Left zone hugs the left edge, right zone hugs the right edge.
         for key in self.current_layout.get("left", []):
-            w = self._create_widget_for_key(key)
-            if w: self.left_box.addWidget(w)
+            add(self.left_box, key)
         self.left_box.addStretch()
 
         for key in self.current_layout.get("center", []):
-            w = self._create_widget_for_key(key)
-            if w: self.center_box.addWidget(w)
+            add(self.center_box, key)
 
         self.right_box.addStretch()
         for key in self.current_layout.get("right", []):
-            w = self._create_widget_for_key(key)
-            if w: self.right_box.addWidget(w)
+            add(self.right_box, key)
 
         self._equalize_side_zones()
 
@@ -491,7 +340,7 @@ class GlassController(QWidget):
         return None
 
     def _open_settings_dialog(self):
-        dlg = ControllerSettingsDialog(self.current_layout, self)
+        dlg = ControlLayoutDialog(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self)
         dlg.layout_changed.connect(self._save_layout)
         dlg.exec()
 

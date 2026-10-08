@@ -270,3 +270,23 @@ def test_fade_out_is_postponed_while_the_mouse_is_over_the_controls(controller, 
     controller._fade_out()
     pump(timeout=0.4)
     assert controller.isVisible() and controller.opacity_effect.opacity() > 0.99
+
+
+def test_rebuilding_the_buttons_keeps_the_side_zones_and_their_buttons(controller):
+    """Regression: applying a new layout left the left / right zones 0 px wide (only the centre buttons stayed),
+    because the new buttons were still "hidden" when the zones were measured."""
+    from ui.glass_controller import DEFAULT_LAYOUT
+    before = (controller.left_zone.width(), controller.right_zone.width())
+    layout = {z: list(DEFAULT_LAYOUT[z]) for z in DEFAULT_LAYOUT}
+    layout["center"].insert(0, "prev_frame")
+    controller._save_layout(layout)
+    assert controller.left_zone.width() == before[0] > 0 and controller.right_zone.width() == before[1] > 0
+    for name in ("time_label", "speed_button"):
+        w = controller.lbl_time if name == "time_label" else controller.btn_speed
+        assert w.isVisibleTo(controller) and w.width() > 20, name
+    assert controller.btn_speed.geometry().right() <= controller.left_zone.width()
+    for box in (controller.left_box, controller.center_box, controller.right_box):
+        for i in range(box.count()):                      # (the buttons in the layout now, not ones awaiting deletion)
+            w = box.itemAt(i).widget()
+            if w:
+                assert w.isVisibleTo(controller) and w.width() > 0, w

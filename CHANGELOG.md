@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- New control-layout settings: edit the bar the way it looks, drag buttons between the left / centre / right zones, hide them (✕ or drag to the "hidden" row) and bring hidden ones back (this also fixes hidden buttons, such as the frame-step ones, having no way back)
+- Fix: applying a new control layout left only the centre buttons (the left / right zones collapsed to 0 px)
 - New start screen: big logo, a glass dock with "open" and the last video to go on with (progress line, time, play button), and a lit frame while a file is dragged over the window
 - Fix: the pause symbol was showing over the empty window on start-up
 - Continuous play: when a video ends, the next video in the same folder (natural file-name order) plays after a 5 s card (a ring around the next-video button counts down; hovering the card holds it) with Cancel / Play now; Shift+, / Shift+. (or PageUp / PageDown) and new controller buttons move between videos; the right-click menu can turn auto-play off
