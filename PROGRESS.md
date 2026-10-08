@@ -78,6 +78,16 @@
 **테스트**
 14. 테스트 설정은 `PaneTest`로 격리됨. 실제 화면·커서 위치·타이밍에 영향받는 항목은 신호를 기록하거나 `_mouse_over_controls` 등을 고정해 결정적으로(커서 위치로 흔들리던 테스트를 여러 개 고침). `pytest.ini`에서 faulthandler를 끔(mpv가 종료 때 던지는 무해한 SEH 예외 때문).
 
+
+**위젯·시험 도구 (2026-10-08에 알게 된 것)**
+15. 이미 보이는 부모에 위젯을 추가하면(`layout.addWidget`) 그 위젯은 **다음 이벤트 턴까지 숨김으로 계산됨** → 크기를 바로 재는 코드(구역 폭 고정, `adjustSize`)는 추가 직후 `w.show()`가 필요. 배속 패널의 프리셋 목록과 컨트롤 `_rebuild_buttons`에서 두 번 겪음(후자는 "적용하면 가운데 버튼만 남음").
+16. 숨김 요청이 "이미 안 보임"이라 아무것도 안 하면 위젯이 명시적으로 숨겨지지 않아 부모 `show()` 때 같이 켜짐(`CenterBadge`가 시작할 때 화면 가운데에 떠 있던 버그) → 숨길 때는 항상 `QWidget.setVisible(False)`까지 호출.
+17. 임시 시험·스크린샷 스크립트는 **반드시 `core.settings.APP_NAME`(과 `LEGACY_APP_NAME`)을 다른 이름으로 바꿔 격리**하고 끝나면 `HKCU\Software\<이름>`을 삭제(한 번 실제 배속 프리셋을 덮어쓴 적 있음). 비교하려고 `git stash`로 변경을 치울 땐 그 사이 돌리는 스크립트가 새 코드를 참조해 멈추지 않는지 확인하고, 반드시 `git stash list`로 복원 여부를 확인.
+18. `QTest.mouseMove`는 버튼을 누르지 않으면 위젯에 이벤트를 보내지 않음 → 호버 시험은 `QApplication.sendEvent(widget, QMouseEvent(QEvent.MouseMove, ...))`로.
+19. 설치 시험은 `/CURRENTUSER`로 할 것: 관리자 수준 세션에서 그냥 조용히 설치하면 "모든 사용자"(HKLM)로 설치되고, 제거 뒤 빈 `HKLM\Software\Pane` 키가 남음(지우려면 관리자 권한). 지인 PC에는 해당 없을 가능성이 큼.
+20. `tests/test_window.py::test_pip_does_not_recreate_the_native_window`가 전체 실행에서 **한 번 실패**(재실행과 단독 실행은 통과). 실제 창의 항상-위 상태를 2초 안에 기다리는 방식이라 컴퓨터가 바쁠 때 흔들릴 수 있음. 또 실패하면 대기 시간을 조정.
+21. 이 PC에는 GitHub CLI(`gh`)가 없음 → 릴리스는 GitHub 웹에서 직접 만들고 설치 파일을 끌어다 놓음(v1.1.0도 그렇게 올림). Bash에서 `python - <<'EOF'`처럼 표준입력을 기다리는 명령을 빈 heredoc과 섞으면 멈춤 → 패치 스크립트는 Write로 파일을 만들어 `.\.venv\Scripts\python.exe`로 실행(§2 셸 주의와 같은 계열).
+
 ## 6. 성능 (이 PC: Intel Arc 140V, 8코어, 2560×1440 @ 144Hz, 모두 `hwdec=auto-copy`)
 
 | 영상 | 창 | 전체화면 |
