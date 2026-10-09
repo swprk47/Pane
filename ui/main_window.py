@@ -787,6 +787,14 @@ class MainWindow(QMainWindow):
         key = event.key()
         modifiers = event.modifiers()
 
+        # The control-layout panel is modal: it has the keyboard (normally it holds the focus itself).
+        panel = self.controller.layout_panel
+        if panel is not None:
+            if key == Qt.Key_Escape:
+                panel.reject()
+            event.accept()
+            return
+
         # Space: Play/Pause
         if key == Qt.Key_Space:
             self.engine.toggle_play()
@@ -977,6 +985,8 @@ class MainWindow(QMainWindow):
             self.next_up.raise_()
         if self.info_panel.isVisible():
             self.info_panel.raise_()
+        if hasattr(self, "controller") and self.controller.layout_panel is not None:
+            self.controller.layout_panel.raise_overlay()
         if hasattr(self, "osd"):
             self.osd.raise_()
 

@@ -8,13 +8,15 @@ Settings for the control bar: edit it the way it looks.
 
 The bar is drawn as three dashed zones holding the real (glass) buttons. Drag a button to another place or
 zone, drag it down to the "숨긴 버튼" row (or press its ✕) to hide it, and drag / click a hidden one to
-bring it back. ``LayoutEditor`` is the widget, ``ControlLayoutDialog`` the glass dialog around it.
+bring it back. ``LayoutEditor`` is the widget, ``ControlLayoutPanel`` the glass panel around it. The panel is
+not a window of its own but a widget laid over the player window (like the speed and track panels): a second
+translucent window made the player flicker when it opened, since the player was deactivated and repainted.
 """
 import math
 
-from PySide6.QtCore import Qt, QPointF, QRectF, QSize, Signal
+from PySide6.QtCore import QEvent, QPoint, Qt, QPointF, QRectF, QSize, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPen
-from PySide6.QtWidgets import QApplication, QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ui.glass_button import GlassButton, glass_disc_pixmap, paint_glass_panel
 from ui.icons import get_svg_icon
@@ -443,28 +445,51 @@ class LayoutEditor(QWidget):
 
 
 class _Dim(QWidget):
-    """Darkens the window behind the dialog."""
+    """Darkens the window behind the panel and swallows the mouse, which is what makes the panel modal."""
 
     def __init__(self, window):
         super().__init__(window)
         self.setGeometry(window.rect())
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setFocusPolicy(Qt.NoFocus)
 
     def paintEvent(self, event):
         QPainter(self).fillRect(self.rect(), QColor(0, 0, 0, 118))
 
+    def mousePressEvent(self, event):
+        event.accept()
 
-class ControlLayoutDialog(QDialog):
+    def mouseReleaseEvent(self, event):
+        event.accept()
+
+    def mouseDoubleClickEvent(self, event):
+        event.accept()
+
+    def wheelEvent(self, event):
+        event.accept()
+
+    def contextMenuEvent(self, event):
+        event.accept()
+
+
+class ControlLayoutPanel(QWidget):
+    """The glass panel that edits the control bar, laid over the player window with the window dimmed behind it.
+
+    ``open()`` shows it, ``accept()`` / ``reject()`` close it; ``layout_changed`` carries the new layout on Apply and
+    ``finished(accepted)`` fires when it closes. While it is open it keeps the keyboard (Esc closes, every other key
+    is swallowed) and the dim layer keeps the mouse, so nothing behind it reacts.
+    """
     layout_changed = Signal(dict)
+    finished = Signal(bool)
 
-    def __init__(self, current_layout: dict, metadata: dict, default_layout: dict, parent=None):
-        super().__init__(parent)
-        self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setModal(True)
-        self.setWindowTitle("컨트롤 배치")
+    def __init__(self, current_layout: dict, metadata: dict, default_layout: dict, host: QWidget):
+        super().__init__(host)
+        self._host = host
         self._default = default_layout
-        self._dim = None
+        self._dim = _Dim(host)
+        self._dim.hide()
+        self._moved = False            # dragged by its header: then it is kept where the user put it
+        self._drag_from = None
+        self.setFocusPolicy(Qt.StrongFocus)
 
         m = DIALOG_MARGIN
         root = QVBoxLayout(self)
@@ -492,7 +517,7 @@ class ControlLayoutDialog(QDialog):
 
         self.editor = LayoutEditor(current_layout, metadata, default_layout, self)
         self.editor.setFixedWidth(DIALOG_CONTENT_W - 48)
-        self.editor.fit()                      # (its height depends on the layout; the dialog needs it before painting)
+        self.editor.fit()                      # (its height depends on the layout; the panel needs it before painting)
         root.addWidget(self.editor)
         root.addSpacing(18)
 
@@ -513,27 +538,89 @@ class ControlLayoutDialog(QDialog):
         foot.addWidget(self.btn_apply)
         root.addLayout(foot)
 
+        root.activate()
+        self.setFixedSize(self.sizeHint())
+        self.hide()
+        host.installEventFilter(self)
+
+    # --- opening / closing ------------------------------------------------------------------------
+    def open(self):
+        self._dim.setGeometry(self._host.rect())
+        self._dim.show()
+        self._dim.raise_()
+        self._place()
+        self.show()
+        self.raise_()
+        self.setFocus(Qt.PopupFocusReason)
+
+    def is_open(self) -> bool:
+        return self.isVisible()
+
+    def raise_overlay(self):
+        """Back on top of everything (the window raises its floating widgets when it is laid out)."""
+        self._dim.raise_()
+        self.raise_()
+
+    def accept(self):
+        self._close(True)
+
+    def reject(self):
+        self._close(False)
+
     def _apply(self):
         self.layout_changed.emit(self.editor.layout())
         self.accept()
 
-    # --- the dimmed window behind, the glass panel, moving by the header ----------------------------
-    def showEvent(self, event):
-        super().showEvent(event)
-        host = self.parentWidget().window() if self.parentWidget() else None
-        if host is not None:
-            self._dim = _Dim(host)
-            self._dim.show()
-            self._dim.raise_()
-            self.move(host.geometry().center() - self.rect().center())
-            self.raise_()
+    def _close(self, accepted: bool):
+        if self._dim is None:
+            return
+        self._host.removeEventFilter(self)
+        self._dim.hide()
+        self._dim.deleteLater()
+        self._dim = None
+        self.hide()
+        self.deleteLater()
+        self.finished.emit(accepted)
 
-    def done(self, result):
-        if self._dim is not None:
-            self._dim.hide()
-            self._dim.deleteLater()
-            self._dim = None
-        super().done(result)
+    # --- placing: centred in the window, following its size ---------------------------------------
+    def _place(self):
+        host = self._host.rect()
+        if self._moved:
+            x = max(0, min(self.x(), host.width() - self.width()))
+            y = max(0, min(self.y(), host.height() - self.height()))
+        else:
+            x = (host.width() - self.width()) // 2
+            y = (host.height() - self.height()) // 2
+        self.move(x, y)
+
+    def eventFilter(self, obj, event):
+        if obj is self._host and event.type() == QEvent.Resize and self._dim is not None:
+            self._dim.setGeometry(self._host.rect())
+            self._place()
+        return super().eventFilter(obj, event)
+
+    # --- the keyboard and the header --------------------------------------------------------------
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.reject()
+        event.accept()                          # nothing reaches the player's shortcuts while this is open
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and event.position().y() < DIALOG_MARGIN + 70:
+            self._drag_from = event.position().toPoint()
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._drag_from is not None:
+            host = self._host.rect()
+            target = self.mapToParent(event.position().toPoint() - self._drag_from)
+            self.move(max(0, min(target.x(), host.width() - self.width())), max(0, min(target.y(), host.height() - self.height())))
+            self._moved = True
+        event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_from = None
+        event.accept()
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -547,10 +634,3 @@ class ControlLayoutDialog(QDialog):
             p.drawRoundedRect(panel.translated(0, 10).adjusted(-grow, -grow, grow, grow), 24 + grow, 24 + grow)
         p.translate(panel.topLeft())
         paint_glass_panel(p, QRectF(0, 0, panel.width(), panel.height()), 24, calm=True)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and event.position().y() < DIALOG_MARGIN + 70 and self.windowHandle():
-            self.windowHandle().startSystemMove()
-            event.accept()
-        else:
-            super().mousePressEvent(event)
