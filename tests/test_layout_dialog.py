@@ -6,7 +6,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
 
 from ui.glass_controller import BUTTON_METADATA, DEFAULT_LAYOUT
-from ui.layout_dialog import ControlLayoutDialog, LayoutEditor, ZONES, DIALOG_CONTENT_W
+from ui.layout_dialog import ControlLayoutPanel, LayoutEditor, ZONES, DIALOG_CONTENT_W
 
 
 @pytest.fixture
@@ -159,57 +159,138 @@ def test_the_x_on_a_hovered_button_hides_it(editor):
     assert editor.zone_of("fullscreen") is None and "fullscreen" in editor.hidden_keys()
 
 
-# --- the dialog ----------------------------------------------------------------------------------
+# --- the panel (laid over the player window, not a window of its own) --------------------------
 
 @pytest.fixture
-def dialog(qapp):
+def panel(qapp):
     host = QWidget()
     host.resize(900, 600)
     host.show()
-    dlg = ControlLayoutDialog(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host)
-    yield dlg
-    dlg.reject()
+    p = ControlLayoutPanel(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host)
+    p.open()
+    qapp.processEvents()
+    yield p
+    p.reject()
     host.close()
 
 
-def test_apply_sends_the_new_layout_and_cancel_does_not(dialog):
+def test_apply_sends_the_new_layout_and_cancel_does_not(panel):
     got = []
-    dialog.layout_changed.connect(got.append)
-    dialog.editor.move_key("prev_frame", "center", 0)
-    dialog.btn_cancel.click()
+    panel.layout_changed.connect(got.append)
+    panel.editor.move_key("prev_frame", "center", 0)
+    panel.btn_cancel.click()
     assert got == []
-    dialog.editor.move_key("prev_frame", "center", 0)
-    dialog.btn_apply.click()
+
+    # (cancel closed that one: open a new one for the second half)
+    host = panel._host
+    again = ControlLayoutPanel(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host)
+    again.layout_changed.connect(got.append)
+    again.open()
+    again.editor.move_key("prev_frame", "center", 0)
+    again.btn_apply.click()
     assert got and got[0]["center"][0] == "prev_frame"
     assert set(got[0]) == set(ZONES)
 
 
-def test_reset_puts_the_default_layout_back_including_the_hidden_frame_buttons(dialog):
-    dialog.editor.move_key("prev_frame", "left", 0)
-    dialog.editor.move_key("volume", "hidden")
-    dialog.btn_reset.click()
-    assert dialog.editor.layout() == {z: DEFAULT_LAYOUT[z] for z in ZONES}
-    assert "prev_frame" in dialog.editor.hidden_keys()
+def test_reset_puts_the_default_layout_back_including_the_hidden_frame_buttons(panel):
+    panel.editor.move_key("prev_frame", "left", 0)
+    panel.editor.move_key("volume", "hidden")
+    panel.btn_reset.click()
+    assert panel.editor.layout() == {z: DEFAULT_LAYOUT[z] for z in ZONES}
+    assert "prev_frame" in panel.editor.hidden_keys()
 
 
-def test_the_window_behind_is_dimmed_while_the_dialog_is_open(dialog):
-    dialog.show()
-    assert dialog._dim is not None and dialog._dim.isVisible()
-    dim = dialog._dim
-    dialog.reject()
-    assert dialog._dim is None
+def test_it_is_a_widget_inside_the_window_not_a_window(panel):
+    """A second translucent top-level window made the player flicker when it opened."""
+    assert not panel.isWindow()
+    assert panel.parentWidget() is panel._host
 
 
-def test_settings_button_and_menu_open_the_new_dialog_and_apply_to_the_bar(window, monkeypatch):
+def test_the_window_behind_is_dimmed_while_the_panel_is_open(panel):
+    assert panel._dim is not None and panel._dim.isVisible()
+    assert panel._dim.geometry() == panel._host.rect()
+    finished = []
+    panel.finished.connect(finished.append)
+    panel.reject()
+    assert panel._dim is None and not panel.isVisible()
+    assert finished == [False]
+
+
+def test_it_sits_in_the_middle_of_the_window_and_follows_its_size(panel, qapp):
+    host = panel._host
+    assert abs(panel.geometry().center().x() - host.rect().center().x()) <= 1
+    assert abs(panel.geometry().center().y() - host.rect().center().y()) <= 1
+    host.resize(1300, 800)
+    qapp.processEvents()
+    assert abs(panel.geometry().center().x() - host.rect().center().x()) <= 1
+    assert panel._dim.geometry() == host.rect()
+
+
+def test_dragging_the_header_moves_it_inside_the_window(panel, qapp):
+    start = panel.pos()
+    press = QPoint(60, 40)                                              # in the header
+    QTest.mousePress(panel, Qt.LeftButton, Qt.NoModifier, press)
+    QApplication.sendEvent(panel, QMouseEvent(QEvent.MouseMove, QPointF(press + QPoint(-30, 20)), Qt.NoButton, Qt.LeftButton, Qt.NoModifier))
+    QTest.mouseRelease(panel, Qt.LeftButton, Qt.NoModifier, press + QPoint(-30, 20))
+    assert panel.pos() == start + QPoint(-30, 20)
+    panel._host.resize(1000, 650)
+    qapp.processEvents()
+    assert panel.x() == start.x() - 30, "once moved by hand it stays where the user put it"
+
+
+# --- modal: nothing behind it reacts ---------------------------------------------------------
+
+def test_settings_button_opens_the_panel_and_apply_changes_the_bar(window, pump):
     c = window.controller
-    shown = []
-
-    def fake_exec(self):
-        shown.append(self)
-        self.editor.move_key("prev_frame", "center", 0)
-        self._apply()
-    monkeypatch.setattr(ControlLayoutDialog, "exec", fake_exec)
     c._open_settings_dialog()
-    assert shown and isinstance(shown[0], ControlLayoutDialog)
+    p = c.layout_panel
+    assert isinstance(p, ControlLayoutPanel) and p.isVisible()
+    c._open_settings_dialog()
+    assert c.layout_panel is p, "pressing the button again does not open a second one"
+    p.editor.move_key("prev_frame", "center", 0)
+    p.btn_apply.click()
+    assert c.layout_panel is None
     assert c.current_layout["center"][0] == "prev_frame"
     assert hasattr(c, "btn_prev_file") and c.center_box.count() == len(c.current_layout["center"])
+
+
+def test_the_players_shortcuts_are_off_while_it_is_open_and_esc_closes_it(window, pump):
+    c = window.controller
+    c._open_settings_dialog()
+    assert c.layout_panel is not None
+    QTest.keyClick(window, Qt.Key_F)                                     # fullscreen: swallowed
+    QTest.keyClick(c.layout_panel, Qt.Key_M)                             # (also when the panel itself has the focus)
+    assert not window.isFullScreen()
+    QTest.keyClick(window, Qt.Key_Escape)
+    assert c.layout_panel is None
+
+
+def test_the_controls_stay_up_while_the_panel_is_open(window):
+    c = window.controller
+    c._open_settings_dialog()
+    c.autohide_timer.stop()
+    c._fade_out()
+    assert c.autohide_timer.isActive(), "the bar being edited must not fade away behind the panel"
+    c.layout_panel.reject()
+
+
+def test_it_stays_on_top_when_the_window_lays_its_widgets_out_again(window):
+    c = window.controller
+    c._open_settings_dialog()
+    window._reposition_floating_widgets()
+    kids = window.central_widget.children()
+    assert kids.index(c.layout_panel) > kids.index(c) and kids.index(c.layout_panel._dim) > kids.index(c)
+    assert kids.index(c.layout_panel) > kids.index(c.layout_panel._dim)
+    c.layout_panel.reject()
+
+
+def test_a_click_on_the_dimmed_window_is_swallowed(window):
+    c = window.controller
+    c._open_settings_dialog()
+    window.viewport.start_screen.hide()
+    toggles = []
+    window.engine.toggle_play = lambda: toggles.append(1)
+    dim = c.layout_panel._dim
+    QTest.mouseClick(dim, Qt.LeftButton, Qt.NoModifier, QPoint(5, 5))
+    assert toggles == [] and c.layout_panel is not None
+    c.layout_panel.reject()

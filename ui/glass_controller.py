@@ -10,7 +10,7 @@ from ui.volume_popup import VolumePopup
 from core.settings import open_settings
 from ui.icons import get_svg_icon
 from ui.glass_button import GlassButton
-from ui.layout_dialog import ControlLayoutDialog
+from ui.layout_dialog import ControlLayoutPanel
 
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
@@ -341,10 +341,19 @@ class GlassController(QWidget):
 
         return None
 
+    layout_panel = None          # the open "컨트롤 배치" panel, else None
+
     def _open_settings_dialog(self):
-        dlg = ControlLayoutDialog(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self)
-        dlg.layout_changed.connect(self._save_layout)
-        dlg.exec()
+        if self.layout_panel is not None:
+            return
+        panel = ControlLayoutPanel(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self.parentWidget())
+        panel.layout_changed.connect(self._save_layout)
+        panel.finished.connect(self._on_layout_panel_closed)
+        self.layout_panel = panel
+        panel.open()
+
+    def _on_layout_panel_closed(self, _accepted):
+        self.layout_panel = None
 
     def set_playlist_state(self, has_prev: bool, has_next: bool):
         """Which of the previous / next video buttons can be used (the folder has such a video)."""
@@ -510,7 +519,7 @@ class GlassController(QWidget):
         return super().eventFilter(obj, event)
 
     def _fade_out(self):
-        if (self._mouse_over_controls() or self.volume_popup.isVisible()
+        if (self._mouse_over_controls() or self.volume_popup.isVisible() or self.layout_panel is not None
                 or (self.hold_visible and self.hold_visible())):
             self.autohide_timer.start(2800)
             return
