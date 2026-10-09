@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 - 2026-10-10
+- Audio and subtitle tracks: the subtitle button opens a panel with an Audio | Subtitles tab, each listing the tracks as "language · codec / channels" (embedded or external), a subtitle on/off switch, the sync value and "load an external subtitle file". Subtitle sync on `Z` / `X` (0.1 s), audio delay on `Shift+Z` / `Shift+X`, `Ctrl+Z` resets both; the sync starts at 0 for every video
+- Windows' own window behaviour: `Win+arrow keys` snap and maximize the window, the window can be dragged to the screen edges, the edges can be dragged to resize it (with the usual resize cursors and minimum size), and the taskbar menu / `Alt+Space` work. The maximize button follows maximizing done by Windows
+- New on-screen notices: a dark glass pill that grows out of the top edge of the window and folds back after a second. Value notices (speed, volume, mute, subtitle on/off, sync) now appear only for keyboard shortcuts, since a value changed with the mouse is already visible in its panel; fullscreen, PIP, seek, frame step and next / previous video no longer show one
+- The control-layout settings open as a panel inside the player window instead of a second window, which removes the flicker when opening them. The speed and track panels sit just above the seek bar
+- The speed range is now 0.25x - 4.0x everywhere (keys, panel slider and typed input; the keys used to reach 4.0x while the panel stopped at 3.0x)
+- Fix: after clicking a slider the arrow keys (volume, seek) went to the slider instead of the player
+- Fix: the volume notice could show more than 100 % (the sound itself never did)
+- Fix: pressing the X button left the window frozen on screen for ~0.4 s while a video played; it now disappears at once
+- Known limits: resizing the window while a 4K 60 fps video plays drops frames; entering fullscreen still stalls for ~0.2 s
+
 ## 1.1.0 - 2026-10-08
 - New control-layout settings: edit the bar the way it looks, drag buttons between the left / centre / right zones, hide them (✕ or drag to the "hidden" row) and bring hidden ones back (this also fixes hidden buttons, such as the frame-step ones, having no way back)
 - Fix: applying a new control layout left only the centre buttons (the left / right zones collapsed to 0 px)
