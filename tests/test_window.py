@@ -394,3 +394,22 @@ def test_title_bar_shows_only_the_app_name(window, sample_video):
     window.load_media_file(sample_video)
     after = [w.text() for w in window.title_bar.findChildren(type(window.title_bar.title_label))]
     assert after == labels == ["Pane"]
+
+
+# --- arrow keys keep working after the sliders were used -------------------------
+
+def test_clicking_a_slider_does_not_take_the_arrow_keys(window, sample_video, pump, qapp):
+    window.load_media_file(sample_video)
+    assert pump(lambda: window.engine.get_media_info().get("width"), timeout=5)
+    window.activateWindow()
+    sliders = (window.controller.timeline, window.controller.vol_slider, window.speed_popup.slider)
+    window.speed_popup.show()                                     # (so that its slider can be clicked)
+    pump(timeout=0.2)
+    for slider in sliders:
+        QTest.mouseClick(slider, Qt.LeftButton)
+        pump(timeout=0.1)
+        assert qapp.focusWidget() is not slider, type(slider).__name__
+    window.speed_popup.hide()
+    window.engine.set_volume(50)
+    QTest.keyClick(qapp.focusWidget() or window, Qt.Key_Up)       # a real key press goes to the focus widget
+    assert window.engine.get_volume() == 55.0
