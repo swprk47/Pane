@@ -13,6 +13,10 @@ visible frame away again:
     sizing frame a frame's width beyond the screen on every side (here Qt already fits it to the work area, so
     subtracting a fixed frame width left 8 px bands of desktop around the video).
 
+  * ``WM_NCHITTEST`` tells Windows which strip along the edge is a sizing border (``resize_hit``): Windows then
+    shows the resize cursors and runs the whole resize itself (minimum size included). The border is thin on the
+    top, where the title bar's buttons sit just below it, and larger in the bottom corners.
+
 Qt rewrites the window style when the flags or the fullscreen state change, so the window calls
 ``enable_native_frame`` again after those.
 """
@@ -31,6 +35,10 @@ NATIVE_FRAME_STYLES = WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_SYSME
 
 SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE, SWP_FRAMECHANGED = 0x0001, 0x0002, 0x0004, 0x0010, 0x0020
 WM_NCCALCSIZE = 0x0083
+WM_NCHITTEST = 0x0084
+HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT = 1, 10, 11, 12, 13, 14, 15, 16, 17
+RESIZE_BORDER = 6          # px at 100 % scale: the sizing strip along the left, right, top and bottom edges
+RESIZE_CORNER = 14         # px: the bottom corners are easier to grab (the top ones are not: the title bar's buttons are there)
 
 
 class RECT(ctypes.Structure):
@@ -110,7 +118,40 @@ def _work_area(hwnd: int):
     return w.left, w.top, w.right, w.bottom
 
 
-def handle_message(msg_address: int):
+def resize_hit(x: int, y: int, rect, border: int, corner: int):
+    """Which sizing border (an HT* code) the screen point (x, y) is on for a window `rect` = (left, top, right,
+    bottom), or None when it is not on one."""
+    left, top, right, bottom = rect
+    if not (left <= x < right and top <= y < bottom):
+        return None
+    on_left, on_right = x - left < border, right - 1 - x < border
+    on_top, on_bottom = y - top < border, bottom - 1 - y < border
+    if on_top and on_left:
+        return HTTOPLEFT
+    if on_top and on_right:
+        return HTTOPRIGHT
+    if (on_bottom or bottom - 1 - y < corner) and (on_left or x - left < corner):
+        return HTBOTTOMLEFT
+    if (on_bottom or bottom - 1 - y < corner) and (on_right or right - 1 - x < corner):
+        return HTBOTTOMRIGHT
+    if on_left:
+        return HTLEFT
+    if on_right:
+        return HTRIGHT
+    if on_top:
+        return HTTOP
+    if on_bottom:
+        return HTBOTTOM
+    return None
+
+
+def _dpi_scale(hwnd: int) -> float:
+    u = ctypes.windll.user32
+    u.GetDpiForWindow.argtypes = [wintypes.HWND]
+    return (u.GetDpiForWindow(hwnd) or 96) / 96.0
+
+
+def handle_message(msg_address: int, resizable: bool = True):
     """Answer the window messages that are ours. Returns the message result (an int) when handled, else None.
     (The window handle comes from the message: asking Qt for ``winId()`` from here would create the native window
     again from inside its own creation.)"""
@@ -118,6 +159,15 @@ def handle_message(msg_address: int):
         return None
     msg = MSG.from_address(msg_address)
     hwnd = msg.hwnd
+    if msg.message == WM_NCHITTEST and resizable:
+        x = ctypes.c_short(msg.lParam & 0xFFFF).value            # screen coordinates, signed 16 bit each
+        y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
+        rect = wintypes.RECT()
+        ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        scale = _dpi_scale(hwnd)
+        hit = resize_hit(x, y, (rect.left, rect.top, rect.right, rect.bottom),
+                         round(RESIZE_BORDER * scale), round(RESIZE_CORNER * scale))
+        return hit                                               # (None: Qt answers, i.e. the client area)
     if msg.message == WM_NCCALCSIZE:
         if msg.wParam:                                   # (wParam false: a plain rectangle; nothing to do)
             params = NCCALCSIZE_PARAMS.from_address(msg.lParam)

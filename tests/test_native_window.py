@@ -110,3 +110,86 @@ def test_maximizing_the_way_win_up_does_updates_the_title_button(window, pump):
     ctypes.windll.user32.ShowWindow(hwnd, 9)                   # SW_RESTORE
     pump(lambda: not window.isMaximized(), timeout=2.0)
     assert window.title_bar.shows_restore is False
+
+
+# --- the sizing borders (WM_NCHITTEST) --------------------------------------------------------
+
+RECT = (100, 80, 1100, 680)
+B, C = 6, 14
+
+
+@pytest.mark.parametrize("x, y, expected", [
+    (101, 300, nw.HTLEFT), (1098, 300, nw.HTRIGHT), (500, 81, nw.HTTOP), (500, 678, nw.HTBOTTOM),
+    (101, 81, nw.HTTOPLEFT), (1098, 81, nw.HTTOPRIGHT),
+    (101, 678, nw.HTBOTTOMLEFT), (1098, 678, nw.HTBOTTOMRIGHT),
+    (1090, 668, nw.HTBOTTOMRIGHT), (110, 668, nw.HTBOTTOMLEFT),         # (the bottom corners are bigger than the border)
+    (500, 300, None), (110, 300, None), (500, 100, None),                # inside
+    (50, 300, None), (1100, 300, None), (500, 680, None),                # outside
+])
+def test_resize_hit(x, y, expected):
+    assert nw.resize_hit(x, y, RECT, B, C) == expected
+
+
+def test_the_top_corners_are_not_bigger_than_the_border():
+    """The title bar's buttons sit just below the top edge, at the right: a big corner would eat their clicks."""
+    assert nw.resize_hit(1090, 90, RECT, B, C) is None
+    assert nw.resize_hit(110, 90, RECT, B, C) is None
+
+
+def _hit_test(hwnd, x, y):
+    lparam = (x & 0xFFFF) | ((y & 0xFFFF) << 16)
+    u = ctypes.windll.user32
+    u.SendMessageW.restype = ctypes.c_ssize_t
+    u.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+    return int(u.SendMessageW(hwnd, nw.WM_NCHITTEST, 0, lparam))
+
+
+def _window_rect(hwnd):
+    r = wintypes.RECT()
+    ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(r))
+    return r.left, r.top, r.right, r.bottom
+
+
+def test_windows_is_told_about_the_borders_of_the_real_window(window, pump):
+    hwnd = int(window.winId())
+    left, top, right, bottom = _window_rect(hwnd)
+    mid_x, mid_y = (left + right) // 2, (top + bottom) // 2
+    assert _hit_test(hwnd, right - 2, mid_y) == nw.HTRIGHT
+    assert _hit_test(hwnd, left + 2, mid_y) == nw.HTLEFT
+    assert _hit_test(hwnd, mid_x, bottom - 2) == nw.HTBOTTOM
+    assert _hit_test(hwnd, right - 2, bottom - 2) == nw.HTBOTTOMRIGHT
+    assert _hit_test(hwnd, left + 2, bottom - 2) == nw.HTBOTTOMLEFT
+    assert _hit_test(hwnd, mid_x, top + 2) == nw.HTTOP
+    assert _hit_test(hwnd, mid_x, mid_y) == nw.HTCLIENT
+
+
+def test_no_sizing_borders_when_maximized_or_fullscreen(window, pump):
+    hwnd = int(window.winId())
+    window.title_bar._toggle_maximize()
+    pump(timeout=0.6)
+    left, top, right, bottom = _window_rect(hwnd)
+    assert _hit_test(hwnd, right - 2, (top + bottom) // 2) == nw.HTCLIENT
+    window.title_bar._toggle_maximize()
+    pump(timeout=0.4)
+    window.toggle_fullscreen()
+    pump(timeout=0.6)
+    left, top, right, bottom = _window_rect(hwnd)
+    assert _hit_test(hwnd, right - 2, (top + bottom) // 2) == nw.HTCLIENT
+    window.toggle_fullscreen()
+    pump(timeout=0.4)
+
+
+class MINMAXINFO(ctypes.Structure):
+    _fields_ = [("ptReserved", wintypes.POINT), ("ptMaxSize", wintypes.POINT), ("ptMaxPosition", wintypes.POINT),
+                ("ptMinTrackSize", wintypes.POINT), ("ptMaxTrackSize", wintypes.POINT)]
+
+
+def test_windows_resizes_within_the_windows_minimum_size(window, pump):
+    """Windows runs the resizing now; it asks the window for its limits (WM_GETMINMAXINFO), which Qt answers."""
+    hwnd = int(window.winId())
+    info = MINMAXINFO()
+    u = ctypes.windll.user32
+    u.SendMessageW.restype = ctypes.c_ssize_t
+    u.SendMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, ctypes.c_void_p]
+    u.SendMessageW(hwnd, 0x0024, 0, ctypes.addressof(info))                 # WM_GETMINMAXINFO
+    assert (info.ptMinTrackSize.x, info.ptMinTrackSize.y) == (window.minimumWidth(), window.minimumHeight()) == (640, 380)
