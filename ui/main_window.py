@@ -26,6 +26,7 @@ from ui.overlay import TopScrim, MiniProgress, CenterBadge
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
 from core.tracks import format_delay
+from ui import native_window
 from core.settings import AppSettings
 
 
@@ -303,6 +304,7 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         hwnd = int(self.winId())
         apply_windows_11_rounded_corners(hwnd)
+        native_window.enable_native_frame(hwnd)              # Win+arrow snapping, resizable, taskbar menu
         try:
             pywinstyles.apply_style(self, "acrylic")
         except Exception as e:
@@ -311,6 +313,22 @@ class MainWindow(QMainWindow):
         # transparent;", which wipes the whole theme. Re-apply it afterwards.
         self.setStyleSheet(GLASS_THEME_QSS)
         self._reposition_floating_widgets()
+
+    def nativeEvent(self, event_type, message):
+        """Windows messages that are ours (no visible frame, see ui/native_window.py)."""
+        if native_window.IS_WINDOWS and bytes(event_type) == b"windows_generic_MSG":
+            result = native_window.handle_message(int(message))
+            if result is not None:
+                return True, result
+        return super().nativeEvent(event_type, message)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange and hasattr(self, "title_bar"):
+            # (Qt rewrites the window style when the state changes, e.g. in and out of fullscreen)
+            native_window.enable_native_frame(int(self.winId()))
+            # maximized by Win+Up / a snap as well as by the title bar's button: keep its icon right
+            self.title_bar.sync_maximized(self.isMaximized())
 
     # --- Mouse Tracking Event Filter ---
 

@@ -27,6 +27,7 @@ class GlassTitleBar(QWidget):
     activity = Signal()                 # the mouse moved over the bar: bring the controls back
 
     HEIGHT = 38
+    shows_restore = False               # the maximize button currently shows 'restore' (the window is maximized)
     INTERACTIVE_ABOVE = 0.25            # buttons only react while the bar is at least this visible
 
     def __init__(self, parent_window, parent=None):
@@ -114,13 +115,17 @@ class GlassTitleBar(QWidget):
         self.btn_pip.setProperty("active", "true" if active else "false")
         self.btn_pip.setActive(active)
 
+    def sync_maximized(self, maximized: bool):
+        """The maximize button shows 'restore' while the window is maximized (however that happened)."""
+        self.shows_restore = bool(maximized)
+        self.btn_max.setIcon(get_svg_icon("restore" if maximized else "maximize", size=12))
+
     def _toggle_maximize(self):
         if self.parent_window.isMaximized():
             self.parent_window.showNormal()
-            self.btn_max.setIcon(get_svg_icon("maximize", size=12))
         else:
             self.parent_window.showMaximized()
-            self.btn_max.setIcon(get_svg_icon("restore", size=12))
+        self.sync_maximized(self.parent_window.isMaximized())
 
     def _minimize_window(self):
         self.parent_window.showMinimized()
