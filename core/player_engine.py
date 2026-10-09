@@ -144,6 +144,7 @@ class PlayerEngine(QObject):
 
         self._current_file = file_path
         self._eof_emitted = False
+        self.reset_sync()                    # sync is per video: the previous one's offsets must not carry over
         try:
             # Start position goes in as a load option. Seeking right after loadfile fails
             # (the file isn't loaded yet), which silently broke "resume where you left off".
@@ -280,6 +281,72 @@ class PlayerEngine(QObject):
         """Add and select a subtitle file."""
         if os.path.exists(sub_path):
             self.mpv.sub_add(sub_path)
+            self._set_prop("sub-visibility", True)
+
+    # --- Audio / subtitle tracks and sync ---
+
+    def _track_list(self) -> list:
+        try:
+            return self.mpv._get_property("track-list") or []
+        except Exception:
+            return []
+
+    def audio_tracks(self) -> list:
+        from core.tracks import AUDIO, list_tracks
+        return list_tracks(self._track_list(), AUDIO)
+
+    def subtitle_tracks(self) -> list:
+        from core.tracks import SUB, list_tracks
+        return list_tracks(self._track_list(), SUB)
+
+    def _set_prop(self, name: str, value) -> bool:
+        try:
+            self.mpv._set_property(name, value)
+            return True
+        except Exception as e:
+            print(f"[PlayerEngine] Could not set {name}: {e}")
+            return False
+
+    def _get_float(self, name: str) -> float:
+        try:
+            return float(self.mpv._get_property(name) or 0.0)
+        except Exception:
+            return 0.0
+
+    def select_audio_track(self, track_id: int) -> bool:
+        return self._set_prop("aid", int(track_id))
+
+    def select_subtitle_track(self, track_id: int) -> bool:
+        """Show the given subtitle track (also turns subtitles on)."""
+        return self._set_prop("sid", int(track_id)) and self._set_prop("sub-visibility", True)
+
+    def subtitles_visible(self) -> bool:
+        try:
+            return bool(self.mpv._get_property("sub-visibility"))
+        except Exception:
+            return True
+
+    def get_sub_delay(self) -> float:
+        return round(self._get_float("sub-delay"), 2)
+
+    def get_audio_delay(self) -> float:
+        return round(self._get_float("audio-delay"), 2)
+
+    def change_sub_delay(self, delta: float) -> float:
+        """Subtitle sync, in seconds (+ = later). Returns the new value."""
+        value = round(self.get_sub_delay() + delta, 2)
+        self._set_prop("sub-delay", value)
+        return value
+
+    def change_audio_delay(self, delta: float) -> float:
+        """Audio delay, in seconds (+ = audio later). Returns the new value."""
+        value = round(self.get_audio_delay() + delta, 2)
+        self._set_prop("audio-delay", value)
+        return value
+
+    def reset_sync(self):
+        self._set_prop("sub-delay", 0.0)
+        self._set_prop("audio-delay", 0.0)
 
     def toggle_subtitle_visibility(self) -> bool:
         """Toggle subtitle visibility."""

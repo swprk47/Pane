@@ -182,6 +182,7 @@ class SpeedPopup(QWidget):
         # Without WA_StyledBackground a plain QWidget ignores the QSS background.
         self.setFixedWidth(PANEL_WIDTH)
         self._anchor = None
+        self._above = None             # the panel floats just over the top of this widget (the seek bar), else the anchor
         self._align_to = None          # the panel's left edge lines up with this widget's left edge (when it is shown)
         self.hide()
 
@@ -442,25 +443,28 @@ class SpeedPopup(QWidget):
             x = align.mapTo(parent, QPoint(0, 0)).x()
         else:
             x = pos.x() + (target.width() - self.width()) // 2
-        y = pos.y() - self.height() - 10
+        above = self._above
+        top = above.mapTo(parent, QPoint(0, 0)).y() if above is not None and above.isVisible() else pos.y()
+        y = top - self.height() - 10
         x = max(8, min(x, parent.width() - self.width() - 8))
         y = max(8, y)
         self.move(x, y)
 
-    def show_above_widget(self, target_widget: QWidget, align_to: QWidget = None):
+    def show_above_widget(self, target_widget: QWidget, align_to: QWidget = None, above: QWidget = None):
         """Float the panel above `target_widget`, kept inside the parent window (see ``_place``)."""
         self._anchor = target_widget
         self._align_to = align_to
+        self._above = above
         self.adjustSize()
         self._place()
         self.show()
         self.raise_()
 
-    def toggle_above_widget(self, target_widget: QWidget, align_to: QWidget = None):
+    def toggle_above_widget(self, target_widget: QWidget, align_to: QWidget = None, above: QWidget = None):
         if self.isVisible():
             self.hide()
         else:
-            self.show_above_widget(target_widget, align_to)
+            self.show_above_widget(target_widget, align_to, above)
 
     def showEvent(self, event):
         super().showEvent(event)

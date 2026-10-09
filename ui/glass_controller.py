@@ -189,6 +189,7 @@ class GlassController(QWidget):
         self._rebuild_buttons()
 
     def _rebuild_buttons(self):
+        self.btn_subtitle = None          # (set again when the layout still has the button)
         for box in [self.left_box, self.center_box, self.right_box]:
             while box.count():
                 item = box.takeAt(0)
@@ -316,8 +317,9 @@ class GlassController(QWidget):
             return btn
 
         elif key == "subtitle":
-            btn = self._plain_button("subtitle", "자막 토글 (C)")
+            btn = self._plain_button("subtitle", "오디오 · 자막 (C: 자막 켜기/끄기)")
             btn.clicked.connect(self.subtitle_clicked.emit)
+            self.btn_subtitle = btn
             return btn
 
         elif key == "volume":
