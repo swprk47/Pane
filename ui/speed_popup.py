@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QPoint, QRectF, QTimer, QEvent
 from PySide6.QtGui import QPainter
 from core.settings import open_settings
+from core.player_engine import MIN_SPEED, MAX_SPEED
 from ui.icons import get_svg_icon
 from ui.glass_button import GlassButton, paint_glass_panel
 from ui.glass_slider import GlassSlider
@@ -13,8 +14,7 @@ from ui.glass_slider import GlassSlider
 DEFAULT_PRESETS = [1.0, 1.2, 1.25, 1.5, 2.0]
 MAX_PRESETS = 6          # more rows than this stop being readable
 
-MIN_SPEED, MAX_SPEED = 0.25, 3.0    # what the slider (and so a typed value) can reach
-SPEED_STEP = 0.05
+SPEED_STEP = 0.05          # (the range, MIN_SPEED..MAX_SPEED, is the engine's: the slider and a typed value stay inside it)
 
 PANEL_WIDTH = 190
 PAD_X, PAD_TOP, PAD_BOTTOM = 12, 10, 12
@@ -250,7 +250,7 @@ class SpeedPopup(QWidget):
         self.preset_layout.setSpacing(3)
         main.addWidget(self.preset_container)
 
-        # Bottom row: pin, the current speed (click to type), slider 0.25x .. 3.00x in 0.05x steps (25..300, step 5)
+        # Bottom row: pin, the current speed (click to type), slider MIN_SPEED..MAX_SPEED in 0.05x steps (25..400, step 5)
         bottom = QHBoxLayout()
         bottom.setSpacing(3)
         self.btn_pin = GlassButton(self, "plain", ROW_HEIGHT, icon_px=18)
@@ -274,7 +274,7 @@ class SpeedPopup(QWidget):
         bottom.addWidget(self.value_box)
 
         self.slider = GlassSlider(Qt.Horizontal, self, snap_step=5)
-        self.slider.setRange(25, 300)
+        self.slider.setRange(int(round(MIN_SPEED * 100)), int(round(MAX_SPEED * 100)))
         self.slider.setSingleStep(5)
         self.slider.setPageStep(10)
         self.slider.setValue(100)

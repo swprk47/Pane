@@ -143,7 +143,7 @@ def test_parse_speed_input():
     assert parse_speed_input(" 1.50x ") == 1.5
     assert parse_speed_input("1,3") == 1.3
     assert parse_speed_input("1.33") == 1.35, "snaps to the 0.05 grid"
-    assert parse_speed_input("0.1") == 0.25 and parse_speed_input("9") == 3.0, "stays inside the slider's range"
+    assert parse_speed_input("0.1") == 0.25 and parse_speed_input("9") == 4.0, "stays inside the slider's range"
     for bad in ("", "x", "abc", "nan", "inf", "1..2"):
         assert parse_speed_input(bad) is None
 
@@ -297,3 +297,14 @@ def test_panel_opens_at_the_left_margin_when_asked_else_centred_on_the_anchor(qa
     popup.show_above_widget(anchor, align_to=margin)
     assert popup.x() == anchor.x() + (anchor.width() - popup.width()) // 2, "a hidden margin widget is ignored"
     host.close()
+
+
+def test_keys_panel_and_typed_input_share_one_speed_range(qapp):
+    """The keys used to reach 4.0x while the panel's slider stopped at 3.0x (and showed the wrong value)."""
+    from core.player_engine import MIN_SPEED, MAX_SPEED
+    from ui.speed_popup import SpeedPopup, parse_speed_input
+    popup = SpeedPopup()
+    assert (popup.slider.minimum(), popup.slider.maximum()) == (round(MIN_SPEED * 100), round(MAX_SPEED * 100))
+    assert parse_speed_input("0.01") == MIN_SPEED and parse_speed_input("99") == MAX_SPEED
+    popup.set_current_speed(3.5)                                  # e.g. set with the ] key
+    assert popup.slider.value() == 350 and popup.lbl_speed_val.text() == "3.50x"

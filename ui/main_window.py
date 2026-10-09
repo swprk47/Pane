@@ -284,8 +284,8 @@ class MainWindow(QMainWindow):
         self.controller.seek_forward_clicked.connect(lambda s: self.seek_relative(s))
         self.controller.seek_requested.connect(lambda pos: self.engine.seek(pos, "absolute"))
         self.controller.speed_button_clicked.connect(self._show_speed_popup)
-        self.controller.volume_changed.connect(self.set_volume)
-        self.controller.mute_clicked.connect(self.toggle_mute)
+        self.controller.volume_changed.connect(lambda v: self.set_volume(v, osd=False))
+        self.controller.mute_clicked.connect(lambda: self.toggle_mute(osd=False))
         self.controller.subtitle_clicked.connect(self._show_track_popup)
         self.controller.screenshot_clicked.connect(self.take_screenshot)
         self.controller.fullscreen_clicked.connect(self.toggle_fullscreen)
@@ -392,7 +392,7 @@ class MainWindow(QMainWindow):
         sub_menu = menu.addMenu("자막 (Subtitles)")
         sub_menu.setStyleSheet(menu.styleSheet())
         act_sub_toggle = sub_menu.addAction("자막 켜기 / 끄기 (C)")
-        act_sub_toggle.triggered.connect(self.toggle_subtitle)
+        act_sub_toggle.triggered.connect(lambda: self.toggle_subtitle(osd=False))
         act_sub_load = sub_menu.addAction("외부 자막 파일 선택...")
         act_sub_load.triggered.connect(self._select_subtitle_file)
 
@@ -577,7 +577,6 @@ class MainWindow(QMainWindow):
     def _on_speed_changed(self, speed: float):
         self.controller.set_speed_display(speed)
         self.speed_popup.set_current_speed(speed)
-        self.osd.show_message(f"{speed:.2f}x", "speed")
 
     def _on_volume_changed(self, volume: float):
         self.controller.set_volume_display(volume)
@@ -610,7 +609,6 @@ class MainWindow(QMainWindow):
             self.osd.show_message("마지막 영상입니다" if step > 0 else "첫 영상입니다", "warning")
             return
         self.load_media_file(target)
-        self.osd.show_message(os.path.basename(target), "skip_next" if step > 0 else "skip_prev")
 
     def _update_playlist_state(self):
         prev_, next_ = playlist.neighbors(self._current_file) if self._current_file else (None, None)
@@ -621,27 +619,35 @@ class MainWindow(QMainWindow):
     def seek_relative(self, seconds: float):
         self.next_up.cancel()
         self.engine.seek(seconds, reference="relative")
-        direction = f"+{int(seconds)}s" if seconds > 0 else f"{int(seconds)}s"
-        self.osd.show_message(direction, "forward_5" if seconds > 0 else "backward_5")
+
+    # (The OSD pill only confirms keyboard shortcuts: a value changed with the mouse is already on screen in
+    # its panel / popup, so those callers pass osd=False.)
 
     def change_speed_relative(self, delta: float):
-        self.engine.change_speed_relative(delta)
+        self._show_speed_osd(self.engine.change_speed_relative(delta))
 
     def reset_speed(self):
-        self.engine.reset_speed()
+        self._show_speed_osd(self.engine.reset_speed())
 
-    def set_volume(self, volume: float):
+    def _show_speed_osd(self, speed: float):
+        self.osd.show_message("배속", "speed", f"{speed:.2f}x", accent=True)
+
+    def set_volume(self, volume: float, osd: bool = True):
         self.engine.set_volume(volume)
-        self.osd.show_message(f"볼륨 {int(volume)}%", "volume_high")
+        if osd:
+            # (what the engine settled on: the key handler asks for current + 5, which may be past 100)
+            self.osd.show_message("볼륨", "volume_high", f"{int(round(self.engine.get_volume()))}%")
 
-    def toggle_mute(self):
+    def toggle_mute(self, osd: bool = True):
         is_muted = self.engine.toggle_mute()
         self.controller.set_volume_display(self.engine.get_volume(), is_muted=is_muted)
-        self.osd.show_message("음소거" if is_muted else "음소거 해제", "volume_mute" if is_muted else "volume_high")
+        if osd:
+            self.osd.show_message("음소거" if is_muted else "음소거 해제", "volume_mute" if is_muted else "volume_high")
 
-    def toggle_subtitle(self):
+    def toggle_subtitle(self, osd: bool = True):
         visible = self.engine.toggle_subtitle_visibility()
-        self.osd.show_message("자막 켬" if visible else "자막 끔", "subtitle")
+        if osd:
+            self.osd.show_message("자막 켬" if visible else "자막 끔", "subtitle")
         self._refresh_track_popup_soon()
 
     # --- audio / subtitle tracks and sync ---
@@ -674,17 +680,17 @@ class MainWindow(QMainWindow):
 
     def _set_subtitles_visible(self, visible: bool):
         if self.engine.subtitles_visible() != visible:
-            self.toggle_subtitle()
+            self.toggle_subtitle(osd=False)
 
     def change_sync(self, audio: bool, delta: float):
         if self._current_file is None:
             return
         if audio:
             value = self.engine.change_audio_delay(delta)
-            self.osd.show_message(f"오디오 지연 {format_delay(value)}", "volume_high")
+            self.osd.show_message("오디오 지연", "volume_high", format_delay(value))
         else:
             value = self.engine.change_sub_delay(delta)
-            self.osd.show_message(f"자막 싱크 {format_delay(value)}", "subtitle")
+            self.osd.show_message("자막 싱크", "subtitle", format_delay(value))
         self._refresh_track_popup_soon()
 
     def reset_sync(self):
@@ -739,11 +745,9 @@ class MainWindow(QMainWindow):
             self.showNormal()
             self.title_bar.show()
             self.title_bar.btn_max.setIcon(get_svg_icon("maximize", size=12))
-            self.osd.show_message("전체화면 종료", "exit_fullscreen")
         else:
             self.showFullScreen()
             self.title_bar.hide()
-            self.osd.show_message("전체화면 (F/ESC)", "fullscreen")
         self._reposition_floating_widgets()
 
     def _set_always_on_top(self, on: bool):
@@ -770,14 +774,12 @@ class MainWindow(QMainWindow):
             self._set_always_on_top(True)
             self.resize(480, 270)
             self.title_bar.set_pip_active(True)
-            self.osd.show_message("PIP 항상 위 모드 (P)", "pip")
         else:
             self._is_pip = False
             self._set_always_on_top(False)
             if self._saved_geometry:
                 self.setGeometry(self._saved_geometry)
             self.title_bar.set_pip_active(False)
-            self.osd.show_message("일반 모드 복원", "pip")
         self._reposition_floating_widgets()
 
     # --- Keybindings Map ---
@@ -833,12 +835,10 @@ class MainWindow(QMainWindow):
         # Frame step: Comma / Period
         if key == Qt.Key_Period:
             self.engine.step_frame_forward()
-            self.osd.show_message("1프레임 앞", "next_frame")
             event.accept()
             return
         elif key == Qt.Key_Comma:
             self.engine.step_frame_backward()
-            self.osd.show_message("1프레임 뒤", "prev_frame")
             event.accept()
             return
 
@@ -951,7 +951,7 @@ class MainWindow(QMainWindow):
                                vp.y() + (vp.height() - self.center_badge.height()) // 2)
 
         if hasattr(self, "osd"):
-            self.osd.move(vp.x() + (vp.width() - self.osd.width()) // 2, vp.y() + inset + 12)
+            self.osd.place(vp.x() + vp.width() // 2, vp.y())      # (the same spot with or without the title bar)
 
         # the next-video card: bottom right, just above the controls
         nu = self.next_up

@@ -23,7 +23,7 @@ def test_speed_change_reaches_every_part_of_the_ui(playing, pump):
     w.change_speed_relative(+0.25)                       # 1.00 -> 1.25
     assert pump(lambda: w.controller.btn_speed.text() == "1.25x")
     assert w.engine.get_speed() == 1.25
-    assert w.osd.text_label.text() == "1.25x"
+    assert w.osd.full_text() == "배속 1.25x"
     assert w.speed_popup.slider.value() == 125
 
     w.change_speed_relative(+0.15)                       # 1.25 -> 1.40
@@ -76,16 +76,13 @@ def test_sidecar_subtitle_is_auto_loaded(window, sample_video, tmp_path, pump):
     assert "lecture.srt" in window.osd.text_label.text()
 
 
-def test_seek_button_moves_playback_and_shows_osd(playing, pump):
+def test_seek_button_moves_playback(playing, pump):
     w = playing
     w.engine.set_speed(0.5)
-    # let the (asynchronous) speed-change OSD arrive first, otherwise it could
-    # overwrite the seek message we are about to check
-    assert pump(lambda: w.osd.text_label.text() == "0.50x")
     start = w.engine._time_pos
     w.seek_relative(1.0)
-    assert w.osd.text_label.text() == "+1s"
     assert pump(lambda: w.engine._time_pos > start + 0.8), f"{start} -> {w.engine._time_pos}"
+    assert not w.osd.isVisible()              # a seek is visible on the timeline: no notice
 
 
 def test_finish_then_open_another_file(window, sample_video, pump):

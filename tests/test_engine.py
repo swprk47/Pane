@@ -21,7 +21,7 @@ def test_relative_speed_steps_of_005(engine):
 
 
 def test_speed_is_clamped(engine):
-    assert engine.set_speed(0.01) == 0.1
+    assert engine.set_speed(0.01) == 0.25
     assert engine.set_speed(9.0) == 4.0
 
 

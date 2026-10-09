@@ -99,7 +99,7 @@ def test_z_and_x_move_the_subtitle_sync(playing):
     assert playing.engine.get_sub_delay() == pytest.approx(0.2)
     key(Qt.Key_Z)
     assert playing.engine.get_sub_delay() == pytest.approx(0.1)
-    assert "자막 싱크 +0.1초" in playing.osd.text_label.text()
+    assert playing.osd.full_text() == "자막 싱크 +0.1초"
 
 
 def test_shift_z_and_x_move_the_audio_delay(playing):
@@ -110,7 +110,7 @@ def test_shift_z_and_x_move_the_audio_delay(playing):
     key(Qt.Key_Z, Qt.ShiftModifier)
     assert playing.engine.get_audio_delay() == pytest.approx(-0.1)
     assert playing.engine.get_sub_delay() == 0.0
-    assert "오디오 지연 -0.1초" in playing.osd.text_label.text()
+    assert playing.osd.full_text() == "오디오 지연 -0.1초"
 
 
 def test_ctrl_z_resets_both(playing):

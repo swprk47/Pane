@@ -32,6 +32,9 @@ class GlassSlider(QSlider, Tweening):
         self._init_tweens()
         self.setMouseTracking(True)
         self.setCursor(Qt.PointingHandCursor)
+        # A slider that kept the keyboard focus after a click swallowed the arrow keys (volume, seeking) meant
+        # for the window; like the buttons, sliders are mouse-only.
+        self.setFocusPolicy(Qt.NoFocus)
         self._held = False
 
     # --- geometry -----------------------------------------------------------------------------
