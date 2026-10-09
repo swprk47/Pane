@@ -26,6 +26,7 @@ from ui.overlay import TopScrim, MiniProgress, CenterBadge
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
 from core.tracks import format_delay
+from ui import native_window
 from core.settings import AppSettings
 
 
@@ -161,9 +162,6 @@ class MainWindow(QMainWindow):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setStyleSheet(GLASS_THEME_QSS)
 
-        self._margin = 8
-        self._resizing = False
-        self._resize_edge = None
         self._is_pip = False
         self._saved_geometry = None
         self._current_file = None
@@ -303,6 +301,7 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         hwnd = int(self.winId())
         apply_windows_11_rounded_corners(hwnd)
+        native_window.enable_native_frame(hwnd)              # Win+arrow snapping, resizable, taskbar menu
         try:
             pywinstyles.apply_style(self, "acrylic")
         except Exception as e:
@@ -311,6 +310,23 @@ class MainWindow(QMainWindow):
         # transparent;", which wipes the whole theme. Re-apply it afterwards.
         self.setStyleSheet(GLASS_THEME_QSS)
         self._reposition_floating_widgets()
+
+    def nativeEvent(self, event_type, message):
+        """Windows messages that are ours (no visible frame, see ui/native_window.py)."""
+        if native_window.IS_WINDOWS and bytes(event_type) == b"windows_generic_MSG":
+            # (sizing borders only while the window can be resized: not maximized, not fullscreen)
+            result = native_window.handle_message(int(message), not (self.isMaximized() or self.isFullScreen()))
+            if result is not None:
+                return True, result
+        return super().nativeEvent(event_type, message)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.WindowStateChange and hasattr(self, "title_bar"):
+            # (Qt rewrites the window style when the state changes, e.g. in and out of fullscreen)
+            native_window.enable_native_frame(int(self.winId()))
+            # maximized by Win+Up / a snap as well as by the title bar's button: keep its icon right
+            self.title_bar.sync_maximized(self.isMaximized())
 
     # --- Mouse Tracking Event Filter ---
 
@@ -990,83 +1006,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "osd"):
             self.osd.raise_()
 
-    # --- Frameless Window Drag & Resize ---
-
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton and not self.isMaximized() and not self.isFullScreen():
-            edge = self._get_edge(event.pos())
-            if edge:
-                self._resizing = True
-                self._resize_edge = edge
-                event.accept()
-                return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if not self.isMaximized() and not self.isFullScreen():
-            if self._resizing:
-                self._do_resize(event.globalPosition().toPoint())
-                event.accept()
-                return
-            else:
-                self._update_cursor(event.pos())
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        self._resizing = False
-        self._resize_edge = None
-        self.setCursor(Qt.ArrowCursor)
-        super().mouseReleaseEvent(event)
-
-    def _get_edge(self, pos: QPoint):
-        rect = self.rect()
-        m = self._margin
-        left = pos.x() <= m
-        right = pos.x() >= rect.width() - m
-        top = pos.y() <= m
-        bottom = pos.y() >= rect.height() - m
-
-        if top and left: return "top-left"
-        if top and right: return "top-right"
-        if bottom and left: return "bottom-left"
-        if bottom and right: return "bottom-right"
-        if left: return "left"
-        if right: return "right"
-        if top: return "top"
-        if bottom: return "bottom"
-        return None
-
-    def _update_cursor(self, pos: QPoint):
-        edge = self._get_edge(pos)
-        if edge in ("top-left", "bottom-right"):
-            self.setCursor(Qt.SizeFDiagCursor)
-        elif edge in ("top-right", "bottom-left"):
-            self.setCursor(Qt.SizeBDiagCursor)
-        elif edge in ("left", "right"):
-            self.setCursor(Qt.SizeHorCursor)
-        elif edge in ("top", "bottom"):
-            self.setCursor(Qt.SizeVerCursor)
-        else:
-            self.setCursor(Qt.ArrowCursor)
-
-    def _do_resize(self, global_pos: QPoint):
-        geo = self.geometry()
-        min_w, min_h = self.minimumWidth(), self.minimumHeight()
-
-        if "right" in self._resize_edge:
-            new_w = max(min_w, global_pos.x() - geo.left())
-            geo.setWidth(new_w)
-        if "bottom" in self._resize_edge:
-            new_h = max(min_h, global_pos.y() - geo.top())
-            geo.setHeight(new_h)
-        if "left" in self._resize_edge:
-            new_w = max(min_w, geo.right() - global_pos.x())
-            geo.setLeft(geo.right() - new_w)
-        if "top" in self._resize_edge:
-            new_h = max(min_h, geo.bottom() - global_pos.y())
-            geo.setTop(geo.bottom() - new_h)
-
-        self.setGeometry(geo)
+    # (Moving the window: the title bar and the video view start Windows' own move; resizing by the edges is answered
+    # to Windows in nativeEvent, see ui/native_window.py.)
 
     @staticmethod
     def _format_seconds(secs: float) -> str:
