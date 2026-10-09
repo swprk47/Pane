@@ -413,3 +413,25 @@ def test_clicking_a_slider_does_not_take_the_arrow_keys(window, sample_video, pu
     window.engine.set_volume(50)
     QTest.keyClick(qapp.focusWidget() or window, Qt.Key_Up)       # a real key press goes to the focus widget
     assert window.engine.get_volume() == 55.0
+
+
+# --- closing -------------------------------------------------------------------
+
+def test_x_button_hides_the_window_before_the_slow_cleanup(qapp, sample_video, pump):
+    """Stopping mpv and freeing the render context takes ~0.4 s while a video plays; the window used to stay on
+    screen, frozen, until that was done."""
+    from ui.main_window import MainWindow
+    w = MainWindow()
+    w.show()
+    w.load_media_file(sample_video)
+    pump(timeout=0.5)
+    seen = []
+    real_terminate = w.engine.terminate
+
+    def terminate():
+        seen.append(w.isVisible())
+        real_terminate()
+
+    w.engine.terminate = terminate
+    w.title_bar.btn_close.click()
+    assert seen == [False], "mpv was stopped once, after the window was gone"
