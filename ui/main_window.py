@@ -11,6 +11,7 @@ import pywinstyles
 from styles.glass_theme import GLASS_THEME_QSS
 from ui.title_bar import GlassTitleBar, native_start_window_drag
 from ui.speed_popup import SpeedPopup
+from ui.track_popup import TrackPopup
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.next_up import NextUpCard, NEXT_UP_SECONDS
@@ -24,6 +25,7 @@ from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
+from core.tracks import format_delay
 from core.settings import AppSettings
 
 
@@ -232,6 +234,7 @@ class MainWindow(QMainWindow):
         self.mini_progress.hide()
 
         self.speed_popup = SpeedPopup(self.central_widget)
+        self.track_popup = TrackPopup(self.central_widget)
 
         self.next_up = NextUpCard(self.central_widget)
         self._next_target = None
@@ -246,7 +249,8 @@ class MainWindow(QMainWindow):
         self.controller.set_media_loaded(False)
         # keep the controls on screen while the speed panel is open
         # (and while the mouse is on the title bar, which fades with them)
-        self.controller.hold_visible = lambda: self.speed_popup.isVisible() or self.title_bar.underMouse()
+        self.controller.hold_visible = (lambda: self.speed_popup.isVisible() or self.track_popup.isVisible()
+                                        or self.title_bar.underMouse())
         self.controller.visibility_changed.connect(self._on_controls_visibility)
         self.controller.opacity_changed.connect(self._on_controls_opacity)
         self.title_bar.activity.connect(self.controller.trigger_activity)
@@ -282,12 +286,19 @@ class MainWindow(QMainWindow):
         self.controller.speed_button_clicked.connect(self._show_speed_popup)
         self.controller.volume_changed.connect(self.set_volume)
         self.controller.mute_clicked.connect(self.toggle_mute)
-        self.controller.subtitle_clicked.connect(self.toggle_subtitle)
+        self.controller.subtitle_clicked.connect(self._show_track_popup)
         self.controller.screenshot_clicked.connect(self.take_screenshot)
         self.controller.fullscreen_clicked.connect(self.toggle_fullscreen)
 
         # Speed popup -> Engine
         self.speed_popup.speed_selected.connect(self.engine.set_speed)
+
+        # Track popup <-> Engine
+        self.track_popup.opened.connect(self._refresh_track_popup)
+        self.track_popup.audio_chosen.connect(self._choose_audio_track)
+        self.track_popup.subtitle_chosen.connect(self._choose_subtitle_track)
+        self.track_popup.subtitles_toggled.connect(self._set_subtitles_visible)
+        self.track_popup.load_subtitle_requested.connect(self._select_subtitle_file)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -482,12 +493,14 @@ class MainWindow(QMainWindow):
         if file_path:
             self.engine.set_subtitle(file_path)
             self.osd.show_message(f"자막 로드됨: {os.path.basename(file_path)}", "subtitle")
+            self._refresh_track_popup_soon()
 
     def load_media_file(self, file_path: str):
         if not os.path.exists(file_path):
             return
 
         self._current_file = file_path
+        self.track_popup.hide()
         self.next_up.cancel()
         self._next_target = None
         self._update_playlist_state()
@@ -629,6 +642,57 @@ class MainWindow(QMainWindow):
     def toggle_subtitle(self):
         visible = self.engine.toggle_subtitle_visibility()
         self.osd.show_message("자막 켬" if visible else "자막 끔", "subtitle")
+        self._refresh_track_popup_soon()
+
+    # --- audio / subtitle tracks and sync ---
+
+    def _show_track_popup(self):
+        if self._current_file is None:
+            self.osd.show_message("영상을 먼저 열어 주세요", "warning")
+            return
+        button = self.controller.btn_subtitle
+        if button is not None:             # (the layout may have hidden the button)
+            self.track_popup.toggle_above_widget(button, align_to=self.controller.right_zone, above=self.controller.timeline)
+
+    def _refresh_track_popup(self):
+        e = self.engine
+        self.track_popup.set_data(e.audio_tracks(), e.subtitle_tracks(), e.subtitles_visible(),
+                                  e.get_sub_delay(), e.get_audio_delay())
+
+    def _refresh_track_popup_soon(self):
+        """mpv reports a changed track list a moment after the change."""
+        if self.track_popup.isVisible():
+            QTimer.singleShot(120, lambda: self.track_popup.isVisible() and self._refresh_track_popup())
+
+    def _choose_audio_track(self, track_id: int):
+        self.engine.select_audio_track(track_id)
+        self._refresh_track_popup_soon()
+
+    def _choose_subtitle_track(self, track_id: int):
+        self.engine.select_subtitle_track(track_id)
+        self._refresh_track_popup_soon()
+
+    def _set_subtitles_visible(self, visible: bool):
+        if self.engine.subtitles_visible() != visible:
+            self.toggle_subtitle()
+
+    def change_sync(self, audio: bool, delta: float):
+        if self._current_file is None:
+            return
+        if audio:
+            value = self.engine.change_audio_delay(delta)
+            self.osd.show_message(f"오디오 지연 {format_delay(value)}", "volume_high")
+        else:
+            value = self.engine.change_sub_delay(delta)
+            self.osd.show_message(f"자막 싱크 {format_delay(value)}", "subtitle")
+        self._refresh_track_popup_soon()
+
+    def reset_sync(self):
+        if self._current_file is None:
+            return
+        self.engine.reset_sync()
+        self.osd.show_message("싱크 초기화", "subtitle")
+        self._refresh_track_popup_soon()
 
     def take_screenshot(self):
         path = self.engine.take_screenshot()
@@ -647,7 +711,8 @@ class MainWindow(QMainWindow):
 
     def _show_speed_popup(self):
         if hasattr(self.controller, "btn_speed"):
-            self.speed_popup.toggle_above_widget(self.controller.btn_speed, align_to=self.controller.left_zone)
+            self.speed_popup.toggle_above_widget(self.controller.btn_speed, align_to=self.controller.left_zone,
+                                                 above=self.controller.timeline)
 
     def _on_viewport_clicked(self):
         if self.viewport.notice_widget.isVisible():
@@ -805,6 +870,16 @@ class MainWindow(QMainWindow):
             event.accept()
             return
 
+        # Subtitle sync Z / X (0.1 s), audio delay with Shift, reset with Ctrl+Z
+        if key == Qt.Key_Z and (modifiers & Qt.ControlModifier):
+            self.reset_sync()
+            event.accept()
+            return
+        if key in (Qt.Key_Z, Qt.Key_X) and not (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
+            self.change_sync(bool(modifiers & Qt.ShiftModifier), 0.1 if key == Qt.Key_X else -0.1)
+            event.accept()
+            return
+
         # Open File: Ctrl + O
         if key == Qt.Key_O and (modifiers & Qt.ControlModifier):
             self._open_file_dialog()
@@ -825,6 +900,8 @@ class MainWindow(QMainWindow):
         elif key == Qt.Key_Escape:
             if self.next_up.is_counting():
                 self.next_up.cancel()
+            elif self.track_popup.isVisible():
+                self.track_popup.hide()
             elif self.info_panel.isVisible():
                 self.info_panel.hide()
             elif self.isFullScreen():
@@ -895,6 +972,8 @@ class MainWindow(QMainWindow):
         c.raise_()
         if self.speed_popup.isVisible():
             self.speed_popup.raise_()
+        if self.track_popup.isVisible():
+            self.track_popup.raise_()
         if self.next_up.isVisible():
             self.next_up.raise_()
         if self.info_panel.isVisible():
