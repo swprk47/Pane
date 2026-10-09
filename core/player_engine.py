@@ -18,6 +18,9 @@ def _setup_mpv_path():
 _setup_mpv_path()
 import mpv
 
+# The one speed range: the keys, the speed panel's slider and its typed input all stay inside it.
+MIN_SPEED, MAX_SPEED = 0.25, 4.0
+
 
 class PlayerEngine(QObject):
     """
@@ -197,9 +200,9 @@ class PlayerEngine(QObject):
         """
         Set playback speed with 0.01 precision.
         Maintains pitch correction (scaletempo2).
-        Range: 0.1x to 4.0x
+        Range: MIN_SPEED to MAX_SPEED (0.25x to 4.0x)
         """
-        clamped_speed = max(0.1, min(4.0, round(speed, 2)))
+        clamped_speed = max(MIN_SPEED, min(MAX_SPEED, round(speed, 2)))
         self.mpv.speed = clamped_speed
         return clamped_speed
 
