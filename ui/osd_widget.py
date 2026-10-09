@@ -15,8 +15,13 @@ TOP_OFFSET = 68                   # the pill's resting top: under the title bar 
 SIDE_MARGIN = 28                  # room around the pill for its shadow
 BOTTOM_MARGIN = 28
 COLLAPSED_W, COLLAPSED_H, COLLAPSED_TOP = 64, 22, 8   # where it starts / ends: a small capsule at the top edge
-OPEN_MS, CLOSE_MS = 300, 220
 HOLD_MS = 1000
+
+# Motion: it opens with a slight overshoot that settles (spring-like) and folds back smoothly. The cost of a
+# frame is the same whatever the curve (every frame re-composites the window, ~5 ms), so smoothness comes from the
+# curve and the length, not from more frames.
+OPEN_MS, CLOSE_MS = 460, 300
+OPEN_OVERSHOOT = 0.8
 
 
 def _smooth(x: float, a: float, b: float) -> float:
@@ -123,7 +128,7 @@ class GlassOSDWidget(QWidget):
         self.show()
         self.raise_()
         if self._t < 1.0 or self._closing:
-            self._animate_to(1.0, OPEN_MS, QEasingCurve.OutCubic)
+            self._animate_to(1.0, OPEN_MS, self._open_curve())
         else:
             self._layout_content()
             self.update()
@@ -147,6 +152,12 @@ class GlassOSDWidget(QWidget):
 
     # --- animation --------------------------------------------------------
 
+    @staticmethod
+    def _open_curve() -> QEasingCurve:
+        curve = QEasingCurve(QEasingCurve.OutBack)
+        curve.setOvershoot(OPEN_OVERSHOOT)
+        return curve
+
     def _animate_to(self, target: float, ms: int, curve):
         self._closing = target == 0.0
         self._anim.stop()
@@ -157,7 +168,7 @@ class GlassOSDWidget(QWidget):
         self._anim.start()
 
     def _start_close(self):
-        self._animate_to(0.0, CLOSE_MS, QEasingCurve.InCubic)
+        self._animate_to(0.0, CLOSE_MS, QEasingCurve(QEasingCurve.InOutCubic))
 
     def _on_anim_value(self, value):
         self._t = float(value)
