@@ -203,7 +203,6 @@ class MainWindow(QMainWindow):
         #    _reposition_floating_widgets), so the video uses the whole window.
         self.title_bar = GlassTitleBar(self, self.central_widget)
         self.title_bar.pip_toggled.connect(self.toggle_pip_mode)
-        self.title_bar.close_requested.connect(self._on_close)
 
         # 2. Video Viewport
         self.viewport = VideoViewport(self)
@@ -1068,6 +1067,8 @@ class MainWindow(QMainWindow):
             return f"{h:02d}:{m:02d}:{s:02d}"
         return f"{m:02d}:{s:02d}"
 
+    _shut_down = False
+
     def _on_close(self):
         # Render context first, then the mpv core (the other order aborts).
         if hasattr(self, "viewport"):
@@ -1076,5 +1077,11 @@ class MainWindow(QMainWindow):
             self.engine.terminate()
 
     def closeEvent(self, event):
-        self._on_close()
+        # Freeing the render context and stopping mpv takes ~0.4 s while a video plays. The window must not stay on
+        # screen, frozen, for that long after the X was pressed: hide it first. (Pausing mpv here as well, to cut the sound,
+        # crashed the process now and then, so the sound simply ends with the shutdown.)
+        self.hide()
+        if not self._shut_down:                       # (a window can be closed twice, e.g. by a test's cleanup:
+            self._shut_down = True                    # the shutdown runs once)
+            self._on_close()
         super().closeEvent(event)

@@ -24,7 +24,6 @@ class GlassTitleBar(QWidget):
     window. Uses native Windows dragging and modern SVG vector icons.
     """
     pip_toggled = Signal()
-    close_requested = Signal()
     activity = Signal()                 # the mouse moved over the bar: bring the controls back
 
     HEIGHT = 38
@@ -130,7 +129,6 @@ class GlassTitleBar(QWidget):
         self.parent_window.close()
 
     def _on_close_clicked(self):
-        self.close_requested.emit()
         self._close_window()
 
     # --- Windows Native Drag Event ---

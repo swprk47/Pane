@@ -1,3 +1,4 @@
+import math
 from PySide6.QtWidgets import QWidget, QLabel, QHBoxLayout, QGraphicsOpacityEffect, QSizePolicy
 from PySide6.QtCore import Qt, QTimer, QVariantAnimation, QEasingCurve, QRectF
 from PySide6.QtGui import QPainter, QColor, QLinearGradient, QPen
@@ -17,11 +18,25 @@ BOTTOM_MARGIN = 28
 COLLAPSED_W, COLLAPSED_H, COLLAPSED_TOP = 64, 22, 8   # where it starts / ends: a small capsule at the top edge
 HOLD_MS = 1000
 
-# Motion: it opens with a slight overshoot that settles (spring-like) and folds back smoothly. The cost of a
-# frame is the same whatever the curve (every frame re-composites the window, ~5 ms), so smoothness comes from the
-# curve and the length, not from more frames.
+# Motion: it opens like a damped spring (starts from rest, overshoots by ~8 % and settles) and folds back
+# smoothly. The cost of a frame is the same whatever the curve (every frame re-composites the window, ~5 ms), so
+# smoothness comes from the curve and the length, not from more frames. (A ready-made "OutBack" curve starts
+# with a big jump, which made the first frames pop.)
 OPEN_MS, CLOSE_MS = 460, 300
-OPEN_OVERSHOOT = 0.8
+SPRING_DAMPING, SPRING_OMEGA = 0.62, 15.0
+
+
+_CLOSE_CURVE = QEasingCurve(QEasingCurve.InOutCubic)
+
+
+def _spring(x: float) -> float:
+    """Damped-spring step response over the opening time, for x in 0..1: zero speed at the start."""
+    if x >= 1.0:
+        return 1.0
+    t = x * OPEN_MS / 1000.0
+    z = SPRING_DAMPING
+    wd = SPRING_OMEGA * math.sqrt(1 - z * z)
+    return 1 - math.exp(-z * SPRING_OMEGA * t) * (math.cos(wd * t) + z / math.sqrt(1 - z * z) * math.sin(wd * t))
 
 
 def _smooth(x: float, a: float, b: float) -> float:
@@ -46,6 +61,7 @@ class GlassOSDWidget(QWidget):
         self._t = 0.0                 # 0: folded into the capsule at the top edge, 1: fully open
         self._anchor = None           # (x centre, top y) in the parent, set by the window
         self._closing = False
+        self._from, self._to, self._ease = 0.0, 0.0, _spring
 
         self._init_ui()
 
@@ -128,7 +144,7 @@ class GlassOSDWidget(QWidget):
         self.show()
         self.raise_()
         if self._t < 1.0 or self._closing:
-            self._animate_to(1.0, OPEN_MS, self._open_curve())
+            self._animate_to(1.0, OPEN_MS, _spring)
         else:
             self._layout_content()
             self.update()
@@ -152,26 +168,24 @@ class GlassOSDWidget(QWidget):
 
     # --- animation --------------------------------------------------------
 
-    @staticmethod
-    def _open_curve() -> QEasingCurve:
-        curve = QEasingCurve(QEasingCurve.OutBack)
-        curve.setOvershoot(OPEN_OVERSHOOT)
-        return curve
-
-    def _animate_to(self, target: float, ms: int, curve):
+    def _animate_to(self, target: float, ms: int, ease):
+        """Move `_t` to `target` over `ms`. The animation itself only counts 0..1 in a straight line; `ease`
+        (a function of that progress) shapes it, so the curve can be any function (a spring is not one of
+        Qt's ready-made curves)."""
         self._closing = target == 0.0
+        self._from, self._to, self._ease = float(self._t), float(target), ease
         self._anim.stop()
-        self._anim.setStartValue(float(self._t))
-        self._anim.setEndValue(float(target))
+        self._anim.setStartValue(0.0)
+        self._anim.setEndValue(1.0)
         self._anim.setDuration(ms)
-        self._anim.setEasingCurve(curve)
+        self._anim.setEasingCurve(QEasingCurve(QEasingCurve.Linear))
         self._anim.start()
 
     def _start_close(self):
-        self._animate_to(0.0, CLOSE_MS, QEasingCurve(QEasingCurve.InOutCubic))
+        self._animate_to(0.0, CLOSE_MS, _CLOSE_CURVE.valueForProgress)
 
-    def _on_anim_value(self, value):
-        self._t = float(value)
+    def _on_anim_value(self, progress):
+        self._t = self._from + (self._to - self._from) * self._ease(float(progress))
         self._layout_content()
         self.update()
 
@@ -201,7 +215,9 @@ class GlassOSDWidget(QWidget):
         radius = r.height() / 2
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        fade = _smooth(self._t, 0.0, 0.15)             # the capsule itself fades in as it appears
+        # The capsule shows at once when it starts (a fade made it invisible for the first frames and then pop in);
+        # it only fades while folding away.
+        fade = _smooth(self._t, 0.0, 0.12) if self._closing else 1.0
         p.setOpacity(fade)
 
         # soft shadow
