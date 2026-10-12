@@ -3,7 +3,7 @@
 Windows 11용 개인 동영상 플레이어. 기존 플레이어에서 아쉬웠던 **배속 제한을 없애고**(0.05x 단위),
 영상 위에 얹히는 유리 느낌의 컨트롤을 쓰는 가벼운 데스크톱 앱입니다.
 
-> 현재 지인 공유 단계(v1.2.0)입니다. 라이선스는 아직 정하지 않았습니다.
+> 현재 지인 공유 단계(v1.2.0)입니다. 라이선스는 GPL-3.0-or-later입니다(아래 "라이선스" 참고).
 
 ## 주요 기능
 
@@ -81,5 +81,8 @@ python -m venv .venv
 
 ## 라이선스
 
-아직 정하지 않았습니다. 재생 엔진 libmpv의 빌드 라이선스를 확인한 뒤 정할 예정이며, 그 전까지는
-`release/LICENSE.txt`의 임시 약관(개인·비상업, 재배포 금지)이 적용됩니다.
+Pane은 **GNU General Public License v3 이상(GPL-3.0-or-later)** 으로 공개합니다. 전문은 [LICENSE](LICENSE)에 있습니다.
+재생 엔진인 libmpv 빌드(FFmpeg 포함)가 GPLv3라서 Pane도 같은 조건으로 배포합니다.
+설치 파일에 들어 있는 모든 구성 요소의 소스: https://github.com/swprk47/Pane (Pane 자체)와
+[release/THIRD_PARTY_NOTICES.txt](release/THIRD_PARTY_NOTICES.txt)에 적힌 링크(mpv·FFmpeg·x264 등).
+Corresponding source: https://github.com/swprk47/Pane

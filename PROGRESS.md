@@ -22,7 +22,7 @@
 
 | 항목 | 내용 |
 |---|---|
-| 작업 폴더 | `C:\Users\47sha\source\repos\Pane` (원격 `origin` = GitHub 비공개). 예전 `...\바탕화면\취미\AI\Video_Player`와 홈 저장소는 **백업일 뿐 거기서 작업하지 말 것**(옛 `dist/` 설치 파일 포함) |
+| 작업 폴더 | `<작업 폴더>` (원격 `origin` = GitHub 비공개). 예전 `...\바탕화면\취미\AI\Video_Player`와 홈 저장소는 **백업일 뿐 거기서 작업하지 말 것**(옛 `dist/` 설치 파일 포함) |
 | 실행 | `.\.venv\Scripts\python.exe main.py "영상.mp4"` |
 | 테스트 | `.\.venv\Scripts\python.exe -m pytest` / 실제 마우스 포함 `--run-e2e`(**커서가 움직이니 허락받고, 실행 중 마우스 만지지 말 것**) |
 | 빌드 | `python tools/build_release.py --installer` → `dist/Pane-<버전>-setup.exe`, `-win64.zip` (Inno Setup: `winget install JRSoftware.InnoSetup`) |
@@ -32,7 +32,7 @@
 | 커밋 | 사용자가 요청할 때만, **영어 메시지**, 끝에 `Co-Authored-By` 줄. 줄바꿈은 `autocrlf=true`(LF→CRLF 경고는 정상). 스크립트로 파일을 고칠 땐 CRLF를 보존할 것 |
 | 진행 방식 | 한 번에 하나씩 하고 **실제로 실행해서 확인**. 직접 눌러 봐야 하는 항목은 확인 방법을 단계별로 알려 줌. 큰 구조 변경은 먼저 물어봄. 버그를 고치면 회귀 테스트(되돌려서 실패하는지 확인). 디자인은 /design 시안 → **승인 후 앱 코드까지 반영**(시안에만 반영해 지적받은 적 있음). 측정·시험 도구가 사용자의 마우스·창·레지스트리를 건드리면 먼저 말하고, 설정을 지우는 시험은 백업 후 복원 |
 | 셸 주의 | Bash 도구에서 한글/백슬래시/작은따옴표 세 개가 섞인 heredoc은 깨짐 → 패치 스크립트는 **Write로 파일을 만들어 실행**. PowerShell 도구는 `Remove-Item`과 `C:\Windows` 같은 문자열이 한 명령에 있으면 막힘 → 삭제는 별도 호출 |
-| 시험용 영상 | 사용자의 `C:\Users\47sha\Videos`(동영상 폴더): `Big_Buck_Bunny_1080_10s_5MB.mp4`(10초, 연속 시청 시험에 좋음 — 다음이 `The Legend of Zelda…_2160p60.mp4`), 4K 60fps `The Legend of Zelda…`(성능·UI 확인), `4K_5_Thetestdata.mp4`, `15325248_3840_2160_24fps.mp4`, `16307673_2560_1440_24fps.mp4`. 저장소의 `tests/assets/sample.mp4`는 3초짜리 |
+| 시험용 영상 | 사용자의 `<사용자>\Videos`(동영상 폴더): `Big_Buck_Bunny_1080_10s_5MB.mp4`(10초, 연속 시청 시험에 좋음 — 다음이 `The Legend of Zelda…_2160p60.mp4`), 4K 60fps `The Legend of Zelda…`(성능·UI 확인), `4K_5_Thetestdata.mp4`, `15325248_3840_2160_24fps.mp4`, `16307673_2560_1440_24fps.mp4`. 저장소의 `tests/assets/sample.mp4`는 3초짜리 |
 | 응답 언어 | 사용자와는 **한국어로만** 대화(다른 언어가 섞여 나간 적이 두 번 있어 지적받음) |
 | 임시 파일 | `scratch/`(gitignore): 스크린샷, 측정·패치 스크립트. 저장소에 넣지 않음 |
 

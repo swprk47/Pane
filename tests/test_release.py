@@ -177,3 +177,34 @@ def test_the_release_notes_explain_the_manifest_upload_and_the_key():
 def test_the_readme_tells_users_about_the_updates():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "업데이트" in text and "1.3.0" in text
+
+
+# --- the license: GPLv3, source public ---------------------------------------------------------------
+
+def test_license_files_say_gplv3_and_name_the_source():
+    full = (ROOT / "LICENSE").read_text(encoding="utf-8")
+    assert full.lstrip().startswith("GNU GENERAL PUBLIC LICENSE") and "Version 3, 29 June 2007" in full
+    assert "END OF TERMS AND CONDITIONS" in full and len(full) > 30000, "the whole license text"
+
+    shown = (RELEASE / "LICENSE.txt").read_text(encoding="utf-8")        # (what the installer shows)
+    assert "GNU General Public License" in shown and "version 3" in shown.lower()
+    assert "https://github.com/swprk47/Pane" in shown
+    assert "GNU GENERAL PUBLIC LICENSE" in shown, "the installer shows the full text too"
+    for old in ("INTERIM TERMS", "Do not redistribute", "All rights reserved"):
+        assert old not in shown, old
+
+    notices = (RELEASE / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
+    for needle in ("v0.41.0-1092-g3186d369f", "N-127117-g98e92563a", "github.com/mpv-player/mpv", "ffmpeg", "x264", "x265",
+                   "libdvdnav", "GPL-3.0", "https://github.com/swprk47/Pane"):
+        assert needle in notices, needle
+    assert "NOTE (maintainer)" not in notices, "the open question is answered"
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "GPL" in readme and "https://github.com/swprk47/Pane" in readme and "아직 정하지 않았습니다" not in readme
+
+
+def test_the_build_ships_the_license_text_with_the_app():
+    sys.path.insert(0, str(ROOT / "tools"))
+    import build_release
+    source = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
+    assert '"LICENSE.txt"' in source, "release/LICENSE.txt (notice + full GPL text) is copied into the app folder"
