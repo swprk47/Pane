@@ -22,7 +22,7 @@ from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
 from core import app_log, diagnostics
 from ui.mpv_gl import MpvGLWidget
-from ui.overlay import TopScrim, MiniProgress, CenterBadge
+from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
 from core.tracks import format_delay
@@ -232,6 +232,7 @@ class MainWindow(QMainWindow):
         self.top_scrim = TopScrim(self.central_widget)
         self.center_badge = CenterBadge(self.central_widget)
         self.center_badge.hide()
+        self.seek_indicator = SeekIndicator(self.central_widget)
         self.mini_progress = MiniProgress(self.central_widget)
         self.mini_progress.hide()
 
@@ -555,6 +556,7 @@ class MainWindow(QMainWindow):
         self._next_target = None
         self._update_playlist_state()
         self.center_badge.reset()
+        self.seek_indicator.reset()
         file_name = os.path.basename(file_path)
         self.viewport.show_empty_notice(False)
         self.viewport.set_has_frame(True)
@@ -669,6 +671,8 @@ class MainWindow(QMainWindow):
     def seek_relative(self, seconds: float):
         self.next_up.cancel()
         self.engine.seek(seconds, reference="relative")
+        if self._current_file is not None:
+            self.seek_indicator.show_seek(seconds)
 
     # (The OSD pill only confirms keyboard shortcuts: a value changed with the mouse is already on screen in
     # its panel / popup, so those callers pass osd=False.)
@@ -1008,6 +1012,7 @@ class MainWindow(QMainWindow):
         self.center_badge.move(vp.x() + (vp.width() - self.center_badge.width()) // 2,
                                vp.y() + (vp.height() - self.center_badge.height()) // 2)
 
+        self.seek_indicator.place(vp)
         if hasattr(self, "osd"):
             self.osd.place(vp.x() + vp.width() // 2, vp.y())      # (the same spot with or without the title bar)
 
@@ -1026,6 +1031,7 @@ class MainWindow(QMainWindow):
         if bar_shown:
             self.title_bar.raise_()
         self.center_badge.raise_()
+        self.seek_indicator.raise_()
         self.mini_progress.raise_()
         c.raise_()
         if self.speed_popup.isVisible():

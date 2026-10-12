@@ -247,7 +247,9 @@ class PlayerEngine(QObject):
         """
         try:
             if reference == "relative":
-                self.mpv.seek(seconds, reference="relative")
+                # exact: python-mpv's default (keyframes) moved +1 s by +5 s and +5 s by +10 s on real 4K videos
+                # (measured); exact costs ~150-500 ms for a 4K step forward, ~40 ms backward
+                self.mpv.seek(seconds, reference="relative", precision="exact")
             elif reference == "absolute":
                 self.mpv.seek(seconds, reference="absolute")
             elif reference == "percent":

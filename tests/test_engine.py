@@ -207,3 +207,40 @@ def test_toggle_in_the_middle_still_just_pauses(engine, sample_video, pump):
     assert pump(lambda: engine._time_pos > 0.2, timeout=3.0)
     engine.toggle_play()
     assert not engine.is_playing() and not engine.at_end()
+
+
+def test_relative_seek_moves_exactly_the_requested_seconds(engine, pump, sample_video):
+    """The default of python-mpv is a keyframe seek: +1 s could land 5-10 s further (measured on real 4K videos), so
+    what the seek indicator says ("5초") and what the arrow keys do must not drift apart. (Sanity check of the end
+    result; the 3 s sample has keyframes everywhere, so it can't tell the two modes apart: see the next test.)"""
+    times = []
+    engine.time_pos_changed.connect(times.append)
+    engine.load_file(sample_video)
+    engine.play()
+    assert pump(lambda: any(t > 0.3 for t in times), timeout=5)
+    engine.pause()
+    pump(None, timeout=0.3)
+    start = engine.mpv._get_property("time-pos")
+    times.clear()
+    engine.seek(1.0, reference="relative")
+    assert pump(lambda: any(abs(t - (start + 1.0)) < 0.1 for t in times), timeout=3), (start, times)
+
+
+def test_relative_seek_asks_mpv_for_an_exact_seek(engine):
+    """(This is the test that catches the regression: the short sample has keyframes everywhere, so the one above
+    passes with either mode.)"""
+    calls = []
+
+    class Spy:
+        def __init__(self, real):
+            self._real = real
+
+        def seek(self, *args, **kwargs):
+            calls.append(kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    engine.mpv = Spy(engine.mpv)
+    engine.seek(5, reference="relative")
+    assert calls and calls[0].get("precision") == "exact"
