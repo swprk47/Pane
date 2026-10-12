@@ -123,7 +123,7 @@ def _plain(value):
     return value
 
 
-def build_report(mpv, screens=(), log_path=None, gpus=None) -> str:
+def build_report(mpv, screens=(), log_path=None, gpus=None, problem=None) -> str:
     gpus = gpu_adapters() if gpus is None else gpus
     packaged = "설치본" if getattr(sys, "frozen", False) else "소스 실행"
     lines = [
@@ -147,6 +147,8 @@ def build_report(mpv, screens=(), log_path=None, gpus=None) -> str:
     else:
         lines.append("재생 중인 영상 없음")
 
+    if problem:
+        lines += ["", "[마지막 파일 오류]", problem]
     if log_path is None and not getattr(sys, "frozen", False):
         log = "(소스 실행: 기록을 남기지 않음)"      # pane.log may hold the installed app's old runs
     else:

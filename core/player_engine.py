@@ -1,4 +1,5 @@
 import os
+from collections import deque
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
@@ -37,6 +38,7 @@ class PlayerEngine(QObject):
     file_loaded = Signal(str)              # Loaded media title or filename
     file_ended = Signal()                  # Playback reached end
     error_occurred = Signal(str)           # Error message
+    load_failed = Signal(str, str, list)   # a file mpv could not open: path, mpv's short reason, its recent error lines
     _tracks_changed = Signal()             # mpv's track list changed (emitted from its thread, handled in ours)
 
     def __init__(self, wid=None, parent=None, render_api=False, options_override=None):
@@ -50,6 +52,7 @@ class PlayerEngine(QObject):
         self.hardware_decoding = True
         self.lecture_audio = False
         self._aid_before = None
+        self._mpv_errors = deque(maxlen=30)      # mpv's recent error log lines: the real cause of a failed load
         self._closing = False
         self._current_file = None
         self._duration = 0.0
@@ -82,6 +85,8 @@ class PlayerEngine(QObject):
         elif wid is not None:
             mpv_options["wid"] = wid
 
+        mpv_options["log_handler"] = self._on_mpv_log
+        mpv_options["loglevel"] = "error"
         mpv_options.update(options_override or {})
 
         try:
@@ -91,6 +96,12 @@ class PlayerEngine(QObject):
 
         self._tracks_changed.connect(self._sync_lecture_audio)
         self._bind_mpv_observers()
+
+    def _on_mpv_log(self, level, component, message):
+        """(Called from mpv's thread.) Keep the last few error lines; load_failed hands them over."""
+        text = str(message).strip()
+        if text:
+            self._mpv_errors.append(f"{component}: {text}")
 
     def _bind_mpv_observers(self):
         """Bind property observers to emit Qt signals asynchronously."""
@@ -143,6 +154,15 @@ class PlayerEngine(QObject):
             reason = getattr(event, "reason", None)
             if reason == mpv.MpvEventEndFile.EOF:
                 self._emit_file_ended()
+            # (The event object has no `reason` attribute: it only lives in as_dict(), so the EOF test above never
+            # fires and the end of a file comes from the eof-reached observer. A failed load is read from the dict.)
+            try:
+                info = event.as_dict()
+            except Exception:
+                info = {}
+            if info.get("reason") == b"error":
+                why = (info.get("file_error") or b"").decode("utf-8", "replace")
+                self.load_failed.emit(self._current_file or "", why, list(self._mpv_errors))
 
     def _emit_file_ended(self):
         if not self._eof_emitted:
@@ -159,6 +179,7 @@ class PlayerEngine(QObject):
 
         self._current_file = file_path
         self._eof_emitted = False
+        self._mpv_errors.clear()
         self.reset_sync()                    # sync is per video: the previous one's offsets must not carry over
         self._set_audio_graph("", restore_track=False)  # (mpv refuses a file without audio while the graph is set; it comes back
                                              # through _sync_lecture_audio once the new file's tracks are known)

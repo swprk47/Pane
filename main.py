@@ -33,6 +33,14 @@ from ui.main_window import MainWindow
 from ui.icons import LOGO_ICO
 
 
+def startup_file(argv):
+    """The file Windows (or the command line) asked to open: the first argument that is not a flag. It is passed on
+    even when the file is gone, so the player can say so instead of silently opening empty."""
+    if len(argv) > 1 and argv[1] and not argv[1].startswith("-"):
+        return argv[1]
+    return None
+
+
 def main():
     # High DPI & Modern Font Settings
     QApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -63,11 +71,10 @@ def main():
     window = MainWindow()
     window.show()
 
-    # If video file passed as argument, play immediately
-    if len(sys.argv) > 1:
-        target_file = sys.argv[1]
-        if os.path.exists(target_file):
-            window.load_media_file(target_file)
+    # If a video file was passed as argument, play it immediately (a bad or missing one shows its reason)
+    target_file = startup_file(sys.argv)
+    if target_file:
+        window.load_media_file(target_file)
 
     sys.exit(app.exec())
 

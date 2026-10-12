@@ -21,7 +21,7 @@ from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
 from core.media_info import format_clock
-from core import app_log, diagnostics
+from core import app_log, diagnostics, file_errors
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip
 from ui.icons import get_svg_icon
@@ -166,6 +166,7 @@ class MainWindow(QMainWindow):
         self._is_pip = False
         self._saved_geometry = None
         self._current_file = None
+        self._last_problem = None          # what mpv said about the last file that would not open (for the diagnostics)
 
         self.app_settings = AppSettings()
 
@@ -278,6 +279,8 @@ class MainWindow(QMainWindow):
         self.engine.volume_changed.connect(self._on_volume_changed)
         self.engine.file_ended.connect(self._on_file_ended)
         self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "warning"))
+        self.engine.load_failed.connect(self._on_load_failed)
+        self.viewport.start_screen.copy_requested.connect(self.copy_diagnostics)
 
         # Controller -> Engine
         self.controller.timeline.hover_moved.connect(self._show_seek_tip)
@@ -502,7 +505,15 @@ class MainWindow(QMainWindow):
     def diagnostics_text(self) -> str:
         from PySide6.QtWidgets import QApplication
         return diagnostics.build_report(
-            self.engine.mpv, screens=diagnostics.describe_screens(QApplication.screens()))
+            self.engine.mpv, screens=diagnostics.describe_screens(QApplication.screens()), problem=self._problem_text())
+
+    def _problem_text(self):
+        """The last file error, with the mpv lines logged after it was reported (a bad file's "Failed to recognize file
+        format" comes a few ms after the failure itself)."""
+        if not self._last_problem:
+            return None
+        late = [line for line in self.engine._mpv_errors if line not in self._last_problem]
+        return self._last_problem + (f" (+ {' | '.join(late)})" if late else "")
 
     def copy_diagnostics(self):
         from PySide6.QtWidgets import QApplication
@@ -559,7 +570,10 @@ class MainWindow(QMainWindow):
 
     def load_media_file(self, file_path: str):
         if not os.path.exists(file_path):
+            self._show_file_problem(file_path)               # (opened from Windows after the file was moved, say)
             return
+        self.viewport.start_screen.clear_problem()
+        self._last_problem = None
 
         self._current_file = file_path
         self.track_popup.hide()
@@ -673,6 +687,31 @@ class MainWindow(QMainWindow):
             self.osd.show_message("마지막 영상입니다" if step > 0 else "첫 영상입니다", "warning")
             return
         self.load_media_file(target)
+
+    def _on_load_failed(self, path: str, why: str, log_lines: list):
+        """mpv could not open the file (it reports this a moment after loadfile)."""
+        if path and self._current_file and path != self._current_file:
+            return                                           # (an old file's failure, we have moved on)
+        self._show_file_problem(path, why, log_lines)
+
+    def _show_file_problem(self, path: str, why: str = "", log_lines=()):
+        """Back to the empty start screen, with the reason in plain words under the logo."""
+        problem = file_errors.classify(path, why, log_lines)
+        self._last_problem = problem.detail
+        self._current_file = None
+        self.next_up.cancel()
+        self._next_target = None
+        self._update_playlist_state()
+        self.center_badge.reset()
+        self.seek_indicator.reset()
+        self.seek_tip.hide_tip()
+        self.top_scrim.hide()
+        self.controller.set_media_loaded(False)
+        self.viewport.set_has_frame(False)
+        self.app_settings.remove_recent_file(path)          # (a file that does not open is not one to resume)
+        self._refresh_start_screen()
+        self.viewport.start_screen.set_problem(problem.title, problem.hint)
+        self.viewport.show_empty_notice(True)
 
     def _update_playlist_state(self):
         prev_, next_ = playlist.neighbors(self._current_file) if self._current_file else (None, None)
