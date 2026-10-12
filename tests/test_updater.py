@@ -107,3 +107,133 @@ def test_https_or_a_local_address_is_accepted(url):
 def test_garbage_and_html_are_rejected(raw):
     with pytest.raises(ManifestError):
         parse_manifest(raw, bytes(nacl.signing.SigningKey.generate().verify_key))
+
+
+# --- fetching the manifest and downloading the installer (a real HTTP server on 127.0.0.1) ----------
+
+import hashlib
+import http.server
+import threading
+
+from core.updater import UpdateError, download_installer, fetch_manifest
+
+
+class _Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        route = self.server.routes.get(self.path)
+        self.server.requests.append(self.path)
+        if route is None:
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        body, declared = route
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body) if declared is None else declared))
+        self.end_headers()
+        self.wfile.write(body)                       # (declared bigger than the body: the connection just ends early)
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def server():
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    srv.routes = {}
+    srv.requests = []
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    srv.base = f"http://127.0.0.1:{srv.server_address[1]}"
+    yield srv
+    srv.shutdown()
+    srv.server_close()
+
+
+INSTALLER = b"MZ-pretend-installer-bytes-" * 5000
+
+
+def manifest_for(server, body=INSTALLER, **over):
+    fields = dict(version="1.3.0", url=server.base + "/Pane-1.3.0-setup.exe", sha256=hashlib.sha256(body).hexdigest(),
+                  size=len(body), notes="")
+    fields.update(over)
+    return Manifest(**fields)
+
+
+def test_fetch_manifest_from_a_server(server):
+    raw, public = signed(GOOD)
+    server.routes["/latest.json"] = (raw, None)
+    assert fetch_manifest(server.base + "/latest.json", public).version == "1.3.0"
+
+
+def test_fetch_manifest_with_an_html_login_page_raises_manifest_error(server):
+    server.routes["/latest.json"] = (b"<html><body>Sign in to the hotel wifi</body></html>", None)
+    with pytest.raises(ManifestError):
+        fetch_manifest(server.base + "/latest.json", bytes(nacl.signing.SigningKey.generate().verify_key))
+
+
+def test_fetch_manifest_refuses_a_huge_answer(server):
+    server.routes["/latest.json"] = (b"x" * 200_000, None)
+    with pytest.raises(ManifestError):
+        fetch_manifest(server.base + "/latest.json", bytes(nacl.signing.SigningKey.generate().verify_key))
+
+
+def test_fetch_manifest_404_raises_update_error(server):
+    with pytest.raises(UpdateError):
+        fetch_manifest(server.base + "/missing.json", b"\0" * 32)
+
+
+def test_fetch_manifest_connection_refused_raises_update_error():
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]                    # (nobody listens here once the socket is closed)
+    with pytest.raises(UpdateError):
+        fetch_manifest(f"http://127.0.0.1:{port}/latest.json", b"\0" * 32, timeout=2.0)
+
+
+def test_download_writes_the_file_and_reports_progress(server, tmp_path):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER, None)
+    seen = []
+    path = download_installer(manifest_for(server), tmp_path / "dl", progress=lambda done, total: seen.append((done, total)))
+    assert path == tmp_path / "dl" / "Pane-1.3.0-setup.exe"
+    assert path.read_bytes() == INSTALLER
+    assert seen and seen[-1] == (len(INSTALLER), len(INSTALLER))
+    assert [d for d, _ in seen] == sorted(d for d, _ in seen), "progress only grows"
+
+
+def test_a_file_with_the_wrong_hash_is_deleted_and_raises(server, tmp_path):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER, None)
+    wrong = manifest_for(server, sha256="0" * 64)
+    with pytest.raises(UpdateError):
+        download_installer(wrong, tmp_path / "dl")
+    assert list((tmp_path / "dl").iterdir()) == [], "no partial or rejected file is left"
+
+
+def test_a_truncated_download_is_deleted_and_raises(server, tmp_path):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER[:1000], len(INSTALLER))
+    with pytest.raises(UpdateError):
+        download_installer(manifest_for(server), tmp_path / "dl")
+    assert list((tmp_path / "dl").iterdir()) == []
+
+
+def test_a_file_bigger_than_the_manifest_size_is_stopped(server, tmp_path):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER + b"extra" * 10_000, None)
+    with pytest.raises(UpdateError):
+        download_installer(manifest_for(server), tmp_path / "dl")
+    assert list((tmp_path / "dl").iterdir()) == []
+
+
+def test_a_404_for_the_installer_leaves_nothing_behind(server, tmp_path):
+    with pytest.raises(UpdateError):
+        download_installer(manifest_for(server), tmp_path / "dl")
+    assert list((tmp_path / "dl").iterdir()) == []
+
+
+def test_an_earlier_good_download_survives_a_failed_retry(server, tmp_path):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER, None)
+    good = download_installer(manifest_for(server), tmp_path / "dl")
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER[:10], len(INSTALLER))
+    with pytest.raises(UpdateError):
+        download_installer(manifest_for(server), tmp_path / "dl")
+    assert good.read_bytes() == INSTALLER
