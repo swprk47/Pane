@@ -1,5 +1,5 @@
 """
-Settings for the control bar: edit it the way it looks.
+The control-bar editor (the "컨트롤 배치" tab of the settings panel): edit the bar the way it looks.
 
     ┌ 왼쪽 ─────┐ ┌ 가운데 ────────────────┐ ┌ 오른쪽 ─────────────────┐
     │ (시간)(배속) │ │ (이전)(-5초)(재생)(+5초)(다음) │ │ (캡처)(자막)(볼륨)(전체)(설정) │
@@ -8,17 +8,15 @@ Settings for the control bar: edit it the way it looks.
 
 The bar is drawn as three dashed zones holding the real (glass) buttons. Drag a button to another place or
 zone, drag it down to the "숨긴 버튼" row (or press its ✕) to hide it, and drag / click a hidden one to
-bring it back. ``LayoutEditor`` is the widget, ``ControlLayoutPanel`` the glass panel around it. The panel is
-not a window of its own but a widget laid over the player window (like the speed and track panels): a second
-translucent window made the player flicker when it opened, since the player was deactivated and repainted.
+bring it back. ``LayoutEditor`` is the widget; the panel around it is ``ui.settings_panel.SettingsPanel``.
 """
 import math
 
-from PySide6.QtCore import QEvent, QPoint, Qt, QPointF, QRectF, QSize, Signal
+from PySide6.QtCore import Qt, QPointF, QRectF, QSize, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPen
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
-from ui.glass_button import GlassButton, glass_disc_pixmap, paint_glass_panel
+from ui.glass_button import glass_disc_pixmap
 from ui.icons import get_svg_icon
 
 ZONES = ("left", "center", "right")
@@ -442,195 +440,3 @@ class LayoutEditor(QWidget):
             p.setOpacity(0.9)
             self._paint_button(p, d["key"], ghost)
             p.setOpacity(1.0)
-
-
-class _Dim(QWidget):
-    """Darkens the window behind the panel and swallows the mouse, which is what makes the panel modal."""
-
-    def __init__(self, window):
-        super().__init__(window)
-        self.setGeometry(window.rect())
-        self.setFocusPolicy(Qt.NoFocus)
-
-    def paintEvent(self, event):
-        QPainter(self).fillRect(self.rect(), QColor(0, 0, 0, 118))
-
-    def mousePressEvent(self, event):
-        event.accept()
-
-    def mouseReleaseEvent(self, event):
-        event.accept()
-
-    def mouseDoubleClickEvent(self, event):
-        event.accept()
-
-    def wheelEvent(self, event):
-        event.accept()
-
-    def contextMenuEvent(self, event):
-        event.accept()
-
-
-class ControlLayoutPanel(QWidget):
-    """The glass panel that edits the control bar, laid over the player window with the window dimmed behind it.
-
-    ``open()`` shows it, ``accept()`` / ``reject()`` close it; ``layout_changed`` carries the new layout on Apply and
-    ``finished(accepted)`` fires when it closes. While it is open it keeps the keyboard (Esc closes, every other key
-    is swallowed) and the dim layer keeps the mouse, so nothing behind it reacts.
-    """
-    layout_changed = Signal(dict)
-    finished = Signal(bool)
-
-    def __init__(self, current_layout: dict, metadata: dict, default_layout: dict, host: QWidget):
-        super().__init__(host)
-        self._host = host
-        self._default = default_layout
-        self._dim = _Dim(host)
-        self._dim.hide()
-        self._moved = False            # dragged by its header: then it is kept where the user put it
-        self._drag_from = None
-        self.setFocusPolicy(Qt.StrongFocus)
-
-        m = DIALOG_MARGIN
-        root = QVBoxLayout(self)
-        root.setContentsMargins(m + 24, m + 22, m + 24, m + 20)
-        root.setSpacing(0)
-
-        head = QHBoxLayout()
-        titles = QVBoxLayout()
-        titles.setSpacing(6)
-        title = QLabel("컨트롤 배치", self)
-        title.setStyleSheet("color: #FFFFFF; font-size: 17px; font-weight: 600; background: transparent;")
-        desc = QLabel("컨트롤 바가 어떻게 보일지 그대로 보면서 배치하세요.", self)
-        desc.setStyleSheet("color: rgba(255, 255, 255, 0.5); font-size: 12px; background: transparent;")
-        titles.addWidget(title)
-        titles.addWidget(desc)
-        head.addLayout(titles)
-        head.addStretch()
-        self.btn_close = GlassButton(self, "flat", 28, icon_px=12, radius=14)
-        self.btn_close.setIcon(get_svg_icon("close", size=12, color="#FFFFFF"))
-        self.btn_close.setToolTip("닫기 (Esc)")
-        self.btn_close.clicked.connect(self.reject)
-        head.addWidget(self.btn_close, 0, Qt.AlignTop)
-        root.addLayout(head)
-        root.addSpacing(16)
-
-        self.editor = LayoutEditor(current_layout, metadata, default_layout, self)
-        self.editor.setFixedWidth(DIALOG_CONTENT_W - 48)
-        self.editor.fit()                      # (its height depends on the layout; the panel needs it before painting)
-        root.addWidget(self.editor)
-        root.addSpacing(18)
-
-        foot = QHBoxLayout()
-        self.btn_reset = GlassButton(self, "pill", 34, text_px=12, text_pad=18, calm=True)
-        self.btn_reset.setText("기본값 복원")
-        self.btn_reset.clicked.connect(lambda: self.editor.set_layout(self._default))
-        foot.addWidget(self.btn_reset)
-        foot.addStretch()
-        self.btn_cancel = GlassButton(self, "pill", 34, text_px=12, text_pad=20, calm=True)
-        self.btn_cancel.setText("취소")
-        self.btn_cancel.clicked.connect(self.reject)
-        foot.addWidget(self.btn_cancel)
-        foot.addSpacing(8)
-        self.btn_apply = GlassButton(self, "pill", 34, text_px=12, text_pad=22, bold=True)
-        self.btn_apply.setText("적용")
-        self.btn_apply.clicked.connect(self._apply)
-        foot.addWidget(self.btn_apply)
-        root.addLayout(foot)
-
-        root.activate()
-        self.setFixedSize(self.sizeHint())
-        self.hide()
-        host.installEventFilter(self)
-
-    # --- opening / closing ------------------------------------------------------------------------
-    def open(self):
-        self._dim.setGeometry(self._host.rect())
-        self._dim.show()
-        self._dim.raise_()
-        self._place()
-        self.show()
-        self.raise_()
-        self.setFocus(Qt.PopupFocusReason)
-
-    def is_open(self) -> bool:
-        return self.isVisible()
-
-    def raise_overlay(self):
-        """Back on top of everything (the window raises its floating widgets when it is laid out)."""
-        self._dim.raise_()
-        self.raise_()
-
-    def accept(self):
-        self._close(True)
-
-    def reject(self):
-        self._close(False)
-
-    def _apply(self):
-        self.layout_changed.emit(self.editor.layout())
-        self.accept()
-
-    def _close(self, accepted: bool):
-        if self._dim is None:
-            return
-        self._host.removeEventFilter(self)
-        self._dim.hide()
-        self._dim.deleteLater()
-        self._dim = None
-        self.hide()
-        self.deleteLater()
-        self.finished.emit(accepted)
-
-    # --- placing: centred in the window, following its size ---------------------------------------
-    def _place(self):
-        host = self._host.rect()
-        if self._moved:
-            x = max(0, min(self.x(), host.width() - self.width()))
-            y = max(0, min(self.y(), host.height() - self.height()))
-        else:
-            x = (host.width() - self.width()) // 2
-            y = (host.height() - self.height()) // 2
-        self.move(x, y)
-
-    def eventFilter(self, obj, event):
-        if obj is self._host and event.type() == QEvent.Resize and self._dim is not None:
-            self._dim.setGeometry(self._host.rect())
-            self._place()
-        return super().eventFilter(obj, event)
-
-    # --- the keyboard and the header --------------------------------------------------------------
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self.reject()
-        event.accept()                          # nothing reaches the player's shortcuts while this is open
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and event.position().y() < DIALOG_MARGIN + 70:
-            self._drag_from = event.position().toPoint()
-        event.accept()
-
-    def mouseMoveEvent(self, event):
-        if self._drag_from is not None:
-            host = self._host.rect()
-            target = self.mapToParent(event.position().toPoint() - self._drag_from)
-            self.move(max(0, min(target.x(), host.width() - self.width())), max(0, min(target.y(), host.height() - self.height())))
-            self._moved = True
-        event.accept()
-
-    def mouseReleaseEvent(self, event):
-        self._drag_from = None
-        event.accept()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        m = DIALOG_MARGIN
-        panel = QRectF(m, m, self.width() - 2 * m, self.height() - 2 * m)
-        p.setPen(Qt.NoPen)
-        for i in range(10):                                    # a deep, soft shadow around the panel
-            grow = i * 2.6
-            p.setBrush(QColor(0, 0, 0, 9))
-            p.drawRoundedRect(panel.translated(0, 10).adjusted(-grow, -grow, grow, grow), 24 + grow, 24 + grow)
-        p.translate(panel.topLeft())
-        paint_glass_panel(p, QRectF(0, 0, panel.width(), panel.height()), 24, calm=True)

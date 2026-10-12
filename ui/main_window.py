@@ -219,6 +219,11 @@ class MainWindow(QMainWindow):
         self.viewport.attach_mpv(self.engine.mpv)
         last_vol = self.app_settings.get_volume()
         self.engine.set_volume(last_vol)
+        # the settings-panel choices (hardware decoding defaults to on, the lecture voice to off)
+        if not self.app_settings.get_hwdec_enabled():
+            self.engine.set_hardware_decoding(False)
+        if self.app_settings.get_lecture_audio():
+            self.engine.set_lecture_audio(True)
 
     def _init_floating_widgets(self):
         self._duration = 0.0
@@ -272,6 +277,10 @@ class MainWindow(QMainWindow):
         self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "warning"))
 
         # Controller -> Engine
+        self.controller.hwdec_on = self.engine.hardware_decoding
+        self.controller.lecture_audio_on = self.engine.lecture_audio
+        self.controller.hwdec_changed.connect(self._on_hwdec_changed)
+        self.controller.lecture_audio_changed.connect(self._on_lecture_audio_changed)
         self.controller.play_pause_clicked.connect(self.engine.toggle_play)
         self.controller.prev_frame_clicked.connect(self.engine.step_frame_backward)
         self.controller.prev_file_clicked.connect(lambda: self.play_adjacent(-1))
@@ -438,7 +447,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
 
         # 8. Customize Buttons
-        act_layout = menu.addAction("컨트롤러 버튼 배열 설정")
+        act_layout = menu.addAction("설정...")
         act_layout.triggered.connect(self.controller._open_settings_dialog)
 
         act_about = menu.addAction(f"{APP_NAME} 정보 (v{APP_VERSION})")
@@ -449,6 +458,14 @@ class MainWindow(QMainWindow):
         act_exit.triggered.connect(self.close)
 
         menu.exec(global_pos)
+
+    def _on_hwdec_changed(self, enabled: bool):
+        self.engine.set_hardware_decoding(enabled)
+        self.app_settings.set_hwdec_enabled(enabled)
+
+    def _on_lecture_audio_changed(self, enabled: bool):
+        self.engine.set_lecture_audio(enabled)
+        self.app_settings.set_lecture_audio(enabled)
 
     def about_text(self) -> str:
         import platform
@@ -822,7 +839,7 @@ class MainWindow(QMainWindow):
         modifiers = event.modifiers()
 
         # The control-layout panel is modal: it has the keyboard (normally it holds the focus itself).
-        panel = self.controller.layout_panel
+        panel = self.controller.settings_panel
         if panel is not None:
             if key == Qt.Key_Escape:
                 panel.reject()
@@ -1019,8 +1036,8 @@ class MainWindow(QMainWindow):
             self.next_up.raise_()
         if self.info_panel.isVisible():
             self.info_panel.raise_()
-        if hasattr(self, "controller") and self.controller.layout_panel is not None:
-            self.controller.layout_panel.raise_overlay()
+        if hasattr(self, "controller") and self.controller.settings_panel is not None:
+            self.controller.settings_panel.raise_overlay()
         if hasattr(self, "osd"):
             self.osd.raise_()
 

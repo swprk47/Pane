@@ -10,7 +10,7 @@ from ui.volume_popup import VolumePopup
 from core.settings import open_settings
 from ui.icons import get_svg_icon
 from ui.glass_button import GlassButton
-from ui.layout_dialog import ControlLayoutPanel
+from ui.settings_panel import SettingsPanel
 
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
@@ -35,7 +35,7 @@ BUTTON_METADATA = {
     "subtitle": {"name": "자막 토글", "icon_name": "subtitle"},
     "volume": {"name": "볼륨 슬라이더", "icon_name": "volume_high"},
     "fullscreen": {"name": "전체화면 토글", "icon_name": "fullscreen"},
-    "settings": {"name": "버튼 배열 설정", "icon_name": "settings"}
+    "settings": {"name": "설정", "icon_name": "settings"}
 }
 
 
@@ -65,6 +65,8 @@ class GlassController(QWidget):
     prev_file_clicked = Signal()
     next_file_clicked = Signal()
     visibility_changed = Signal(bool)   # controls shown / hidden (for the mini progress line)
+    hwdec_changed = Signal(bool)        # settings panel: hardware decoding switched
+    lecture_audio_changed = Signal(bool)  # settings panel: "lecture voice" switched
     opacity_changed = Signal(float)     # follows the fade so the top scrim fades with us
 
     # Height of the bottom strip that carries the scrim gradient, and of the
@@ -335,25 +337,38 @@ class GlassController(QWidget):
             return btn
 
         elif key == "settings":
-            btn = self._plain_button("settings", "컨트롤러 버튼 배열 설정")
+            btn = self._plain_button("settings", "설정")
             btn.clicked.connect(self._open_settings_dialog)
             return btn
 
         return None
 
-    layout_panel = None          # the open "컨트롤 배치" panel, else None
+    settings_panel = None        # the open settings panel, else None
+    hwdec_on = True              # what the panel's switches show when it opens (the window keeps them current)
+    lecture_audio_on = False
 
     def _open_settings_dialog(self):
-        if self.layout_panel is not None:
+        if self.settings_panel is not None:
             return
-        panel = ControlLayoutPanel(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self.parentWidget())
+        panel = SettingsPanel(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self.parentWidget(),
+                              hwdec_on=self.hwdec_on, lecture_audio_on=self.lecture_audio_on)
         panel.layout_changed.connect(self._save_layout)
-        panel.finished.connect(self._on_layout_panel_closed)
-        self.layout_panel = panel
+        panel.hwdec_changed.connect(self._on_hwdec_switched)
+        panel.lecture_audio_changed.connect(self._on_lecture_audio_switched)
+        panel.finished.connect(self._on_settings_panel_closed)
+        self.settings_panel = panel
         panel.open()
 
-    def _on_layout_panel_closed(self, _accepted):
-        self.layout_panel = None
+    def _on_hwdec_switched(self, enabled: bool):
+        self.hwdec_on = enabled
+        self.hwdec_changed.emit(enabled)
+
+    def _on_lecture_audio_switched(self, enabled: bool):
+        self.lecture_audio_on = enabled
+        self.lecture_audio_changed.emit(enabled)
+
+    def _on_settings_panel_closed(self, _accepted):
+        self.settings_panel = None
 
     def set_playlist_state(self, has_prev: bool, has_next: bool):
         """Which of the previous / next video buttons can be used (the folder has such a video)."""
@@ -519,7 +534,7 @@ class GlassController(QWidget):
         return super().eventFilter(obj, event)
 
     def _fade_out(self):
-        if (self._mouse_over_controls() or self.volume_popup.isVisible() or self.layout_panel is not None
+        if (self._mouse_over_controls() or self.volume_popup.isVisible() or self.settings_panel is not None
                 or (self.hold_visible and self.hold_visible())):
             self.autohide_timer.start(2800)
             return

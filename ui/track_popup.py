@@ -9,6 +9,7 @@ from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics, QPen
 
 from core.tracks import format_delay
 from ui.glass_button import GlassButton, paint_glass_panel
+from ui.glass_switch import GlassSwitch as _Switch
 
 PANEL_WIDTH = 280
 PAD = 12
@@ -103,34 +104,6 @@ class _Row(QWidget):
         text_rect = QRectF(36, 0, max(0.0, right - 36), r.height())
         p.setPen(TEXT_ON if (self.selected or self.plus or self._hover) else TEXT)
         p.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, fm.elidedText(self.name, Qt.ElideRight, int(text_rect.width())))
-
-
-class _Switch(QWidget):
-    toggled = Signal(bool)
-
-    def __init__(self, checked=True, parent=None):
-        super().__init__(parent)
-        self.checked = checked
-        self.setFixedSize(34, 20)
-        self.setCursor(Qt.PointingHandCursor)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton and self.isEnabled() and self.rect().contains(event.position().toPoint()):
-            self.checked = not self.checked
-            self.update()
-            self.toggled.emit(self.checked)
-            event.accept()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        dim = 1.0 if self.isEnabled() else 0.45
-        p.setOpacity(dim)
-        p.setPen(Qt.NoPen)
-        p.setBrush(QColor(255, 255, 255, 217) if self.checked else QColor(255, 255, 255, 46))
-        p.drawRoundedRect(QRectF(0, 0, 34, 20), 10, 10)
-        p.setBrush(QColor(20, 24, 30) if self.checked else QColor(255, 255, 255, 115))
-        p.drawEllipse(QRectF(16, 2, 16, 16) if self.checked else QRectF(2, 2, 16, 16))
 
 
 class _Divider(QWidget):

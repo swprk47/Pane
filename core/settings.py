@@ -80,6 +80,20 @@ class AppSettings:
     def set_auto_next(self, enabled: bool):
         self.settings.setValue("auto_next", bool(enabled))
 
+    def get_hwdec_enabled(self) -> bool:
+        """GPU video decoding (on by default; the escape hatch for PCs where it misbehaves)."""
+        return str(self.settings.value("hwdec_enabled", True)).lower() not in ("false", "0")
+
+    def set_hwdec_enabled(self, enabled: bool):
+        self.settings.setValue("hwdec_enabled", bool(enabled))
+
+    def get_lecture_audio(self) -> bool:
+        """The "lecture voice" audio preset (off by default)."""
+        return str(self.settings.value("lecture_audio", False)).lower() in ("true", "1")
+
+    def set_lecture_audio(self, enabled: bool):
+        self.settings.setValue("lecture_audio", bool(enabled))
+
     def get_volume(self) -> float:
         return float(self.settings.value("last_volume", 100.0))
 
