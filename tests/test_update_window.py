@@ -181,3 +181,20 @@ def test_check_now_finds_an_update_and_the_button_then_starts_it(window, monkeyp
     assert "1.3.0" in box.informativeText() and about_button(box).text() == "지금 업데이트"
     about_button(box).click()
     assert started == [1] and window.update_card.mode == "progress"
+
+
+def test_an_installer_that_never_takes_over_turns_the_card_into_a_failure_that_names_the_file(window, qapp, pump):
+    """UAC cancelled or the setup blocked after it started: Pane is still here, so the card must say so, with the file."""
+    offer(window)
+    window.INSTALL_WAIT_MS = 50
+    window.update_checker.installer_ready.emit("C:/Temp/PaneUpdate/Pane-1.3.0-setup.exe")
+    assert window.update_card.mode == "installing"
+    assert pump(lambda: window.update_card.mode == "failed", timeout=3)
+    assert "Pane-1.3.0-setup.exe" in window.update_card.toolTip()
+    assert window.update_card.btn_update.text() == "다시 시도"
+
+
+def test_a_failure_card_has_the_whole_message_as_its_tooltip(window, qapp):
+    offer(window)
+    window.update_checker.install_failed.emit("업데이트를 설치하지 못했어요: " + "긴 이유 " * 30)
+    assert "긴 이유" in window.update_card.toolTip() and len(window.update_card.toolTip()) > 100
