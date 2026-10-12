@@ -17,6 +17,7 @@ def _setup_mpv_path():
 
 _setup_mpv_path()
 import mpv
+from core import audio_presets
 
 # The one speed range: the keys, the speed panel's slider and its typed input all stay inside it.
 MIN_SPEED, MAX_SPEED = 0.25, 4.0
@@ -36,6 +37,7 @@ class PlayerEngine(QObject):
     file_loaded = Signal(str)              # Loaded media title or filename
     file_ended = Signal()                  # Playback reached end
     error_occurred = Signal(str)           # Error message
+    _tracks_changed = Signal()             # mpv's track list changed (emitted from its thread, handled in ours)
 
     def __init__(self, wid=None, parent=None, render_api=False, options_override=None):
         """render_api=True: no window of mpv's own; the caller draws frames via
@@ -44,6 +46,10 @@ class PlayerEngine(QObject):
         (tests use {"vo": "null", "ao": "null"} to run without any window)."""
         super().__init__(parent)
         self.wid = wid
+        self.render_api = render_api
+        self.hardware_decoding = True
+        self.lecture_audio = False
+        self._aid_before = None
         self._current_file = None
         self._duration = 0.0
         self._time_pos = 0.0
@@ -82,6 +88,7 @@ class PlayerEngine(QObject):
         except Exception as e:
             raise RuntimeError(f"Failed to initialize MPV engine: {e}")
 
+        self._tracks_changed.connect(self._sync_lecture_audio)
         self._bind_mpv_observers()
 
     def _bind_mpv_observers(self):
@@ -97,6 +104,10 @@ class PlayerEngine(QObject):
             if value is not None:
                 self._duration = float(value)
                 self.duration_changed.emit(self._duration)
+
+        @self.mpv.property_observer("track-list")
+        def _on_track_list(_name, _value):
+            self._tracks_changed.emit()
 
         @self.mpv.property_observer("pause")
         def _on_pause(_name, value):
@@ -148,6 +159,8 @@ class PlayerEngine(QObject):
         self._current_file = file_path
         self._eof_emitted = False
         self.reset_sync()                    # sync is per video: the previous one's offsets must not carry over
+        self._set_audio_graph("", restore_track=False)  # (mpv refuses a file without audio while the graph is set; it comes back
+                                             # through _sync_lecture_audio once the new file's tracks are known)
         try:
             # Start position goes in as a load option. Seeking right after loadfile fails
             # (the file isn't loaded yet), which silently broke "resume where you left off".
@@ -397,6 +410,59 @@ class PlayerEngine(QObject):
         """Codec / decoder / stream details (see core.media_info)."""
         from core.media_info import read_media_info
         return read_media_info(self.mpv)
+
+    # --- Settings that take effect at once (the settings panel's switches) ---
+
+    def set_hardware_decoding(self, enabled: bool):
+        """GPU decoding on/off while playing: mpv switches decoders without reloading the video. Turning it on
+        in the player window keeps the copy-back mode (GL interop for hardware surfaces isn't available there)."""
+        self.hardware_decoding = bool(enabled)
+        try:
+            self.mpv.hwdec = ("auto-copy" if self.render_api else "auto") if enabled else "no"
+        except Exception as e:
+            print(f"[PlayerEngine] hwdec error: {e}")
+
+    def set_lecture_audio(self, enabled: bool):
+        """The "lecture voice" filter chain (core.audio_presets) on/off, live."""
+        self.lecture_audio = bool(enabled)
+        self._sync_lecture_audio()
+
+    def _has_audio_track(self) -> bool:
+        try:
+            return any(t.get("type") == "audio" for t in (self.mpv._get_property("track-list") or []))
+        except Exception:
+            return False
+
+    def _set_audio_graph(self, graph: str, restore_track: bool = True):
+        """Set (or, with "", remove) the complex audio graph. While the graph runs mpv holds no audio track
+        selection (aid=False) and does not give it back when the graph goes away: that was silence after
+        switching the preset off. So the selected track is remembered going in and re-selected going out."""
+        try:
+            current = self.mpv._get_property("lavfi-complex") or ""
+            if current == graph:
+                return
+            if graph:
+                self._aid_before = self.mpv._get_property("aid")
+            self.mpv._set_property("lavfi-complex", graph)
+            if current and not graph and restore_track:
+                self._reselect_audio_track()
+        except Exception as e:
+            print(f"[PlayerEngine] audio filter error: {e}")
+
+    def _reselect_audio_track(self):
+        ids = [t.get("id") for t in self._track_list() if t.get("type") == "audio"]
+        if not ids:
+            return
+        want = self._aid_before if self._aid_before in ids else "auto"
+        # ("no" first: setting the same value again is ignored by mpv, and a second round trip failed without it)
+        self.mpv.command("set", "aid", "no")
+        self.mpv.command("set", "aid", str(want))
+
+    def _sync_lecture_audio(self):
+        """The lecture graph ties the audio to track 1 and mpv won't play a file that has none: so it is set only
+        while the loaded file has an audio track."""
+        want = self.lecture_audio and self._has_audio_track()
+        self._set_audio_graph(audio_presets.LECTURE_VOICE if want else "")
 
     # --- Lifecycle ---
 

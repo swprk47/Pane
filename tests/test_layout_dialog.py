@@ -6,7 +6,8 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
 
 from ui.glass_controller import BUTTON_METADATA, DEFAULT_LAYOUT
-from ui.layout_dialog import ControlLayoutPanel, LayoutEditor, ZONES, DIALOG_CONTENT_W
+from ui.layout_dialog import LayoutEditor, ZONES, DIALOG_CONTENT_W
+from ui.settings_panel import SettingsPanel
 
 
 @pytest.fixture
@@ -166,7 +167,7 @@ def panel(qapp):
     host = QWidget()
     host.resize(900, 600)
     host.show()
-    p = ControlLayoutPanel(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host)
+    p = SettingsPanel(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host)
     p.open()
     qapp.processEvents()
     yield p
@@ -183,7 +184,7 @@ def test_apply_sends_the_new_layout_and_cancel_does_not(panel):
 
     # (cancel closed that one: open a new one for the second half)
     host = panel._host
-    again = ControlLayoutPanel(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host)
+    again = SettingsPanel(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host)
     again.layout_changed.connect(got.append)
     again.open()
     again.editor.move_key("prev_frame", "center", 0)
@@ -243,13 +244,13 @@ def test_dragging_the_header_moves_it_inside_the_window(panel, qapp):
 def test_settings_button_opens_the_panel_and_apply_changes_the_bar(window, pump):
     c = window.controller
     c._open_settings_dialog()
-    p = c.layout_panel
-    assert isinstance(p, ControlLayoutPanel) and p.isVisible()
+    p = c.settings_panel
+    assert isinstance(p, SettingsPanel) and p.isVisible()
     c._open_settings_dialog()
-    assert c.layout_panel is p, "pressing the button again does not open a second one"
+    assert c.settings_panel is p, "pressing the button again does not open a second one"
     p.editor.move_key("prev_frame", "center", 0)
     p.btn_apply.click()
-    assert c.layout_panel is None
+    assert c.settings_panel is None
     assert c.current_layout["center"][0] == "prev_frame"
     assert hasattr(c, "btn_prev_file") and c.center_box.count() == len(c.current_layout["center"])
 
@@ -257,12 +258,12 @@ def test_settings_button_opens_the_panel_and_apply_changes_the_bar(window, pump)
 def test_the_players_shortcuts_are_off_while_it_is_open_and_esc_closes_it(window, pump):
     c = window.controller
     c._open_settings_dialog()
-    assert c.layout_panel is not None
+    assert c.settings_panel is not None
     QTest.keyClick(window, Qt.Key_F)                                     # fullscreen: swallowed
-    QTest.keyClick(c.layout_panel, Qt.Key_M)                             # (also when the panel itself has the focus)
+    QTest.keyClick(c.settings_panel, Qt.Key_M)                             # (also when the panel itself has the focus)
     assert not window.isFullScreen()
     QTest.keyClick(window, Qt.Key_Escape)
-    assert c.layout_panel is None
+    assert c.settings_panel is None
 
 
 def test_the_controls_stay_up_while_the_panel_is_open(window):
@@ -271,7 +272,7 @@ def test_the_controls_stay_up_while_the_panel_is_open(window):
     c.autohide_timer.stop()
     c._fade_out()
     assert c.autohide_timer.isActive(), "the bar being edited must not fade away behind the panel"
-    c.layout_panel.reject()
+    c.settings_panel.reject()
 
 
 def test_it_stays_on_top_when_the_window_lays_its_widgets_out_again(window):
@@ -279,9 +280,9 @@ def test_it_stays_on_top_when_the_window_lays_its_widgets_out_again(window):
     c._open_settings_dialog()
     window._reposition_floating_widgets()
     kids = window.central_widget.children()
-    assert kids.index(c.layout_panel) > kids.index(c) and kids.index(c.layout_panel._dim) > kids.index(c)
-    assert kids.index(c.layout_panel) > kids.index(c.layout_panel._dim)
-    c.layout_panel.reject()
+    assert kids.index(c.settings_panel) > kids.index(c) and kids.index(c.settings_panel._dim) > kids.index(c)
+    assert kids.index(c.settings_panel) > kids.index(c.settings_panel._dim)
+    c.settings_panel.reject()
 
 
 def test_a_click_on_the_dimmed_window_is_swallowed(window):
@@ -290,7 +291,7 @@ def test_a_click_on_the_dimmed_window_is_swallowed(window):
     window.viewport.start_screen.hide()
     toggles = []
     window.engine.toggle_play = lambda: toggles.append(1)
-    dim = c.layout_panel._dim
+    dim = c.settings_panel._dim
     QTest.mouseClick(dim, Qt.LeftButton, Qt.NoModifier, QPoint(5, 5))
-    assert toggles == [] and c.layout_panel is not None
-    c.layout_panel.reject()
+    assert toggles == [] and c.settings_panel is not None
+    c.settings_panel.reject()
