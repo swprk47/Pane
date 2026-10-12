@@ -66,6 +66,11 @@ class AppSettings:
         recent = recent[:10]
         self.settings.setValue("recent_files", json.dumps(recent))
 
+    def remove_recent_file(self, file_path: str):
+        """Forget a file (one that turned out not to open must not be offered for resuming)."""
+        recent = [p for p in self.get_recent_files() if p != file_path]
+        self.settings.setValue("recent_files", json.dumps(recent))
+
     def get_recent_files(self) -> list:
         raw = self.settings.value("recent_files", "[]")
         try:
