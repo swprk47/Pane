@@ -114,6 +114,11 @@ def parse_manifest(raw: bytes, public_key: bytes) -> Manifest:
     return Manifest(version=version.strip(), url=url, sha256=sha256.lower(), size=size, notes=notes)
 
 
+def should_check(now: float, last_check: float, interval: float = 86400.0) -> bool:
+    """An automatic check is due once `interval` seconds have passed (or when the clock was set back)."""
+    return last_check > now or now - last_check >= interval
+
+
 class UpdateError(Exception):
     """The network or the download failed (nothing wrong with the signature: that is a ManifestError)."""
 
