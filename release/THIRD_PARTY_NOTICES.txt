@@ -1,18 +1,26 @@
 Pane - Third-party components
 =============================
 
+Pane itself is licensed under the GNU General Public License, version 3 or later (GPL-3.0-or-later);
+see LICENSE.txt. Its source: https://github.com/swprk47/Pane
+
 Pane bundles the following software. Each component is covered by its own license.
 
 1. mpv / libmpv  (libmpv-2.dll)
-   Video playback engine, including FFmpeg and other libraries it is built with.
-   Project:  https://mpv.io/            Source: https://github.com/mpv-player/mpv
-   Windows build used: shinchiro/mpv-winbuild-cmake
-     https://github.com/shinchiro/mpv-winbuild-cmake (releases include the build scripts and
-     the exact source revisions).
-   License:  mpv is GPL-2.0-or-later (it can be built as LGPL-2.1-or-later). The build bundled here
-   is treated as a GPL build; FFmpeg and the other libraries inside it carry their own
-   (L)GPL / permissive licenses. See the links above for the license texts and the complete source.
-   NOTE (maintainer): confirm the exact license of the bundled build before any public release.
+   Video playback engine, including FFmpeg and the other libraries it is built with.
+   Build in this program:  mpv v0.41.0-1092-g3186d369f  (FFmpeg N-127117-g98e92563a), the Windows
+   build of https://github.com/shinchiro/mpv-winbuild-cmake (its releases and build scripts name the
+   exact source revision of every library).
+   License:  the build is GPL-3.0 (FFmpeg is configured with --enable-gpl --enable-version3; it contains
+   GPL libraries such as x264, x265 and libdvdnav).
+   Corresponding source:
+     mpv      https://github.com/mpv-player/mpv  (commit 3186d369f)
+     FFmpeg   https://git.ffmpeg.org/ffmpeg.git  (commit 98e92563a)
+     x264     https://code.videolan.org/videolan/x264
+     x265     https://bitbucket.org/multicoreware/x265_git
+     libdvdnav https://code.videolan.org/videolan/libdvdnav
+     everything else: the package list and the scripts at https://github.com/shinchiro/mpv-winbuild-cmake
+   On request through https://github.com/swprk47/Pane/issues the maintainer also provides this source.
 
 2. Qt for Python (PySide6) and Qt 6
    License:  LGPL-3.0-only (also available under GPL / commercial terms).
@@ -34,5 +42,10 @@ Pane bundles the following software. Each component is covered by its own licens
 6. PyInstaller (used to build the executable)
    License:  GPL-2.0-or-later with a special exception that allows distributing the bundled
    program under any license.   Project: https://pyinstaller.org/
+
+7. PyNaCl (and libsodium inside it)
+   Checks the signature of the update information (Ed25519).
+   License:  PyNaCl is Apache-2.0; the libsodium library it bundles is ISC.
+   Project:  https://github.com/pyca/pynacl     libsodium: https://libsodium.org/
 
 Pane's own interface icons are original work. The Pane logo is original work.

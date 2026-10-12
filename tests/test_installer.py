@@ -115,3 +115,25 @@ def test_uninstall_keeps_user_data_unless_asked():
     assert "/DELETESETTINGS" in ISS
     assert "MB_DEFBUTTON2" in ISS                 # the prompt defaults to 'No'
     assert "UninstallSilent" in ISS               # a silent uninstall never deletes data on its own
+
+
+# --- silent updates started by the app ----------------------------------------------------
+
+def test_the_installer_script_relaunches_after_a_silent_update():
+    """The app starts the installer with /SILENT /RELAUNCH (core/updater.py). A silent run skips the usual "launch Pane"
+    entry (skipifsilent), so a second [Run] entry brings the app back, only when /RELAUNCH was given."""
+    run = ISS.split("[Run]")[1].split("[")[0]
+    relaunch = [line for line in run.splitlines() if "Check: WantsRelaunch" in line]
+    assert len(relaunch) == 1
+    assert r'{app}\{#AppExe}' in relaunch[0] and "nowait" in relaunch[0] and "runasoriginaluser" in relaunch[0]
+    assert "skipifsilent" not in relaunch[0]
+    code = ISS.split("[Code]")[1]
+    func = re.search(r"function WantsRelaunch\(\): Boolean;.*?^end;", code, flags=re.S | re.M)
+    assert func and "/RELAUNCH" in func.group(0)
+
+
+def test_the_flags_the_app_passes_are_the_flags_the_installer_script_reads():
+    from core.updater import installer_command
+    flags = installer_command(Path("x.exe"), "user")
+    assert "/RELAUNCH" in flags and "/RELAUNCH" in ISS
+    assert "CloseApplications=yes" in ISS, "/CLOSEAPPLICATIONS needs the installer to close the running app"

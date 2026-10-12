@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from core.version import APP_NAME, APP_VERSION  # noqa: E402
 
+GITHUB_REPO = "swprk47/Pane"          # where the releases (and the update manifest) live
 BUILD = ROOT / "build"
 DIST = ROOT / "dist"
 LIBMPV = ROOT / "lib" / "mpv" / "libmpv-2.dll"       # mpv-2.dll is an identical copy; one is enough
@@ -79,6 +80,20 @@ def add_docs(app_dir: Path):
             print(f"[build] note: release/{name} not found, skipped")
 
 
+def default_installer_url(version: str) -> str:
+    """Where the release asset of `version` will be (the tag is v<version>): the URL put into the update manifest."""
+    return f"https://github.com/{GITHUB_REPO}/releases/download/v{version}/{APP_NAME}-{version}-setup.exe"
+
+
+def write_update_manifest(installer: Path, version: str, url: str, notes: str, key_path, out: Path) -> Path:
+    """Sign `latest.json` for `installer` (see tools/update_manifest.py, docs/RELEASING.md)."""
+    import update_manifest
+    out = Path(out)
+    out.write_bytes(update_manifest.make_manifest(installer, version, url, notes, update_manifest.load_private_key(key_path)))
+    print(f"[build] update manifest: {out}")
+    return out
+
+
 def find_iscc() -> Path:
     import os
     candidates = [
@@ -116,17 +131,27 @@ def main():
     ap.add_argument("--no-zip", action="store_true")
     ap.add_argument("--installer", action="store_true", help="also build the Inno Setup installer")
     ap.add_argument("--installer-only", action="store_true", help="only the installer, from the existing dist/Pane")
+    ap.add_argument("--sign-key", help="private key file: also write dist/latest.json, the signed update manifest")
+    ap.add_argument("--installer-url", help="where the installer will be downloaded from (default: this version's GitHub release)")
+    ap.add_argument("--notes", default="", help="one line of release notes for the update manifest")
     args = ap.parse_args()
+    if args.sign_key and not (args.installer or args.installer_only):
+        sys.exit("--sign-key needs --installer (the manifest describes the installer)")
+
+    def sign(installer: Path):
+        if args.sign_key:
+            write_update_manifest(installer, APP_VERSION, args.installer_url or default_installer_url(APP_VERSION),
+                                  args.notes, args.sign_key, DIST / "latest.json")
 
     if args.installer_only:
-        build_installer()
+        sign(build_installer())
         return
     run_pyinstaller(write_version_file())
     app_dir = DIST / APP_NAME
     add_docs(app_dir)
     print(f"[build] app folder: {app_dir}  ({folder_size_mb(app_dir):.0f} MB)")
     if args.installer:
-        build_installer()
+        sign(build_installer())
     if not args.no_zip:
         zip_base = DIST / f"{APP_NAME}-{APP_VERSION}-win64"
         archive = shutil.make_archive(str(zip_base), "zip", root_dir=DIST, base_dir=APP_NAME)

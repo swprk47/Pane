@@ -110,7 +110,7 @@
 - [ ] **Step 2: Run to see them fail.**
 - [ ] **Step 3: Implement** the functions and the argparse CLI; Ed25519 via `nacl.signing`.
 - [ ] **Step 4: Run the tests**: pass.
-- [ ] **Step 5: Generate the real key pair** outside the repository (for example `C:\Users\47sha\Documents\pane_update_private.key`, tell the user to back it up: losing it means one more manual install for every friend), paste the public hex into `core/update_config.py`. Add a test `test_the_embedded_public_key_is_a_valid_ed25519_key`.
+- [ ] **Step 5: Generate the real key pair** outside the repository (for example `<Documents>\pane_update_private.key`, tell the user to back it up: losing it means one more manual install for every friend), paste the public hex into `core/update_config.py`. Add a test `test_the_embedded_public_key_is_a_valid_ed25519_key`.
 - [ ] **Step 6: Commit** `feat: update manifest signing tool and public key`.
 
 ### Task 3: Fetching the manifest and downloading the installer

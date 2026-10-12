@@ -159,3 +159,57 @@ def test_saved_choices_are_applied_when_the_window_starts(qapp, pump):
     finally:
         w.close()
         qapp.processEvents()
+
+
+# --- the 일반 tab: the switch for the automatic update check --------------------------------
+
+def test_a_general_tab_has_the_update_switch(panel):
+    from ui.settings_panel import GENERAL_TAB
+    panel.btn_tab_general.click()
+    assert panel.tab == GENERAL_TAB
+    assert panel.switch_updates.isVisible() and not panel.editor.isVisible()
+    assert panel.switch_updates.checked is True, "on by default"
+    assert panel.btn_close_general.isVisible()
+    assert panel.btn_tab_general.isActive() and not panel.btn_tab_perf.isActive()
+
+
+def test_the_update_switch_applies_at_once(panel):
+    got = []
+    panel.updates_changed.connect(got.append)
+    panel.btn_tab_general.click()
+    click_switch(panel.switch_updates)
+    click_switch(panel.switch_updates)
+    assert got == [False, True]
+
+
+def test_the_panel_keeps_its_size_with_four_tabs(panel):
+    size = panel.size()
+    for button in (panel.btn_tab_perf, panel.btn_tab_audio, panel.btn_tab_general, panel.btn_tab_layout):
+        button.click()
+        assert panel.size() == size
+
+
+def test_the_update_switch_starts_from_the_value_given(qapp):
+    host = QWidget()
+    host.resize(900, 600)
+    host.show()
+    p = SettingsPanel(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host, updates_on=False)
+    p.open()
+    assert p.switch_updates.checked is False
+    p.reject()
+    host.close()
+
+
+def test_the_switch_turns_the_automatic_check_off_and_is_remembered(window):
+    from core.settings import AppSettings
+    c = window.controller
+    c._open_settings_dialog()
+    p = c.settings_panel
+    p.btn_tab_general.click()
+    click_switch(p.switch_updates)
+    assert AppSettings().get_update_check_enabled() is False
+    p.reject()
+    c._open_settings_dialog()
+    q = c.settings_panel
+    assert q.switch_updates.checked is False, "the panel shows what was chosen"
+    q.reject()

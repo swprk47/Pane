@@ -5,8 +5,8 @@ made the player flicker when it opened, since the player was deactivated and rep
     설정                 ( 컨트롤 배치 | 성능 | 오디오 )                  ×
 
 * 컨트롤 배치: edit the control bar the way it looks (``LayoutEditor``); it keeps 기본값 복원 / 취소 / 적용.
-* 성능, 오디오: one row per option with a switch, applied the moment it is clicked (``hwdec_changed``,
-  ``lecture_audio_changed``); these tabs only have 닫기.
+* 성능, 오디오, 일반: one row per option with a switch, applied the moment it is clicked (``hwdec_changed``,
+  ``lecture_audio_changed``, ``updates_changed``); these tabs only have 닫기.
 
 ``open()`` shows it, ``accept()`` / ``reject()`` close it; ``layout_changed`` carries the new layout on Apply and
 ``finished(accepted)`` fires when it closes. While it is open it keeps the keyboard (Esc closes, every other key is
@@ -21,8 +21,8 @@ from ui.glass_switch import GlassSwitch
 from ui.icons import get_svg_icon
 from ui.layout_dialog import DIALOG_CONTENT_W, DIALOG_MARGIN, LayoutEditor
 
-LAYOUT_TAB, PERFORMANCE_TAB, AUDIO_TAB = "layout", "performance", "audio"
-TAB_TITLES = {LAYOUT_TAB: "컨트롤 배치", PERFORMANCE_TAB: "성능", AUDIO_TAB: "오디오"}
+LAYOUT_TAB, PERFORMANCE_TAB, AUDIO_TAB, GENERAL_TAB = "layout", "performance", "audio", "general"
+TAB_TITLES = {LAYOUT_TAB: "컨트롤 배치", PERFORMANCE_TAB: "성능", AUDIO_TAB: "오디오", GENERAL_TAB: "일반"}
 TAB_WIDTH, TAB_HEIGHT = 104, 30
 FONT = '"Segoe UI Variable Text", "Segoe UI", sans-serif'
 
@@ -35,6 +35,9 @@ ROW_DESC_QSS = f"color: rgba(255, 255, 255, 0.55); font-size: 12px; background: 
 HWDEC_ROW = ("하드웨어 디코딩", "GPU로 영상을 풉니다. 화면이 안 나오거나 깨지면 꺼 보세요.")
 LECTURE_ROW = ("강의 음성", "먹먹한 목소리를 또렷하게 하고, 작은 소리는 키우고 큰 소리는 눌러 줍니다. "
                           "켜 두면 오디오 트랙은 1번으로 고정됩니다.")
+
+
+UPDATES_ROW = ("새 버전 알림", "하루에 한 번 새 버전이 있는지 확인하고, 있으면 알려 줘요. 꺼도 정보 창의 ‘업데이트 확인’은 쓸 수 있어요.")
 
 
 class _Dim(QWidget):
@@ -102,9 +105,10 @@ class SettingsPanel(QWidget):
     finished = Signal(bool)
     hwdec_changed = Signal(bool)
     lecture_audio_changed = Signal(bool)
+    updates_changed = Signal(bool)
 
     def __init__(self, current_layout: dict, metadata: dict, default_layout: dict, host: QWidget, *,
-                 hwdec_on: bool = True, lecture_audio_on: bool = False):
+                 hwdec_on: bool = True, lecture_audio_on: bool = False, updates_on: bool = True):
         super().__init__(host)
         self._host = host
         self._default = default_layout
@@ -130,7 +134,8 @@ class SettingsPanel(QWidget):
         self.btn_tab_layout = self._tab_button(LAYOUT_TAB)
         self.btn_tab_perf = self._tab_button(PERFORMANCE_TAB)
         self.btn_tab_audio = self._tab_button(AUDIO_TAB)
-        for b in (self.btn_tab_layout, self.btn_tab_perf, self.btn_tab_audio):
+        self.btn_tab_general = self._tab_button(GENERAL_TAB)
+        for b in (self.btn_tab_layout, self.btn_tab_perf, self.btn_tab_audio, self.btn_tab_general):
             tabs.addWidget(b)
         head.addLayout(tabs)
         right = QHBoxLayout()
@@ -151,6 +156,8 @@ class SettingsPanel(QWidget):
         self._pages.addWidget(self._build_options_page(
             [LECTURE_ROW], [lecture_audio_on], ["row_lecture"], ["switch_lecture"], [self.lecture_audio_changed],
             "btn_close_audio"))
+        self._pages.addWidget(self._build_options_page(
+            [UPDATES_ROW], [updates_on], ["row_updates"], ["switch_updates"], [self.updates_changed], "btn_close_general"))
         root.addLayout(self._pages)
 
         root.activate()
@@ -233,9 +240,9 @@ class SettingsPanel(QWidget):
         self._sync_tabs()
 
     def _sync_tabs(self):
-        order = (LAYOUT_TAB, PERFORMANCE_TAB, AUDIO_TAB)
+        order = (LAYOUT_TAB, PERFORMANCE_TAB, AUDIO_TAB, GENERAL_TAB)
         self._pages.setCurrentIndex(order.index(self._tab))
-        for b, tab in zip((self.btn_tab_layout, self.btn_tab_perf, self.btn_tab_audio), order):
+        for b, tab in zip((self.btn_tab_layout, self.btn_tab_perf, self.btn_tab_audio, self.btn_tab_general), order):
             b.setActive(self._tab == tab)
 
     # --- opening / closing --------------------------------------------------------------------

@@ -83,11 +83,24 @@ Root: HKA; Subkey: "Software\RegisteredApplications"; ValueType: string; ValueNa
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; An update started by the app runs silently with /RELAUNCH: the entry above is skipped when silent, so start Pane again here.
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: WantsRelaunch
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+function WantsRelaunch(): Boolean;
+var
+  i: Integer;
+begin
+  { an update started by the app passes /RELAUNCH: start Pane again when the install is done }
+  Result := False;
+  for i := 1 to ParamCount do
+    if CompareText(ParamStr(i), '/RELAUNCH') = 0 then
+      Result := True;
+end;
+
 function ShouldDeleteSettings(): Boolean;
 var
   i: Integer;

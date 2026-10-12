@@ -67,6 +67,8 @@ class GlassController(QWidget):
     visibility_changed = Signal(bool)   # controls shown / hidden (for the mini progress line)
     hwdec_changed = Signal(bool)        # settings panel: hardware decoding switched
     lecture_audio_changed = Signal(bool)  # settings panel: "lecture voice" switched
+    updates_changed = Signal(bool)      # settings panel: the automatic update check switched
+    settings_panel_toggled = Signal()   # the settings panel opened or closed
     opacity_changed = Signal(float)     # follows the fade so the top scrim fades with us
 
     # Height of the bottom strip that carries the scrim gradient, and of the
@@ -346,22 +348,30 @@ class GlassController(QWidget):
     settings_panel = None        # the open settings panel, else None
     hwdec_on = True              # what the panel's switches show when it opens (the window keeps them current)
     lecture_audio_on = False
+    updates_on = True
 
     def _open_settings_dialog(self):
         if self.settings_panel is not None:
             return
         panel = SettingsPanel(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self.parentWidget(),
-                              hwdec_on=self.hwdec_on, lecture_audio_on=self.lecture_audio_on)
+                              hwdec_on=self.hwdec_on, lecture_audio_on=self.lecture_audio_on,
+                              updates_on=self.updates_on)
         panel.layout_changed.connect(self._save_layout)
         panel.hwdec_changed.connect(self._on_hwdec_switched)
         panel.lecture_audio_changed.connect(self._on_lecture_audio_switched)
+        panel.updates_changed.connect(self._on_updates_switched)
         panel.finished.connect(self._on_settings_panel_closed)
         self.settings_panel = panel
         panel.open()
+        self.settings_panel_toggled.emit()
 
     def _on_hwdec_switched(self, enabled: bool):
         self.hwdec_on = enabled
         self.hwdec_changed.emit(enabled)
+
+    def _on_updates_switched(self, enabled: bool):
+        self.updates_on = enabled
+        self.updates_changed.emit(enabled)
 
     def _on_lecture_audio_switched(self, enabled: bool):
         self.lecture_audio_on = enabled
@@ -369,6 +379,7 @@ class GlassController(QWidget):
 
     def _on_settings_panel_closed(self, _accepted):
         self.settings_panel = None
+        self.settings_panel_toggled.emit()
 
     def set_playlist_state(self, has_prev: bool, has_next: bool):
         """Which of the previous / next video buttons can be used (the folder has such a video)."""
