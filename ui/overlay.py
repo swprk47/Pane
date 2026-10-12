@@ -6,7 +6,7 @@ big pause / play symbol shown over the picture.
 from PySide6.QtWidgets import QWidget, QGraphicsOpacityEffect
 from PySide6.QtCore import Qt, QPointF, QSize, QEasingCurve, QTimer
 from PySide6.QtGui import (
-    QPainter, QLinearGradient, QColor, QFont, QFontMetrics
+    QPainter, QLinearGradient, QColor, QFont, QFontMetrics, QPainterPath, QPen
 )
 
 from ui.glass_button import Tweening, glass_disc_pixmap, icon_swap_params
@@ -242,3 +242,153 @@ class CenterBadge(_OverlayBase, Tweening):
             draw_icon(self._mode, new_o, new_s)
         else:
             draw_icon(self._mode, 1.0, 1.0)
+
+
+class SeekIndicator(_OverlayBase, Tweening):
+    """Shown at the left / right edge of the picture when the video jumps by time (arrow keys, the +-5 s buttons):
+    a dark shade that fades in from the screen edge, with a chevron arrow and the seconds on it ("5s"). The arrow
+    starts as a single chevron and the second one slides out from behind it (played again on every press).
+
+    Pressing again in the same direction adds up ("5초" -> "10초" -> "15초"); the other direction starts again on
+    its own side. It stays HOLD_MS after the last press, then fades out and hides itself, so it costs nothing while idle
+    (only while it is on screen, every frame is composited over the video like the other overlays).
+    """
+    WIDTH_RATIO = 0.34
+    HOLD_MS = 700
+    SHOW_MS, HIDE_MS, ARROW_MS = 140, 320, 280
+    INSET = 36                  # icon distance from the screen edge
+    ICON = 34
+    GAP = 10
+    SHADE_EDGE, SHADE_MID = 0.72, 0.38      # darkness at the screen edge and 55% of the way in (then 0)
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.side = "right"
+        self.total = 0
+        self._area = None
+        self._vis = 0.0
+        self._hiding = False
+        self._arrow = 1.0           # 0: one chevron, 1: both (the second one slides out and fades in)
+        self._init_tweens()
+        self._hold = QTimer(self)
+        self._hold.setSingleShot(True)
+        self._hold.setInterval(self.HOLD_MS)
+        self._hold.timeout.connect(self._fade_out)
+        QWidget.setVisible(self, False)
+
+    @property
+    def text(self) -> str:
+        return f"{self.total:g}s"
+
+    # --- driven by the seeks ------------------------------------------------------------------
+    def show_seek(self, delta: float):
+        side = "right" if delta > 0 else "left"
+        if side == self.side and self._hold.isActive():
+            self.total += abs(delta)
+        else:
+            self.total = abs(delta)
+        self.side = side
+        self.place(self._area or self.parentWidget().rect())
+        self._hiding = False
+        if not self.isVisible():
+            self._vis = 0.0
+            QWidget.setVisible(self, True)
+        self._animate("vis", 1.0, self.SHOW_MS)
+        self._arrow = 0.0                                   # (every press plays the arrow again)
+        self._tweens.pop("arrow", None)
+        self._animate("arrow", 1.0, self.ARROW_MS)
+        self._hold.start()
+        self.update()
+
+    def reset(self):
+        """A new file is loading: gone at once."""
+        self._hold.stop()
+        self._hiding = False
+        self._stop_tweens()
+        self._vis = 0.0
+        self.total = 0
+        QWidget.setVisible(self, False)
+
+    def place(self, area):
+        """Cover the outer WIDTH_RATIO of `area` (the picture's rectangle) on the side it points to."""
+        self._area = area
+        w = round(area.width() * self.WIDTH_RATIO)
+        x = area.right() + 1 - w if self.side == "right" else area.x()
+        self.setGeometry(x, area.y(), w, area.height())
+
+    def _fade_out(self):
+        if not self.isVisible():
+            return
+        self._hiding = True
+        self._animate("vis", 0.0, self.HIDE_MS, QEasingCurve.InCubic)
+        if "vis" not in self._tweens:
+            self._finish_hide()
+
+    def _finish_hide(self):
+        self._hiding = False
+        self.total = 0
+        QWidget.setVisible(self, False)
+
+    def _tick(self):
+        Tweening._tick(self)
+        if self._hiding and "vis" not in self._tweens:
+            self._finish_hide()
+
+    # --- painting -----------------------------------------------------------------------------
+    def paintEvent(self, event):
+        if self._vis <= 0.002:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        w, h = self.width(), self.height()
+        right = self.side == "right"
+        p.setOpacity(self._vis)
+
+        grad = QLinearGradient(w if right else 0, 0, 0 if right else w, 0)      # starts at the screen edge
+        grad.setColorAt(0.0, QColor(0, 0, 0, round(255 * self.SHADE_EDGE)))
+        grad.setColorAt(0.55, QColor(0, 0, 0, round(255 * self.SHADE_MID)))
+        grad.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.fillRect(self.rect(), grad)
+
+        font = QFont("Segoe UI Variable Text")
+        font.setFamilies(["Segoe UI Variable Text", "Segoe UI"])
+        font.setPixelSize(17)
+        font.setWeight(QFont.DemiBold)
+        p.setFont(font)
+        p.setPen(QColor(255, 255, 255))
+        tw = QFontMetrics(font).horizontalAdvance(self.text)
+        cy = h / 2.0
+        if right:
+            ix = w - self.INSET - self.ICON
+            tx = ix - self.GAP - tw
+        else:
+            ix = self.INSET
+            tx = ix + self.ICON + self.GAP
+        self._draw_arrow(p, ix, cy - self.ICON / 2.0, right)
+        p.drawText(QPointF(tx, cy + QFontMetrics(font).ascent() / 2.0 - 2), self.text)
+
+    def _draw_arrow(self, p: QPainter, x: float, y: float, right: bool):
+        """Two chevrons on the 24-unit grid of the control icons. The leading one (on the side the arrow points to) is
+        always there; the other starts on top of it, invisible, and slides back to its own place as it fades in."""
+        k = self.ICON / 24.0
+        t = self._arrow
+        d = 1 if right else -1
+        lead_start = 13.0 if right else 11.0                # (the chevron starts at this x and its tip is 5 further)
+        trail_start = (6.0 + (1.0 - t) * 7.0) if right else (18.0 - (1.0 - t) * 7.0)
+        pen = QPen(QColor(255, 255, 255), 2.0 * k)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        base = p.opacity()
+        for start, opacity in ((lead_start, 1.0), (trail_start, t)):
+            if opacity <= 0.002:
+                continue
+            p.setOpacity(base * opacity)
+            path = QPainterPath()
+            path.moveTo(x + start * k, y + 17 * k)
+            path.lineTo(x + (start + 5 * d) * k, y + 12 * k)
+            path.lineTo(x + start * k, y + 7 * k)
+            p.drawPath(path)
+        p.setOpacity(base)
