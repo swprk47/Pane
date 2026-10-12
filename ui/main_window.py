@@ -20,9 +20,10 @@ from core import playlist
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
+from core.media_info import format_clock
 from core import app_log, diagnostics
 from ui.mpv_gl import MpvGLWidget
-from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator
+from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
 from core.tracks import format_delay
@@ -233,6 +234,7 @@ class MainWindow(QMainWindow):
         self.center_badge = CenterBadge(self.central_widget)
         self.center_badge.hide()
         self.seek_indicator = SeekIndicator(self.central_widget)
+        self.seek_tip = SeekTimeTip(self.central_widget)
         self.mini_progress = MiniProgress(self.central_widget)
         self.mini_progress.hide()
 
@@ -278,6 +280,9 @@ class MainWindow(QMainWindow):
         self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "warning"))
 
         # Controller -> Engine
+        self.controller.timeline.hover_moved.connect(self._show_seek_tip)
+        self.controller.timeline.hover_left.connect(self.seek_tip.hide_tip)
+        self.controller.visibility_changed.connect(lambda shown: None if shown else self.seek_tip.hide_tip())
         self.controller.hwdec_on = self.engine.hardware_decoding
         self.controller.lecture_audio_on = self.engine.lecture_audio
         self.controller.hwdec_changed.connect(self._on_hwdec_changed)
@@ -460,6 +465,12 @@ class MainWindow(QMainWindow):
 
         menu.exec(global_pos)
 
+    def _show_seek_tip(self, seconds: float, x: float):
+        """The time under the pointer, as a pill just above the seek bar."""
+        tl = self.controller.timeline
+        spot = tl.mapTo(self.central_widget, QPoint(round(x), tl.height() // 2))
+        self.seek_tip.show_at(format_clock(seconds), spot.x(), spot.y() - 15, self.viewport.geometry())
+
     def _on_hwdec_changed(self, enabled: bool):
         self.engine.set_hardware_decoding(enabled)
         self.app_settings.set_hwdec_enabled(enabled)
@@ -557,6 +568,7 @@ class MainWindow(QMainWindow):
         self._update_playlist_state()
         self.center_badge.reset()
         self.seek_indicator.reset()
+        self.seek_tip.hide_tip()
         file_name = os.path.basename(file_path)
         self.viewport.show_empty_notice(False)
         self.viewport.set_has_frame(True)
@@ -1034,6 +1046,8 @@ class MainWindow(QMainWindow):
         self.seek_indicator.raise_()
         self.mini_progress.raise_()
         c.raise_()
+        if self.seek_tip.isVisible():
+            self.seek_tip.raise_()
         if self.speed_popup.isVisible():
             self.speed_popup.raise_()
         if self.track_popup.isVisible():

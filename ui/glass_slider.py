@@ -69,6 +69,10 @@ class GlassSlider(QSlider, Tweening):
     def track_thickness(self) -> float:
         return TRACK + (TRACK_HOVER - TRACK) * self._hover
 
+    # --- hook for a slider that adds to the track (the timeline's hover preview) ----------------
+    def paint_over_track(self, p, margin: float, span: float, cy: float, thickness: float):
+        """Called after the filled part and before the handle (horizontal sliders only)."""
+
     # --- interaction --------------------------------------------------------------------------
     def enterEvent(self, event):
         self._animate("hover", 1.0, GROW_MS)
@@ -137,6 +141,8 @@ class GlassSlider(QSlider, Tweening):
         if self.isEnabled() and ratio > 0:
             p.setBrush(FILL_COLOR)
             p.drawRoundedRect(fill, t / 2, t / 2)
+        if horizontal:
+            self.paint_over_track(p, m, span, cy, t)
         d = self.handle_diameter()
         # soft shadow under the handle, a halo while held, then the handle itself
         sh = QRadialGradient(hx, hy + 1.5, d * 0.9)

@@ -82,6 +82,14 @@ def format_duration(seconds) -> str:
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
+def format_clock(seconds) -> str:
+    """A position as a clock: 2:36, or 1:02:45 from one hour on (unlike format_duration, 0 is "0:00", not a dash)."""
+    s = int(max(0, seconds or 0))
+    h, rem = divmod(s, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
 def format_fps(fps) -> str:
     return f"{float(fps):.2f} fps" if fps else DASH
 
