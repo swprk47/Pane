@@ -133,3 +133,47 @@ def test_build_inputs_exist():
     assert build_release.LIBMPV.exists()
     for asset in ("pane.ico", "pane_logo.svg"):
         assert (ROOT / "assets" / asset).exists()
+
+
+# --- the update release steps ------------------------------------------------------------
+
+def test_third_party_notices_name_pynacl_and_libsodium():
+    text = (RELEASE / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8").lower()
+    assert "pynacl" in text and "libsodium" in text and "apache" in text
+
+
+def test_build_release_writes_a_signed_manifest_for_the_installer(tmp_path):
+    sys.path.insert(0, str(ROOT / "tools"))
+    import build_release
+    import update_manifest
+    from core.updater import parse_manifest
+
+    key = tmp_path / "update.key"
+    public = bytes.fromhex(update_manifest.generate_keypair(key))
+    installer = tmp_path / "Pane-1.3.0-setup.exe"
+    installer.write_bytes(b"MZ installer bytes" * 100)
+    out = build_release.write_update_manifest(installer, "1.3.0", build_release.default_installer_url("1.3.0"),
+                                              "notes", key, tmp_path / "latest.json")
+    manifest = parse_manifest(out.read_bytes(), public)
+    assert manifest.version == "1.3.0" and manifest.size == installer.stat().st_size
+
+
+def test_the_default_installer_url_is_the_release_of_the_same_version_in_the_same_repository():
+    sys.path.insert(0, str(ROOT / "tools"))
+    import build_release
+    from core import update_config
+    assert build_release.default_installer_url("1.3.0") == \
+        "https://github.com/swprk47/Pane/releases/download/v1.3.0/Pane-1.3.0-setup.exe"
+    repo = "https://github.com/swprk47/Pane/releases/"
+    assert update_config.UPDATE_MANIFEST_URL.startswith(repo) and build_release.default_installer_url("1.3.0").startswith(repo)
+
+
+def test_the_release_notes_explain_the_manifest_upload_and_the_key():
+    text = (ROOT / "docs" / "RELEASING.md").read_text(encoding="utf-8")
+    for needle in ("latest.json", "--sign-key", "back", "Publish", "pre-release"):
+        assert needle in text, needle
+
+
+def test_the_readme_tells_users_about_the_updates():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "업데이트" in text and "1.3.0" in text

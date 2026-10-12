@@ -35,4 +35,9 @@ Pane bundles the following software. Each component is covered by its own licens
    License:  GPL-2.0-or-later with a special exception that allows distributing the bundled
    program under any license.   Project: https://pyinstaller.org/
 
+7. PyNaCl (and libsodium inside it)
+   Checks the signature of the update information (Ed25519).
+   License:  PyNaCl is Apache-2.0; the libsodium library it bundles is ISC.
+   Project:  https://github.com/pyca/pynacl     libsodium: https://libsodium.org/
+
 Pane's own interface icons are original work. The Pane logo is original work.
