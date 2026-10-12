@@ -4,7 +4,7 @@ file name, the thin progress line shown while the controls are hidden, and the
 big pause / play symbol shown over the picture.
 """
 from PySide6.QtWidgets import QWidget, QGraphicsOpacityEffect
-from PySide6.QtCore import Qt, QPointF, QSize, QEasingCurve, QTimer
+from PySide6.QtCore import Qt, QPointF, QRectF, QSize, QEasingCurve, QTimer
 from PySide6.QtGui import (
     QPainter, QLinearGradient, QColor, QFont, QFontMetrics, QPainterPath, QPen
 )
@@ -392,3 +392,48 @@ class SeekIndicator(_OverlayBase, Tweening):
             path.lineTo(x + start * k, y + 7 * k)
             p.drawPath(path)
         p.setOpacity(base)
+
+
+class SeekTimeTip(_OverlayBase):
+    """The time under the mouse while it is over the seek bar (or while the handle is dragged): a small dark glass
+    pill just above the bar, centred on the pointer and kept inside the picture. Hidden when not in use."""
+    HEIGHT = 30
+    PAD = 14
+    EDGE = 8
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.text = ""
+        font = QFont("Segoe UI Variable Text")
+        font.setFamilies(["Segoe UI Variable Text", "Segoe UI"])
+        font.setPixelSize(14)
+        font.setWeight(QFont.DemiBold)
+        self._font = font
+        QWidget.setVisible(self, False)
+
+    def show_at(self, text: str, x_center: float, y_bottom: float, bounds):
+        """Show `text` with the pill's bottom edge at y_bottom, centred on x_center, inside `bounds` (a QRect)."""
+        self.text = text
+        w = QFontMetrics(self._font).horizontalAdvance(text) + 2 * self.PAD
+        self.resize(w, self.HEIGHT)
+        x = round(x_center - w / 2.0)
+        x = max(bounds.left() + self.EDGE, min(x, bounds.right() - self.EDGE - w + 1))
+        self.move(x, round(y_bottom) - self.HEIGHT)
+        if not self.isVisible():
+            QWidget.setVisible(self, True)
+            self.raise_()
+        self.update()
+
+    def hide_tip(self):
+        QWidget.setVisible(self, False)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        p.setPen(QPen(QColor(255, 255, 255, 77), 1))
+        p.setBrush(QColor(14, 14, 18, 168))
+        p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
+        p.setFont(self._font)
+        p.setPen(QColor(255, 255, 255))
+        p.drawText(self.rect(), Qt.AlignCenter, self.text)

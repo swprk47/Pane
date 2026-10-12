@@ -50,6 +50,7 @@ class PlayerEngine(QObject):
         self.hardware_decoding = True
         self.lecture_audio = False
         self._aid_before = None
+        self._closing = False
         self._current_file = None
         self._duration = 0.0
         self._time_pos = 0.0
@@ -463,6 +464,8 @@ class PlayerEngine(QObject):
     def _sync_lecture_audio(self):
         """The lecture graph ties the audio to track 1 and mpv won't play a file that has none: so it is set only
         while the loaded file has an audio track."""
+        if self._closing:
+            return                                     # (mpv's last track-list notice arrives while it shuts down)
         want = self.lecture_audio and self._has_audio_track()
         self._set_audio_graph(audio_presets.LECTURE_VOICE if want else "")
 
@@ -470,6 +473,7 @@ class PlayerEngine(QObject):
 
     def terminate(self):
         """Cleanly terminate the mpv core engine."""
+        self._closing = True
         try:
             self.mpv.terminate()
         except Exception:
