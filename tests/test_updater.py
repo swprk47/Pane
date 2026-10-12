@@ -1,5 +1,6 @@
 """The update logic: versions, the signed manifest, the verified download, the installer launch."""
 import base64
+from pathlib import Path
 import json
 
 import pytest
@@ -237,3 +238,61 @@ def test_an_earlier_good_download_survives_a_failed_retry(server, tmp_path):
     with pytest.raises(UpdateError):
         download_installer(manifest_for(server), tmp_path / "dl")
     assert good.read_bytes() == INSTALLER
+
+
+# --- starting the installer ----------------------------------------------------------------------
+
+from core import updater as updater_module
+from core.updater import install_scope, installer_command, launch_installer
+
+
+def test_install_scope_by_folder():
+    local = Path(r"C:\Users\someone\AppData\Local")
+    assert install_scope(local / "Programs" / "Pane", local) == "user"
+    assert install_scope(Path(r"C:\Users\SOMEONE\appdata\local\Programs\Pane"), local) == "user", "Windows paths ignore case"
+    assert install_scope(Path(r"C:\Program Files\Pane"), local) == "machine"
+    assert install_scope(Path(r"D:\Apps\Pane"), local) == "machine"
+
+
+@pytest.mark.parametrize("scope,flag", [("user", "/CURRENTUSER"), ("machine", "/ALLUSERS")])
+def test_installer_command_for_each_scope(scope, flag):
+    exe = Path(r"C:\Temp\Pane-1.3.0-setup.exe")
+    assert installer_command(exe, scope) == [str(exe), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+                                              "/CLOSEAPPLICATIONS", "/RELAUNCH", flag]
+
+
+def test_an_unknown_scope_is_refused():
+    with pytest.raises(ValueError):
+        installer_command(Path("x.exe"), "everyone")
+
+
+def test_launch_installer_starts_it_detached_and_does_not_wait(monkeypatch):
+    calls = []
+
+    class FakeProcess:
+        def wait(self, *a, **k):
+            raise AssertionError("the app must not wait for the installer: the installer closes the app")
+
+    def fake_popen(command, **kwargs):
+        calls.append((command, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr(updater_module.subprocess, "Popen", fake_popen)
+    exe = Path(r"C:\Temp\Pane-1.3.0-setup.exe")
+    launch_installer(exe, "user")
+    command, kwargs = calls[0]
+    assert command == installer_command(exe, "user")
+    DETACHED_PROCESS, CREATE_NEW_PROCESS_GROUP = 0x00000008, 0x00000200
+    assert kwargs["creationflags"] & DETACHED_PROCESS and kwargs["creationflags"] & CREATE_NEW_PROCESS_GROUP
+    assert kwargs["close_fds"] is True
+
+
+def test_launch_installer_failure_is_an_update_error_naming_the_file(monkeypatch):
+    def refuse(*a, **k):
+        raise OSError(1260, "blocked by policy")
+
+    monkeypatch.setattr(updater_module.subprocess, "Popen", refuse)
+    exe = Path(r"C:\Temp\Pane-1.3.0-setup.exe")
+    with pytest.raises(UpdateError) as info:
+        launch_installer(exe, "user")
+    assert str(exe) in str(info.value), "the message tells where the file is so it can be run by hand"

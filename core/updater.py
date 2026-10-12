@@ -13,6 +13,7 @@ import http.client
 import json
 import os
 import re
+import subprocess
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ _SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 _LOCAL_HOSTS = ("127.0.0.1", "localhost")          # (plain http is only accepted for a local test server)
 MANIFEST_LIMIT = 64 * 1024                          # a manifest is a few hundred bytes: anything bigger is not one
 CHUNK = 64 * 1024
+DETACHED_PROCESS, CREATE_NEW_PROCESS_GROUP = 0x00000008, 0x00000200
 
 
 def parse_version(text: str) -> tuple:
@@ -178,3 +180,28 @@ def download_installer(manifest: Manifest, dest_dir, progress: Optional[Callable
         return final
     finally:
         part.unlink(missing_ok=True)
+
+
+def install_scope(exe_dir, localappdata) -> str:
+    """"user" when the app is installed under the user's own profile (a per-user install: no administrator prompt),
+    else "machine" (an all-users install)."""
+    return "user" if Path(exe_dir).resolve().is_relative_to(Path(localappdata).resolve()) else "machine"
+
+
+def installer_command(path, scope: str) -> list:
+    """The silent update command line: close the running Pane, install without questions, start Pane again
+    (/RELAUNCH is read by installer/pane.iss), over the same kind of install as the one running."""
+    flags = {"user": "/CURRENTUSER", "machine": "/ALLUSERS"}
+    if scope not in flags:
+        raise ValueError(f"unknown install scope: {scope!r}")
+    return [str(path), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/RELAUNCH", flags[scope]]
+
+
+def launch_installer(path, scope: str) -> None:
+    """Start the installer and return at once: it closes this app itself. A failure (a policy blocking the file, say)
+    is an UpdateError that names the file, so it can be run by hand."""
+    try:
+        subprocess.Popen(installer_command(path, scope), creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                         close_fds=True)
+    except OSError as e:
+        raise UpdateError(f"could not start the installer ({e}); it is saved at {path}")
