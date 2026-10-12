@@ -16,6 +16,8 @@
 - **테스트:** `474 passed, 9 skipped`(+ `--run-e2e`로 마우스 시험 9개 포함; 마지막 e2e 포함 실행은 v1.2.0 릴리스 전 `438 passed`). `main`에는 진단 정보 복사(2026-10-12)와 설정 화면 탭(같은 날)이 병합돼 있고 아직 릴리스 전(1.3 진행 중), 푸시도 아직.
 - **연속 시청, 새 배속 패널, 새 시작 화면, 새 컨트롤 배치 설정을 `main`에 병합함**(`feature/playlist`·`feature/speed-panel`·`feature/start-screen`·`feature/settings-dialog`, `--no-ff`). 안내 카드는 시안 C(320×112, 5초, 다음 영상 버튼을 두르는 원형 카운트다운 링, 마우스를 올리면 멈춤). **푸시는 아직 안 함**(`origin/main`보다 앞섬). 관찰 중: 카드를 취소한 뒤 상단 바가 한동안 안 돌아왔다는 보고가 한 번 있었음(재현 못 함, 다시 생기면 재현 후 수정).
 
+- **앱 안 업데이트(2026-10-13, `feature/auto-update`, 병합 전)**: 지인들이 설치 파일을 매번 받아 설치하기 번거롭다고 해서 만듦. **코드·테스트는 끝났고(전체 688 passed, 10 skipped) 남은 것은 작업 0(저장소 공개)과 작업 9(이 PC에서 설치·업그레이드 검증)**. 설계 `docs/superpowers/specs/2026-10-13-auto-update-design.md`, 계획 `docs/superpowers/plans/2026-10-13-auto-update.md`, 릴리스 절차 `docs/RELEASING.md`. 결정: **D1 공개 저장소 `swprk47/Pane`을 GPLv3로 소스 포함 공개**(업데이트 파일은 같은 저장소 Releases의 `latest.json`+설치 파일, 주소 `.../releases/latest/download/latest.json`), 이력의 작성자 이메일은 GitHub noreply로 교체; **D2 Ed25519 서명 매니페스트(PyNaCl)를 1.3에 넣음**(비공개 키 `Documents\pane_update_private.key`, 저장소 밖·`*.key`는 gitignore·**백업 필수**). 동작: 앱을 켠 5초 뒤 백그라운드로 하루 한 번 확인(설치된 앱만, 설정 "일반 > 새 버전 알림"으로 끔, 정보 창의 "업데이트 확인"은 항상), 새 버전이 있으면 창 오른쪽 아래 유리 카드(`ui/update_card.py`; **재생 중엔 숨고 일시정지·영상 없음일 때 보임**, 다음 영상 카드·설정 패널·파일 오류 안내가 우선), ✕는 그 버전을 그만 알림(더 새 버전이 나오면 다시), 안 닫으면 다음 실행에도 다시 뜸(보류 중인 알림이 있으면 하루 한 번 제한 없이 바로 확인), [업데이트]는 내려받아 크기·SHA-256 검증 후 `/SILENT /CLOSEAPPLICATIONS /RELAUNCH`로 설치 파일을 띄움(설치 파일이 앱을 닫고 교체하고 다시 켬). 코드: `core/updater.py`(순수 로직), `core/update_checker.py`(Qt 확인기), `core/update_config.py`(주소·공개 키), `tools/update_manifest.py`(키 생성·서명), `tools/build_release.py --sign-key`. **1.2.0 이하를 쓰는 지인은 업데이트가 들어간 첫 버전을 마지막으로 한 번 직접 설치해야 함.**
+
 ## 2. 작업 환경과 규칙
 
 | 항목 | 내용 |
@@ -87,6 +89,7 @@
 29. **상대 이동이 부정확했음**: python-mpv의 `seek()` 기본은 `precision="keyframes"`라서 방향키 이동이 실제 4K 영상에서 +1초→+5.05초, +5초→+10.5초, -5초→-6.7초(짧은 샘플은 영상 끝까지)로 움직였음 → 상대 이동은 `precision="exact"`로 바꿈(4K 앞으로 한 번 약 150~500ms, 되감기 약 40ms; 키프레임 방식은 약 50ms). 회귀 테스트는 mpv 호출 인자를 확인(3초 샘플은 키프레임이 많아 결과만으로는 둘을 구분 못 함). 재생바를 끌어 이동하는 절대 이동은 빠른 반응을 위해 키프레임 그대로.
 30. 오버레이 위젯이 **그려질 때만 실행되는 코드**(`paintEvent`)의 오류(예: `QRectF` import 누락)는 위젯을 만들고 `show_at`만 호출하는 테스트로는 안 잡힘 → 위젯 테스트는 `render()`로 실제로 한 번 그려서 픽셀을 확인할 것(`grab()`은 불투명 배경을 깔아서 투명도를 못 잼; `render(img, QPoint(), QRegion(), QWidget.RenderFlag(0))`).
 31. mpv의 `end-file` 이벤트 객체에는 `reason` 속성이 없고(값은 `event.as_dict()`의 `reason`·`file_error` 바이트열) 그래서 `PlayerEngine`의 기존 `reason == EOF` 분기는 한 번도 동작한 적이 없음(정상 종료는 `eof-reached` 관찰자). 실패한 로드는 `as_dict()`로 읽음(`load_failed` 신호). 영상이 아닌 파일은 mpv가 원인 줄(`Failed to recognize file format`)을 `end-file` 신호 **직후**에 남기므로 보고서를 만들 때 그 뒤의 줄을 합침(`_problem_text`), 잘린 mp4(`moov atom not found`)는 먼저 도착. `loglevel='error'` + `log_handler`를 엔진 생성 시 넘겨 둠(생성 뒤에 바꿔 끼우면 적용 안 됨).
+32. (업데이트 작업 중) Git Bash는 `/Q` 같은 `/`로 시작하는 인자를 경로로 바꿔 버려 Windows 프로그램(예: `ISCC /Q`)이 거부함 → `MSYS2_ARG_CONV_EXCL="*"`를 앞에 붙임. 설치 스크립트 문법은 단위 테스트로 못 잡으니 임시 폴더에 복사본(`Compression=none`)을 만들어 실제 `ISCC`로 컴파일해 확인함(출력은 그 복사본 기준 폴더라 실제 `dist/`는 안 건드림). 서버 쪽 시험은 `tests/update_helpers.py`의 진짜 `ThreadingHTTPServer`(127.0.0.1)로: 해시 불일치·중간에 끊김·큰 파일·로그인 페이지·404를 모두 재현. "두 번 눌러도 한 번"처럼 시간차로 벌어지는 일은 첫 신호 직후가 아니라 모든 작업이 끝난 뒤(`wait_for_done`)에 세어야 가드를 빼면 실패하는 진짜 시험이 됨.
 
 **위젯·시험 도구 (2026-10-08에 알게 된 것)**
 15. 이미 보이는 부모에 위젯을 추가하면(`layout.addWidget`) 그 위젯은 **다음 이벤트 턴까지 숨김으로 계산됨** → 크기를 바로 재는 코드(구역 폭 고정, `adjustSize`)는 추가 직후 `w.show()`가 필요. 배속 패널의 프리셋 목록과 컨트롤 `_rebuild_buttons`에서 두 번 겪음(후자는 "적용하면 가운데 버튼만 남음").
@@ -124,7 +127,7 @@
 - **기능 없음:** 자막 스타일(크기·위치), 선호 오디오·자막 언어 기억, 자막 파일 끌어다 놓기, 설정 화면, 파일 연결로 여러 파일 열기(첫 파일만), 이동 미리보기, 구간 반복, URL 재생
 - **미검증:** 이 PC 밖(다른 GPU·주사율·화면 배율 125~150%), 밝은 장면 위 유리 컨트롤의 대비, 설치 마법사 화면의 시각 확인
 - **배포:** 코드 서명 없음(SmartScreen 경고, 스마트 앱 컨트롤이 켜진 PC에선 실행 자체가 막힘), 자동 업데이트 없음
-- **라이선스(공개 전 필수):** libmpv(shinchiro) 빌드가 GPL인지 DLL에서 확인하지 못해 GPL로 가정하고 고지함. 확인 후 앱 라이선스를 정해야 함. `release/LICENSE.txt`는 지인 공유용 임시 약관(재배포 금지). 소스는 지금 **비공개** 저장소.
+- **라이선스(공개 전 필수; 2026-10-12 확인: 빌드는 GPLv3, 2026-10-13 결정: Pane을 GPLv3로 공개 — 계획 작업 0):** (이전 메모) libmpv(shinchiro) 빌드가 GPL인지 DLL에서 확인하지 못해 GPL로 가정하고 고지함. 확인 후 앱 라이선스를 정해야 함. `release/LICENSE.txt`는 지인 공유용 임시 약관(재배포 금지). 소스는 지금 **비공개** 저장소.
 - **접근성:** 버튼이 키보드 포커스를 받지 않음(Tab 이동·화면 낭독기 없음)
 - **UI 색:** 앱 팔레트(세레니티)와 아이콘 색(파랑~보라)이 다름 — 나중에 통일 예정
 - 우클릭 메뉴·툴팁은 Qt 기본 스타일 위에 색만 중립으로 맞춘 상태(설정 대화상자는 유리로 새로 만듦)
