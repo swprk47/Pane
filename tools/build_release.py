@@ -65,6 +65,7 @@ def run_pyinstaller(version_file: Path):
         "--add-data", f"{ROOT / 'assets' / 'pane.ico'};assets",
         "--add-binary", f"{LIBMPV};lib/mpv",
         "--hidden-import", "pywinstyles",
+        "--hidden-import", "_cffi_backend",       # PyNaCl (update signature check) imports it at run time
         "--exclude-module", "pytest", "--exclude-module", "tkinter", "--exclude-module", "unittest",
     ]
     print("[build]", " ".join(cmd[:6]), "...", flush=True)

@@ -208,3 +208,15 @@ def test_the_build_ships_the_license_text_with_the_app():
     import build_release
     source = (ROOT / "tools" / "build_release.py").read_text(encoding="utf-8")
     assert '"LICENSE.txt"' in source, "release/LICENSE.txt (notice + full GPL text) is copied into the app folder"
+
+
+def test_the_build_bundles_the_cffi_backend_that_pynacl_imports(monkeypatch):
+    """The installed 1.3.0 crashed at start: PyNaCl imports `_cffi_backend` at run time, which PyInstaller cannot see."""
+    from tools import build_release
+    seen = []
+    monkeypatch.setattr(build_release.subprocess, "run", lambda cmd, **kw: seen.append(cmd))
+    monkeypatch.setattr(build_release, "LIBMPV", Path(__file__))          # (only has to exist)
+    build_release.run_pyinstaller(Path("version.txt"))
+    cmd = seen[0]
+    hidden = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--hidden-import"]
+    assert "_cffi_backend" in hidden and "pywinstyles" in hidden
