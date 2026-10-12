@@ -117,11 +117,9 @@ def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False
         paints.append((t0, time.perf_counter() - t0))
 
     MpvGLWidget.paintGL = timed_paint
+    w = MainWindow()                         # (the window has no acrylic backdrop any more)
     if opaque:
-        # experiment: an ordinary opaque window (no translucency, no acrylic backdrop)
-        import ui.main_window as mw
-        mw.pywinstyles.apply_style = lambda *a, **k: None
-    w = MainWindow()
+        pass                                 # experiment below: an ordinary opaque window, no translucency
     if opaque:
         from PySide6.QtCore import Qt
         w.setAttribute(Qt.WA_TranslucentBackground, False)

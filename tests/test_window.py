@@ -27,13 +27,31 @@ def test_render_does_not_block_the_gui_thread():
     assert MpvGLWidget.BLOCK_FOR_TARGET_TIME is False
 
 
-def test_theme_survives_the_acrylic_call(window):
-    """Regression: pywinstyles.apply_style() replaces the window stylesheet with
-    'background-color: transparent;', which wiped the theme and left the title bar
-    and viewport alpha 0 (clicks fell through to the desktop)."""
+def test_the_theme_stylesheet_is_in_place(window):
+    """(History: pywinstyles.apply_style() used to replace the window stylesheet with 'background-color:
+    transparent;', which wiped the theme and left the title bar and viewport alpha 0, so clicks fell through to the
+    desktop. The window no longer calls it, see the next test.)"""
     qss = window.styleSheet()
     assert len(qss) > 1000, f"theme stylesheet was replaced: {qss!r}"
     assert "GlassTitleBar" in qss
+
+
+def test_the_window_has_no_acrylic_backdrop(qapp, monkeypatch):
+    """The whole window is covered by the opaque video / start screen, so acrylic was never visible, except as a
+    grey strip (measured: RGB 84,84,84) along the edge being dragged while the window is resized and Qt has not
+    painted the new area yet. Without it that strip is dark, like the picture."""
+    import pywinstyles
+    from ui.main_window import MainWindow
+    styles = []
+    monkeypatch.setattr(pywinstyles, "apply_style", lambda win, style: styles.append(style))
+    w = MainWindow()
+    w.show()
+    qapp.processEvents()
+    try:
+        assert "acrylic" not in styles and "mica" not in styles, styles
+    finally:
+        w.close()
+        qapp.processEvents()
 
 
 def test_title_bar_floats_over_a_video_that_fills_the_window(window, qapp):

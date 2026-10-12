@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent
 
-import pywinstyles
 from styles.glass_theme import GLASS_THEME_QSS
 from ui.title_bar import GlassTitleBar, native_start_window_drag
 from ui.speed_popup import SpeedPopup
@@ -320,13 +319,8 @@ class MainWindow(QMainWindow):
         hwnd = int(self.winId())
         apply_windows_11_rounded_corners(hwnd)
         native_window.enable_native_frame(hwnd)              # Win+arrow snapping, resizable, taskbar menu
-        try:
-            pywinstyles.apply_style(self, "acrylic")
-        except Exception as e:
-            print(f"[pywinstyles] acrylic not applied: {e}")
-        # pywinstyles replaces the window stylesheet with "background-color:
-        # transparent;", which wipes the whole theme. Re-apply it afterwards.
-        self.setStyleSheet(GLASS_THEME_QSS)
+        # (No acrylic backdrop: opaque video / start screen cover the whole window, so it was never seen, except as a
+        # grey strip along the edge while the window is dragged larger, before Qt has painted the new area.)
         self._reposition_floating_widgets()
 
     def nativeEvent(self, event_type, message):
