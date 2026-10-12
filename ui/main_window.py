@@ -1,4 +1,5 @@
 import os
+import sys
 import ctypes
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout,
@@ -14,13 +15,15 @@ from ui.track_popup import TrackPopup
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.next_up import NextUpCard, NEXT_UP_SECONDS
-from ui.start_screen import StartScreen
+from ui.start_screen import StartScreen, DOCK_BOTTOM, DOCK_H
 from core import playlist
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
 from core.media_info import format_clock
-from core import app_log, diagnostics, file_errors
+from core import app_log, diagnostics, file_errors, update_config
+from core.update_checker import UpdateChecker
+from ui.update_card import UpdateCard
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip
 from ui.icons import get_svg_icon
@@ -246,6 +249,13 @@ class MainWindow(QMainWindow):
         self.next_up.finished.connect(self._play_next_target)
         self.next_up.play_now.connect(self._play_next_target)
 
+        # the update notice: a card over the window (see _refresh_update_card) and the checker behind it
+        self.update_card = UpdateCard(self.central_widget)
+        self._update_offer = None                 # the Manifest of the newer version the checker found
+        self.update_checker = UpdateChecker(self.app_settings, APP_VERSION, getattr(sys, "frozen", False),
+                                            update_config.UPDATE_MANIFEST_URL,
+                                            bytes.fromhex(update_config.UPDATE_PUBLIC_KEY_HEX), parent=self)
+
         self.info_panel = MediaInfoPanel(self.central_widget)
         self.info_panel.set_provider(self.engine.get_media_info)
 
@@ -285,6 +295,19 @@ class MainWindow(QMainWindow):
         self.controller.timeline.hover_moved.connect(self._show_seek_tip)
         self.controller.timeline.hover_left.connect(self.seek_tip.hide_tip)
         self.controller.visibility_changed.connect(lambda shown: None if shown else self.seek_tip.hide_tip())
+        self.update_card.update_clicked.connect(self._start_update)
+        self.update_card.dismissed.connect(self._dismiss_update)
+        self.update_checker.update_available.connect(self._on_update_available)
+        self.update_checker.download_progress.connect(self._on_update_progress)
+        self.update_checker.installer_ready.connect(self._on_update_installer_ready)
+        self.update_checker.install_failed.connect(self._on_update_failed)
+        self.engine.playback_state_changed.connect(lambda _playing: self._refresh_update_card())
+        for signal in (self.next_up.finished, self.next_up.cancelled, self.next_up.play_now,
+                       self.controller.settings_panel_toggled):
+            signal.connect(self._refresh_update_card)
+        QTimer.singleShot(5000, self.update_checker.check)       # the automatic check, a moment after the window is up
+        self.controller.updates_on = self.app_settings.get_update_check_enabled()
+        self.controller.updates_changed.connect(self.app_settings.set_update_check_enabled)
         self.controller.hwdec_on = self.engine.hardware_decoding
         self.controller.lecture_audio_on = self.engine.lecture_audio
         self.controller.hwdec_changed.connect(self._on_hwdec_changed)
@@ -513,13 +536,53 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QApplication
         QApplication.clipboard().setText(self.diagnostics_text())
 
-    def show_about(self):
+    def _build_about_box(self):
         from PySide6.QtWidgets import QMessageBox
         box = QMessageBox(QMessageBox.Information, f"{APP_NAME} 정보", self.about_text(), QMessageBox.Ok, self)
         copy_btn = box.addButton("진단 정보 복사", QMessageBox.ActionRole)
         copy_btn.clicked.disconnect()           # keep the dialog open so "복사됨" can be shown
         copy_btn.clicked.connect(lambda: self._on_copy_diagnostics(copy_btn))
-        box.exec()
+        check_btn = box.addButton("업데이트 확인", QMessageBox.ActionRole)
+        check_btn.clicked.disconnect()
+        check_btn.clicked.connect(lambda: self._on_about_check(box, check_btn))
+        return box
+
+    def show_about(self):
+        self._build_about_box().exec()
+
+    def _on_about_check(self, box, button):
+        """"업데이트 확인": ask now (whatever the daily time and the switch say) and show the answer in the dialog;
+        when there is an update the button becomes "지금 업데이트"."""
+        if button.text() == "지금 업데이트":
+            self._start_update()
+            box.close()
+            return
+        checker = self.update_checker
+        button.setEnabled(False)
+        box.setInformativeText("확인하는 중…")
+        state = {"done": False}
+        handlers = {}
+
+        def done(text, can_update=False):
+            state["done"] = True
+            for signal, handler in handlers.items():
+                try:
+                    signal.disconnect(handler)
+                except (RuntimeError, TypeError):
+                    pass
+            box.setInformativeText(text)
+            button.setEnabled(True)
+            if can_update:
+                button.setText("지금 업데이트")
+
+        handlers[checker.up_to_date] = lambda: done(f"최신 버전이에요 (v{APP_VERSION})")
+        handlers[checker.update_available] = lambda m: done(f"새 버전이 있어요: {m.version}", True)
+        handlers[checker.check_failed] = lambda message: done(message)
+        for signal, handler in handlers.items():
+            signal.connect(handler)
+        # (a check that was already running, the automatic one, may end without a word: do not wait for ever)
+        QTimer.singleShot(20000, lambda: None if state["done"] else done("새 버전을 확인하지 못했어요"))
+        checker.check(manual=True)
 
     def _on_copy_diagnostics(self, button):
         self.copy_diagnostics()
@@ -591,6 +654,7 @@ class MainWindow(QMainWindow):
             self.osd.show_message(f"이어서 재생 ({self._format_seconds(resume_pos)})", "clock")
 
         self.engine.load_file(file_path, start_time=start_time)
+        self._refresh_update_card()
         self.engine.play()
         # mpv reports no change when it was already un-paused, so tell the controller it is playing: without
         # this the controls (and the title bar) never auto-hide until the first pause / resume.
@@ -661,6 +725,7 @@ class MainWindow(QMainWindow):
             self._next_target = nxt
             self.next_up.start(os.path.basename(nxt), NEXT_UP_SECONDS)
             self._reposition_floating_widgets()
+            self._refresh_update_card()
         else:
             self.osd.show_message("재생 완료", "check")
 
@@ -706,6 +771,72 @@ class MainWindow(QMainWindow):
         self._refresh_start_screen()
         self.viewport.start_screen.set_problem(problem.title, problem.hint)
         self.viewport.show_empty_notice(True)
+        self._refresh_update_card()
+
+    # --- the update card -------------------------------------------------------------------------
+
+    def _on_update_available(self, manifest):
+        self._update_offer = manifest
+        if self.update_card.mode not in ("progress", "installing") \
+                and manifest.version != self.app_settings.get_update_dismissed_version():
+            self.update_card.show_offer(manifest.version, manifest.notes)
+        self._refresh_update_card()
+
+    def _on_update_progress(self, done: int, total: int):
+        if self.update_card.mode == "progress":
+            self.update_card.show_progress(done, total)
+
+    def _on_update_installer_ready(self, _path: str):
+        self.update_card.show_installing()
+        self._refresh_update_card()
+
+    def _on_update_failed(self, message: str):
+        self.update_card.show_failure(message)
+        self._refresh_update_card()
+
+    def _start_update(self):
+        offer = self._update_offer
+        if offer is None:
+            return
+        self.update_card.show_offer(offer.version, offer.notes)       # (sets the version the progress text names)
+        self.update_card.show_progress(0, offer.size)
+        self.update_checker.download_and_install()
+        self._refresh_update_card()
+
+    def _dismiss_update(self):
+        """The X: this version is not announced again (a newer one is); 정보 > 업데이트 확인 still offers it."""
+        if self._update_offer is not None:
+            self.app_settings.set_update_dismissed_version(self._update_offer.version)
+        self.update_card.hide_card()
+
+    def _update_card_blocked(self) -> bool:
+        """Never over a playing video; the next-video card, the settings panel and a file-error notice come first."""
+        playing = self._current_file is not None and self.engine.is_playing()
+        return bool(playing or self.next_up.isVisible() or self.controller.settings_panel is not None
+                    or self.viewport.start_screen.has_problem())
+
+    def _refresh_update_card(self):
+        """Show or hide the card as the window's state allows (it keeps its content while hidden)."""
+        if not hasattr(self, "update_card") or not hasattr(self, "controller"):
+            return
+        card = self.update_card
+        if card.mode == "hidden" or self._update_card_blocked():
+            card.setVisible(False)
+            return
+        card.setVisible(True)
+        self._place_update_card()
+        card.raise_()
+
+    def _place_update_card(self):
+        """Bottom right, like the next-video card: above the controls of a loaded video, above the dock otherwise."""
+        vp = self.viewport.geometry()
+        card = self.update_card
+        x = max(vp.x() + 8, vp.right() - card.width() - 24)
+        if self._current_file is not None:
+            y = vp.bottom() - self.controller.CONTROLS_HEIGHT - card.height() - 6
+        else:
+            y = vp.bottom() - (DOCK_BOTTOM + DOCK_H) - card.height() - 12
+        card.move(x, max(vp.y() + 8, y))
 
     def _update_playlist_state(self):
         prev_, next_ = playlist.neighbors(self._current_file) if self._current_file else (None, None)
@@ -1062,6 +1193,8 @@ class MainWindow(QMainWindow):
                                vp.y() + (vp.height() - self.center_badge.height()) // 2)
 
         self.seek_indicator.place(vp)
+        if self.update_card.isVisible():
+            self._place_update_card()
         if hasattr(self, "osd"):
             self.osd.place(vp.x() + vp.width() // 2, vp.y())      # (the same spot with or without the title bar)
 
@@ -1085,6 +1218,8 @@ class MainWindow(QMainWindow):
         c.raise_()
         if self.seek_tip.isVisible():
             self.seek_tip.raise_()
+        if self.update_card.isVisible():
+            self.update_card.raise_()
         if self.speed_popup.isVisible():
             self.speed_popup.raise_()
         if self.track_popup.isVisible():
@@ -1113,6 +1248,8 @@ class MainWindow(QMainWindow):
     _shut_down = False
 
     def _on_close(self):
+        self.update_checker.request_stop()             # (a download in flight gives up at its next chunk)
+        self.update_checker.wait_for_done(1500)
         # Render context first, then the mpv core (the other order aborts).
         if hasattr(self, "viewport"):
             self.viewport.release()

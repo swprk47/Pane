@@ -116,6 +116,21 @@ class AppSettings:
     def set_last_update_check(self, when: float):
         self.settings.setValue("last_update_check", float(when))
 
+    def get_update_offer_version(self) -> str:
+        """The newer version the last check found and that is not installed yet ("" = none): shown again at the next
+        start, which also checks at once, until it is installed or dismissed."""
+        return str(self.settings.value("update_offer_version", ""))
+
+    def set_update_offer_version(self, version: str):
+        self.settings.setValue("update_offer_version", str(version))
+
+    def get_update_dismissed_version(self) -> str:
+        """The version whose notice the user closed with the X ("" = none); a newer version is announced again."""
+        return str(self.settings.value("update_dismissed_version", ""))
+
+    def set_update_dismissed_version(self, version: str):
+        self.settings.setValue("update_dismissed_version", str(version))
+
     def get_volume(self) -> float:
         return float(self.settings.value("last_volume", 100.0))
 

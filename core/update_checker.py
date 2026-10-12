@@ -63,6 +63,7 @@ class UpdateChecker(QObject):
         self._download_dir = Path(download_dir) if download_dir else Path(tempfile.gettempdir()) / "PaneUpdate"
         self._scope = scope
         self._busy = False
+        self._stopping = False
         self.latest = None                         # the Manifest of the newer version, once one was offered
         self._manual = False
         self._pool = QThreadPool(self)
@@ -78,6 +79,16 @@ class UpdateChecker(QObject):
     def busy(self) -> bool:
         return self._busy
 
+    @property
+    def stopping(self) -> bool:
+        return self._stopping
+
+    def request_stop(self):
+        """The app is closing: nothing new starts, queued jobs are dropped and a running download gives up at its next
+        chunk (its partial file is removed)."""
+        self._stopping = True
+        self._pool.clear()
+
     def wait_for_done(self, msecs: int = 5000) -> bool:
         return self._pool.waitForDone(msecs)
 
@@ -85,18 +96,28 @@ class UpdateChecker(QObject):
     def check(self, manual: bool = False):
         """An automatic check (manual=False) only runs when it is on, due and in the installed app; a manual one
         (the "check now" button) always runs, except from source where there is nothing to update."""
-        if self._busy:
+        if self._busy or self._stopping:
             return
         if not self._frozen:
             if manual:
                 self.check_failed.emit("업데이트는 설치해서 쓰는 Pane에서만 확인해요")
             return
         if not manual and (not self._settings.get_update_check_enabled()
-                           or not should_check(self._now(), self._settings.get_last_update_check())):
+                           or not (self._has_pending_offer()
+                                   or should_check(self._now(), self._settings.get_last_update_check()))):
             return
         self._busy = True
         self._manual = manual
         self._pool.start(_Job(self._fetch))
+
+    def _has_pending_offer(self) -> bool:
+        """An offer that was found earlier and is still newer than this build: the next start checks at once instead of
+        waiting for the daily time, so a notice that was ignored comes back."""
+        offered = self._settings.get_update_offer_version()
+        try:
+            return bool(offered) and is_newer(offered, self._current)
+        except ValueError:
+            return False
 
     def _fetch(self):                                   # (worker thread)
         try:
@@ -111,8 +132,10 @@ class UpdateChecker(QObject):
         self._settings.set_last_update_check(self._now())
         if is_newer(manifest.version, self._current):
             self.latest = manifest
+            self._settings.set_update_offer_version(manifest.version)
             self.update_available.emit(manifest)
         else:
+            self._settings.set_update_offer_version("")
             self.up_to_date.emit()
 
     def _on_check_error(self, message: str):
@@ -131,7 +154,7 @@ class UpdateChecker(QObject):
 
     def download_and_install(self):
         """Download the offered installer, verify it and start it (one at a time; nothing without an offer)."""
-        if self._busy or self.latest is None:
+        if self._busy or self._stopping or self.latest is None:
             return
         self._busy = True
         manifest = self.latest
@@ -140,7 +163,12 @@ class UpdateChecker(QObject):
     def _download(self, manifest):                      # (worker thread)
         path = None
         try:
-            path = download_installer(manifest, self._download_dir, progress=self._bridge.progress.emit)
+            def report(done, total):
+                if self._stopping:
+                    raise UpdateError("the app is closing")
+                self._bridge.progress.emit(done, total)
+
+            path = download_installer(manifest, self._download_dir, progress=report)
             launch_installer(path, self._install_scope())
         except Exception as e:
             self._bridge.install_error.emit(f"{e}" if isinstance(e, UpdateError) else f"{type(e).__name__}: {e} ({path})")

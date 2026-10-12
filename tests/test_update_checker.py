@@ -196,3 +196,49 @@ def test_download_and_install_without_an_offer_does_nothing(make, pump, server):
     checker.download_and_install()
     pump(None, timeout=0.3)
     assert events == [] and server.requests == []
+
+
+# --- a pending offer: shown again at the next start until it is installed or dismissed -------------
+
+def test_the_offered_and_the_dismissed_version_are_remembered():
+    s = AppSettings()
+    assert s.get_update_offer_version() == "" and s.get_update_dismissed_version() == ""
+    s.set_update_offer_version("1.3.0")
+    s.set_update_dismissed_version("1.3.0")
+    assert AppSettings().get_update_offer_version() == "1.3.0"
+    assert AppSettings().get_update_dismissed_version() == "1.3.0"
+
+
+def test_a_newer_version_is_remembered_as_the_pending_offer_and_a_current_one_clears_it(make, pump):
+    checker, settings, events = make()
+    checker.check()
+    assert pump(lambda: names(events), timeout=5)
+    assert settings.get_update_offer_version() == "1.3.0"
+    checker2, settings2, events2 = make(current="1.3.0")          # (updated since: the same settings, now up to date)
+    checker2.check(manual=True)
+    assert pump(lambda: names(events2), timeout=5)
+    assert settings2.get_update_offer_version() == ""
+
+
+def test_a_pending_offer_makes_the_next_start_check_even_when_not_due(make, pump, server):
+    checker, settings, events = make(last=NOW - 100)               # checked 100 s ago: normally not due
+    settings.set_update_offer_version("1.3.0")
+    checker.check()
+    assert pump(lambda: names(events), timeout=5)
+    assert names(events) == ["update_available"] and server.requests == ["/latest.json"]
+
+
+def test_an_offer_that_is_installed_by_now_does_not_force_a_check(make, pump, server):
+    checker, settings, events = make(current="1.3.0", last=NOW - 100)
+    settings.set_update_offer_version("1.3.0")
+    checker.check()
+    pump(None, timeout=0.4)
+    assert server.requests == [] and events == []
+
+
+def test_a_pending_offer_does_not_override_the_off_switch(make, pump, server):
+    checker, settings, events = make(enabled=False, last=NOW - 100)
+    settings.set_update_offer_version("1.3.0")
+    checker.check()
+    pump(None, timeout=0.4)
+    assert server.requests == []
