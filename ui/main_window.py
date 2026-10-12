@@ -20,7 +20,7 @@ from core import playlist
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
-from core import app_log
+from core import app_log, diagnostics
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge
 from ui.icons import get_svg_icon
@@ -470,9 +470,27 @@ class MainWindow(QMainWindow):
         ]
         return "\n".join(lines)
 
+    def diagnostics_text(self) -> str:
+        from PySide6.QtWidgets import QApplication
+        return diagnostics.build_report(
+            self.engine.mpv, screens=diagnostics.describe_screens(QApplication.screens()))
+
+    def copy_diagnostics(self):
+        from PySide6.QtWidgets import QApplication
+        QApplication.clipboard().setText(self.diagnostics_text())
+
     def show_about(self):
         from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, f"{APP_NAME} 정보", self.about_text())
+        box = QMessageBox(QMessageBox.Information, f"{APP_NAME} 정보", self.about_text(), QMessageBox.Ok, self)
+        copy_btn = box.addButton("진단 정보 복사", QMessageBox.ActionRole)
+        copy_btn.clicked.disconnect()           # keep the dialog open so "복사됨" can be shown
+        copy_btn.clicked.connect(lambda: self._on_copy_diagnostics(copy_btn))
+        box.exec()
+
+    def _on_copy_diagnostics(self, button):
+        self.copy_diagnostics()
+        button.setText("복사됨")
+        QTimer.singleShot(1500, lambda: button.setText("진단 정보 복사"))
 
     def contextMenuEvent(self, event):
         self.show_context_menu(event.globalPos())
