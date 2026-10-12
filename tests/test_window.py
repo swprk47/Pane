@@ -158,9 +158,28 @@ def test_pip_roundtrip_keeps_badge_style(window, qapp, pump):
     assert badge.grab().toImage() == before_img, "badge looks different after leaving PIP"
 
 
+def _foreground_is_this_process() -> bool:
+    import ctypes
+    import os
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    pid = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), ctypes.byref(pid))
+    return pid.value == os.getpid()
+
+
 def test_pip_does_not_recreate_the_native_window(window, qapp, pump):
     """Regression: toggling Qt's WindowStaysOnTopHint recreated the native window, which blanked
-    the video for ~60 ms on every PIP toggle (measured with tools/flicker_probe.py)."""
+    the video for ~60 ms on every PIP toggle (measured with tools/flicker_probe.py).
+
+    The window must stay the same native window through both toggles. That part is checked always.
+    Whether Windows then really marks it topmost is checked only while this process owns the foreground: a
+    process that is not in the foreground gets its SetWindowPos(HWND_TOPMOST) silently ignored (the call returns
+    success, WS_EX_TOPMOST stays off; measured, e.g. while the person running the tests works in another window),
+    which made this test fail now and then. In use the window always has the foreground when PIP is toggled."""
+    import pytest
     from PySide6.QtCore import QEvent, QObject
 
     class Watch(QObject):
@@ -179,12 +198,38 @@ def test_pip_does_not_recreate_the_native_window(window, qapp, pump):
     assert not window.is_always_on_top()
 
     window.toggle_pip_mode()
-    assert pump(lambda: window.is_always_on_top(), timeout=2.0)
+    on_now = pump(lambda: window.is_always_on_top(), timeout=2.0)
     window.toggle_pip_mode()
-    assert pump(lambda: not window.is_always_on_top(), timeout=2.0)
+    off_now = pump(lambda: not window.is_always_on_top(), timeout=2.0)
 
     assert watch.recreated == 0
     assert int(window.winId()) == hwnd
+    if not (on_now and off_now):
+        if not _foreground_is_this_process():
+            pytest.skip("Windows ignored the always-on-top request: this process does not own the foreground "
+                        "(see the docstring); the window was not recreated and the calls are checked in the next test")
+        assert on_now, "the window never became always-on-top although this process has the foreground"
+        assert off_now, "the window never left always-on-top although this process has the foreground"
+
+
+def test_pip_asks_windows_for_topmost_and_back(window, monkeypatch):
+    """The Win32 calls themselves, whatever Windows then does with them: topmost for this window when PIP turns on,
+    not-topmost when it turns off, without moving, sizing or activating it."""
+    import ctypes
+    HWND_TOPMOST, HWND_NOTOPMOST = -1, -2
+    SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
+    calls = []
+
+    def fake_set_window_pos(hwnd, insert_after, x, y, cx, cy, flags):
+        calls.append((getattr(hwnd, "value", hwnd), getattr(insert_after, "value", insert_after) & 0xFFFFFFFFFFFFFFFF, flags))
+        return 1
+
+    monkeypatch.setattr(ctypes.windll.user32, "SetWindowPos", fake_set_window_pos, raising=False)
+    hwnd = int(window.winId())
+    window.toggle_pip_mode()
+    window.toggle_pip_mode()
+    flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    assert calls == [(hwnd, HWND_TOPMOST & 0xFFFFFFFFFFFFFFFF, flags), (hwnd, HWND_NOTOPMOST & 0xFFFFFFFFFFFFFFFF, flags)], calls
 
 
 def test_render_context_survives_window_recreation(window, sample_video, pump):

@@ -858,9 +858,13 @@ class MainWindow(QMainWindow):
         user32 = ctypes.windll.user32
         user32.SetWindowPos.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
                                         ctypes.c_int, ctypes.c_int, ctypes.c_uint]
-        user32.SetWindowPos(ctypes.c_void_p(int(self.winId())),
-                            ctypes.c_void_p(HWND_TOPMOST if on else HWND_NOTOPMOST),
-                            0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+        user32.SetWindowPos.restype = ctypes.c_int
+        done = user32.SetWindowPos(ctypes.c_void_p(int(self.winId())),
+                                   ctypes.c_void_p(HWND_TOPMOST if on else HWND_NOTOPMOST),
+                                   0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+        if not done:
+            print(f"[PIP] SetWindowPos(topmost={on}) failed, Windows error {ctypes.windll.kernel32.GetLastError()}")
+        return bool(done)
 
     def is_always_on_top(self) -> bool:
         GWL_EXSTYLE, WS_EX_TOPMOST = -20, 0x00000008
