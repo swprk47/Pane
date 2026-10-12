@@ -13,7 +13,6 @@ Signals (emitted on the GUI thread):
     installer_ready(str)         the installer was verified and started; the app should close
     install_failed(str)          nothing was started; the message says where a downloaded file is, if any
 """
-import os
 import sys
 import tempfile
 import time
@@ -21,7 +20,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
-from core.updater import (ManifestError, UpdateError, download_installer, fetch_manifest, install_scope, is_newer,
+from core.updater import (ManifestError, UpdateError, download_installer, fetch_manifest, installed_scope, is_newer,
                           launch_installer, should_check)
 
 
@@ -98,7 +97,7 @@ class UpdateChecker(QObject):
         (the "check now" button) always runs, except from source where there is nothing to update."""
         if self._busy or self._stopping:
             return
-        if not self._frozen:
+        if not self._frozen or self._install_scope() is None:      # (from source, or a copy the setup did not install)
             if manual:
                 self.check_failed.emit("업데이트는 설치해서 쓰는 Pane에서만 확인해요")
             return
@@ -146,11 +145,9 @@ class UpdateChecker(QObject):
             print(f"[updates] check failed: {message}")
 
     # --- installing ------------------------------------------------------------------------------
-    def _install_scope(self) -> str:
-        if self._scope:
-            return self._scope
-        local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return install_scope(Path(sys.executable).parent, Path(local))
+    def _install_scope(self):
+        """"user", "machine", or None for an exe the setup did not install (see core.updater.installed_scope)."""
+        return self._scope or installed_scope(Path(sys.executable).parent)
 
     def download_and_install(self):
         """Download the offered installer, verify it and start it (one at a time; nothing without an offer)."""

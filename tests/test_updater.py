@@ -187,15 +187,50 @@ def test_an_earlier_good_download_survives_a_failed_retry(server, tmp_path):
 # --- starting the installer ----------------------------------------------------------------------
 
 from core import updater as updater_module
-from core.updater import install_scope, installer_command, launch_installer
+from core.updater import installed_scope, installer_command, launch_installer
 
 
-def test_install_scope_by_folder():
-    local = Path(r"C:\Users\someone\AppData\Local")
-    assert install_scope(local / "Programs" / "Pane", local) == "user"
-    assert install_scope(Path(r"C:\Users\SOMEONE\appdata\local\Programs\Pane"), local) == "user", "Windows paths ignore case"
-    assert install_scope(Path(r"C:\Program Files\Pane"), local) == "machine"
-    assert install_scope(Path(r"D:\Apps\Pane"), local) == "machine"
+@pytest.fixture
+def uninstall_keys():
+    """Two throw-away registry keys that stand in for the setup's per-user and all-users uninstall entries."""
+    import winreg
+    base = r"Software\PaneInstalledScopeTmp"
+    yield winreg, base
+    for name in ("user", "machine"):
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, f"{base}\\{name}")
+        except OSError:
+            pass
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, base)
+    except OSError:
+        pass
+
+
+def _register(uninstall_keys, name, location):
+    winreg, base = uninstall_keys
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, f"{base}\\{name}") as k:
+        winreg.SetValueEx(k, "InstallLocation", 0, winreg.REG_SZ, location)
+
+
+def _hives(uninstall_keys):
+    winreg, base = uninstall_keys
+    return (("user", winreg.HKEY_CURRENT_USER, f"{base}\\user"), ("machine", winreg.HKEY_CURRENT_USER, f"{base}\\machine"))
+
+
+def test_the_scope_is_where_the_setup_registered_this_folder(uninstall_keys):
+    _register(uninstall_keys, "user", r"C:\Apps\Pane" + chr(92))                 # (Inno writes a trailing backslash)
+    _register(uninstall_keys, "machine", r"C:\Program Files\Pane" + chr(92))
+    hives = _hives(uninstall_keys)
+    assert installed_scope(Path("C:/Apps/Pane"), hives=hives) == "user"
+    assert installed_scope(Path("c:/program files/pane"), hives=hives) == "machine", "Windows paths ignore case"
+
+
+def test_a_folder_the_setup_did_not_register_has_no_scope(uninstall_keys):
+    _register(uninstall_keys, "user", r"C:\Apps\Pane" + chr(92))
+    hives = _hives(uninstall_keys)
+    assert installed_scope(Path("C:/Users/x/Downloads/Pane"), hives=hives) is None
+    assert installed_scope(Path("C:/Apps/Pane"), hives=(("user", uninstall_keys[0].HKEY_CURRENT_USER, r"Software\PaneNoSuchKeyTmp"),)) is None
 
 
 @pytest.mark.parametrize("scope,flag", [("user", "/CURRENTUSER"), ("machine", "/ALLUSERS")])

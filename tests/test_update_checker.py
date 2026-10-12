@@ -44,7 +44,7 @@ def make(server, qapp, tmp_path):
     made = []
 
     def build(current="1.2.0", frozen=True, enabled=True, last=0.0, version="1.3.0", body=INSTALLER, serve_manifest=True,
-              serve_installer=True, installer_body=None):
+              serve_installer=True, installer_body=None, scope="user"):
         key = nacl.signing.SigningKey.generate()
         settings = AppSettings()
         settings.set_update_check_enabled(enabled)
@@ -56,7 +56,7 @@ def make(server, qapp, tmp_path):
         if serve_installer:
             server.routes[f"/Pane-{version}-setup.exe"] = (body if installer_body is None else installer_body, None)
         checker = UpdateChecker(settings, current, frozen, server.base + "/latest.json", bytes(key.verify_key),
-                                now=lambda: NOW, download_dir=tmp_path / "dl", scope="user")
+                                now=lambda: NOW, download_dir=tmp_path / "dl", scope=scope)
         events = []
         checker.update_available.connect(lambda m: events.append(("update_available", m)))
         checker.up_to_date.connect(lambda: events.append(("up_to_date", None)))
@@ -242,3 +242,32 @@ def test_a_pending_offer_does_not_override_the_off_switch(make, pump, server):
     checker.check()
     pump(None, timeout=0.4)
     assert server.requests == []
+
+
+# --- an exe that the setup did not install (a portable copy, a developer's dist folder) -------------
+
+def test_an_exe_the_setup_did_not_install_gets_no_automatic_check(make, pump, server, monkeypatch):
+    monkeypatch.setattr(uc, "installed_scope", lambda exe_dir: None)
+    checker, _, events = make(scope=None)
+    checker.check()
+    pump(None, timeout=0.4)
+    assert server.requests == [] and events == []
+
+
+def test_a_manual_check_in_an_exe_the_setup_did_not_install_says_so_and_asks_nothing(make, pump, server, monkeypatch):
+    monkeypatch.setattr(uc, "installed_scope", lambda exe_dir: None)
+    checker, _, events = make(scope=None)
+    checker.check(manual=True)
+    assert pump(lambda: events, timeout=2)
+    assert names(events) == ["check_failed"] and server.requests == []
+
+
+def test_the_scope_of_an_installed_exe_comes_from_where_the_setup_registered_it(make, pump, monkeypatch):
+    started = []
+    monkeypatch.setattr(uc, "installed_scope", lambda exe_dir: "machine")
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope: started.append(scope))
+    checker, _, events = make(scope=None)
+    checker.check(manual=True)
+    assert pump(lambda: "update_available" in names(events), timeout=5)
+    checker.download_and_install()
+    assert pump(lambda: started, timeout=5) and started == ["machine"]

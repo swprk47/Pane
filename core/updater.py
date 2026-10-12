@@ -187,10 +187,27 @@ def download_installer(manifest: Manifest, dest_dir, progress: Optional[Callable
         part.unlink(missing_ok=True)
 
 
-def install_scope(exe_dir, localappdata) -> str:
-    """"user" when the app is installed under the user's own profile (a per-user install: no administrator prompt),
-    else "machine" (an all-users install)."""
-    return "user" if Path(exe_dir).resolve().is_relative_to(Path(localappdata).resolve()) else "machine"
+UNINSTALL_SUBKEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{8C6E2F5A-3B1D-4E7A-9D52-6A1F0C4B7E31}_is1"
+
+
+def installed_scope(exe_dir, hives=None) -> Optional[str]:
+    """How the setup installed the app whose folder is `exe_dir`: "user" (a per-user install: no administrator
+    prompt), "machine" (an all-users install), or None when the setup did not put this copy there (a portable copy
+    unzipped somewhere, a developer's dist folder): such a copy is never updated, an update would install a second one.
+    Read from the uninstall entry that installer/pane.iss's AppId makes; `hives` is (scope, hive, subkey) triples."""
+    import winreg
+    if hives is None:
+        hives = (("user", winreg.HKEY_CURRENT_USER, UNINSTALL_SUBKEY), ("machine", winreg.HKEY_LOCAL_MACHINE, UNINSTALL_SUBKEY))
+    here = os.path.normcase(os.path.normpath(str(exe_dir)))
+    for scope, hive, subkey in hives:
+        try:
+            with winreg.OpenKey(hive, subkey) as key:
+                location = winreg.QueryValueEx(key, "InstallLocation")[0]
+        except OSError:
+            continue
+        if os.path.normcase(os.path.normpath(str(location))) == here:
+            return scope
+    return None
 
 
 def installer_command(path, scope: str) -> list:
