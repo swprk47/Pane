@@ -73,6 +73,7 @@ class UpdateCard(QWidget):
 
     def show_failure(self, message: str):
         self._set("failed", "업데이트하지 못했어요", message, buttons=True, update_label="다시 시도")
+        self.setToolTip(message)                    # (the line on the card is cut to its width: the tooltip has all of it)
 
     def hide_card(self):
         self.mode = "hidden"
@@ -80,6 +81,7 @@ class UpdateCard(QWidget):
 
     def _set(self, mode: str, title: str, detail: str, buttons: bool, update_label: str = None):
         self.mode, self._title, self._detail = mode, title, detail
+        self.setToolTip("")
         if update_label:
             self.btn_update.setText(update_label)
             self._layout_buttons()

@@ -251,6 +251,10 @@ class MainWindow(QMainWindow):
 
         # the update notice: a card over the window (see _refresh_update_card) and the checker behind it
         self.update_card = UpdateCard(self.central_widget)
+        self._install_wait = QTimer(self)          # the setup was started: Pane should be closed by it soon
+        self._install_wait.setSingleShot(True)
+        self._install_wait.timeout.connect(self._installer_stalled)
+        self._installer_path = ""
         self._update_offer = None                 # the Manifest of the newer version the checker found
         self.update_checker = UpdateChecker(self.app_settings, APP_VERSION, getattr(sys, "frozen", False),
                                             update_config.UPDATE_MANIFEST_URL,
@@ -786,11 +790,23 @@ class MainWindow(QMainWindow):
         if self.update_card.mode == "progress":
             self.update_card.show_progress(done, total)
 
-    def _on_update_installer_ready(self, _path: str):
+    INSTALL_WAIT_MS = 60000
+
+    def _on_update_installer_ready(self, path: str):
+        self._installer_path = path
         self.update_card.show_installing()
+        self._install_wait.start(self.INSTALL_WAIT_MS)
         self._refresh_update_card()
 
+    def _installer_stalled(self):
+        """The setup was started but Pane is still running a minute later (administrator prompt cancelled, the file
+        blocked after it started, the setup failed): say so and keep the file's place, with [다시 시도]."""
+        if self.update_card.mode == "installing":
+            self.update_card.show_failure(f"설치가 시작되지 않았어요. 설치 파일: {self._installer_path}")
+            self._refresh_update_card()
+
     def _on_update_failed(self, message: str):
+        self._install_wait.stop()
         self.update_card.show_failure(message)
         self._refresh_update_card()
 
@@ -798,9 +814,10 @@ class MainWindow(QMainWindow):
         offer = self._update_offer
         if offer is None:
             return
+        self._install_wait.stop()
         self.update_card.show_offer(offer.version, offer.notes)       # (sets the version the progress text names)
-        self.update_card.show_progress(0, offer.size)
-        self.update_checker.download_and_install()
+        if self.update_checker.download_and_install():                # (False: a check is still running, stay as the offer)
+            self.update_card.show_progress(0, offer.size)
         self._refresh_update_card()
 
     def _dismiss_update(self):
