@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 - 2026-10-13
+- New in-app update: a few seconds after start Pane checks (at most once a day, only the installed app) whether a newer version exists. A glass card appears at the bottom right while nothing plays; [업데이트] downloads the installer, checks its size and SHA-256, runs it silently, and Pane restarts as the new version. The X on the card stops announcing that version. The check can be switched off in Settings > 일반 > 새 버전 알림, and About > 업데이트 확인 asks at once. The update manifest is signed (Ed25519): a tampered or unsigned manifest or installer is rejected. A copy that was not installed by the setup (unzipped, built from source) is never updated
+- Pane is now free software under the GNU GPL v3 or later; the source is at https://github.com/swprk47/Pane (the full license text and the sources of the bundled mpv / FFmpeg are listed in the installer)
+- Settings panel got tabs (성능, 오디오, 일반); the diagnostics report can be copied from About; the libmpv build is checked for its license
+- Time-seek indicator shows the jump in seconds with single and double arrows, relative seeks are frame exact, and the seek bar shows the time under the pointer
+- A clear notice with a hint when a video cannot be opened (missing file, unsupported or damaged file, no access)
+- Fix: with the audio filter switched off again the sound could stay silent; videos without an audio track no longer break the filter
+- Fix: the grey strip next to the window while resizing is smaller (the acrylic effect was removed)
+- Friends on 1.2.0 or older have no updater: install this version by hand once; later versions update from inside Pane
+
 ## 1.2.0 - 2026-10-10
 - Audio and subtitle tracks: the subtitle button opens a panel with an Audio | Subtitles tab, each listing the tracks as "language · codec / channels" (embedded or external), a subtitle on/off switch, the sync value and "load an external subtitle file". Subtitle sync on `Z` / `X` (0.1 s), audio delay on `Shift+Z` / `Shift+X`, `Ctrl+Z` resets both; the sync starts at 0 for every video
 - Windows' own window behaviour: `Win+arrow keys` snap and maximize the window, the window can be dragged to the screen edges, the edges can be dragged to resize it (with the usual resize cursors and minimum size), and the taskbar menu / `Alt+Space` work. The maximize button follows maximizing done by Windows
