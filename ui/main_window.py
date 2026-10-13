@@ -816,8 +816,8 @@ class MainWindow(QMainWindow):
             return
         self._install_wait.stop()
         self.update_card.show_offer(offer.version, offer.notes)       # (sets the version the progress text names)
-        self.update_card.show_progress(0, offer.size)
-        self.update_checker.download_and_install()
+        if self.update_checker.download_and_install():                # (False: a check is still running, stay as the offer)
+            self.update_card.show_progress(0, offer.size)
         self._refresh_update_card()
 
     def _dismiss_update(self):

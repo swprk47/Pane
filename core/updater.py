@@ -105,7 +105,7 @@ def parse_manifest(raw: bytes, public_key: bytes) -> Manifest:
         raise ManifestError(f"bad version: {version!r}")
     if not _allowed_url(url):
         raise ManifestError(f"bad url: {url!r}")
-    if not isinstance(sha256, str) or not _SHA256.match(sha256):
+    if not isinstance(sha256, str) or not _SHA256.fullmatch(sha256):
         raise ManifestError("bad sha256")
     if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
         raise ManifestError("bad size")
@@ -188,6 +188,20 @@ def download_installer(manifest: Manifest, dest_dir, progress: Optional[Callable
 
 
 UNINSTALL_SUBKEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{8C6E2F5A-3B1D-4E7A-9D52-6A1F0C4B7E31}_is1"
+
+
+def remove_old_installers(dest_dir) -> None:
+    """Delete the installers (and half-downloaded `.part` files) an earlier update left in the download folder.
+    One that is still running is locked and stays: it goes at the next start."""
+    dest = Path(dest_dir)
+    if not dest.is_dir():
+        return
+    for pattern in ("Pane-*-setup.exe", "Pane-*-setup.exe.part"):
+        for old in dest.glob(pattern):
+            try:
+                old.unlink()
+            except OSError:
+                pass
 
 
 def installed_scope(exe_dir, hives=None) -> Optional[str]:

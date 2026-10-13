@@ -72,7 +72,7 @@ def test_verify_signature_tells_good_from_bad():
 @pytest.mark.parametrize("change", [
     {"sha256": None}, {"url": None}, {"size": None}, {"version": None},          # a field missing
     {"size": "123456"}, {"size": 0}, {"size": -5}, {"size": True},               # a wrong size
-    {"sha256": "abc"}, {"sha256": "z" * 64},                                     # not 64 hex characters
+    {"sha256": "abc"}, {"sha256": "z" * 64}, {"sha256": "a" * 64 + chr(10)},                                  # not 64 hex characters
     {"url": "http://evil.example/Pane.exe"}, {"url": "ftp://example.com/p.exe"}, {"url": "file:///c:/x.exe"},
     {"version": "latest"},
 ])
@@ -275,3 +275,13 @@ def test_launch_installer_failure_is_an_update_error_naming_the_file(monkeypatch
     with pytest.raises(UpdateError) as info:
         launch_installer(exe, "user")
     assert str(exe) in str(info.value), "the message tells where the file is so it can be run by hand"
+
+
+def test_old_installers_and_partial_files_are_removed_from_the_download_folder(tmp_path):
+    from core.updater import remove_old_installers
+    (tmp_path / "Pane-1.3.0-setup.exe").write_bytes(b"x")
+    (tmp_path / "Pane-1.3.1-setup.exe.part").write_bytes(b"x")
+    (tmp_path / "notes.txt").write_bytes(b"keep")
+    remove_old_installers(tmp_path)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt"]
+    remove_old_installers(tmp_path / "does-not-exist")          # (no folder yet: nothing to do, no error)

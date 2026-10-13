@@ -99,7 +99,7 @@ def test_the_x_dismisses_this_version_for_good_and_a_newer_one_comes_back(window
 
 def test_the_update_button_starts_one_download_and_shows_the_progress(window, qapp, monkeypatch):
     started = []
-    monkeypatch.setattr(window.update_checker, "download_and_install", lambda: started.append(1))
+    monkeypatch.setattr(window.update_checker, "download_and_install", lambda: started.append(1) or True)
     offer(window)
     window.update_card.btn_update.click()
     qapp.processEvents()
@@ -110,7 +110,7 @@ def test_the_update_button_starts_one_download_and_shows_the_progress(window, qa
 
 def test_the_installer_starting_and_a_failure_change_the_card(window, qapp, monkeypatch):
     started = []
-    monkeypatch.setattr(window.update_checker, "download_and_install", lambda: started.append(1))
+    monkeypatch.setattr(window.update_checker, "download_and_install", lambda: started.append(1) or True)
     offer(window)
     window.update_card.btn_update.click()
     window.update_checker.installer_ready.emit("C:/x/Pane-1.3.0-setup.exe")
@@ -174,7 +174,7 @@ def test_check_now_from_a_source_run_says_updates_need_the_installed_app(window)
 
 def test_check_now_finds_an_update_and_the_button_then_starts_it(window, monkeypatch):
     started = []
-    monkeypatch.setattr(window.update_checker, "download_and_install", lambda: started.append(1))
+    monkeypatch.setattr(window.update_checker, "download_and_install", lambda: started.append(1) or True)
     box = window._build_about_box()
     monkeypatch.setattr(window.update_checker, "check", lambda manual=False: offer(window, "1.3.0"))
     about_button(box).click()
@@ -198,3 +198,11 @@ def test_a_failure_card_has_the_whole_message_as_its_tooltip(window, qapp):
     offer(window)
     window.update_checker.install_failed.emit("업데이트를 설치하지 못했어요: " + "긴 이유 " * 30)
     assert "긴 이유" in window.update_card.toolTip() and len(window.update_card.toolTip()) > 100
+
+
+def test_the_update_button_does_not_freeze_the_card_when_the_download_could_not_start(window, qapp, monkeypatch):
+    monkeypatch.setattr(window.update_checker, "download_and_install", lambda: False)
+    offer(window)
+    window.update_card.btn_update.click()
+    qapp.processEvents()
+    assert window.update_card.mode == "offer"

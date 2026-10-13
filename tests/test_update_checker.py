@@ -271,3 +271,23 @@ def test_the_scope_of_an_installed_exe_comes_from_where_the_setup_registered_it(
     assert pump(lambda: "update_available" in names(events), timeout=5)
     checker.download_and_install()
     assert pump(lambda: started, timeout=5) and started == ["machine"]
+
+
+def test_a_download_asked_while_a_check_runs_says_it_did_not_start(make, pump):
+    checker, _, events = make()
+    checker.check()
+    assert checker.busy
+    assert checker.download_and_install() is False
+    assert pump(lambda: "update_available" in names(events), timeout=5)
+    assert checker.download_and_install() is True
+
+
+def test_a_check_clears_the_old_installers_out_of_the_download_folder(make, pump, tmp_path):
+    folder = tmp_path / "dl"
+    folder.mkdir()
+    (folder / "Pane-1.2.9-setup.exe").write_bytes(b"old")
+    (folder / "Pane-1.3.0-setup.exe.part").write_bytes(b"old")
+    checker, _, events = make()
+    checker.check()
+    assert pump(lambda: "update_available" in names(events), timeout=5)
+    assert list(folder.iterdir()) == []

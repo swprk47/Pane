@@ -21,7 +21,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 
 from core.updater import (ManifestError, UpdateError, download_installer, fetch_manifest, installed_scope, is_newer,
-                          launch_installer, should_check)
+                          launch_installer, remove_old_installers, should_check)
 
 
 class _Bridge(QObject):
@@ -119,6 +119,7 @@ class UpdateChecker(QObject):
             return False
 
     def _fetch(self):                                   # (worker thread)
+        remove_old_installers(self._download_dir)       # (what the last update left: about 70 MB each)
         try:
             self._bridge.check_done.emit(fetch_manifest(self._url, self._key))
         except (UpdateError, ManifestError) as e:
@@ -149,13 +150,15 @@ class UpdateChecker(QObject):
         """"user", "machine", or None for an exe the setup did not install (see core.updater.installed_scope)."""
         return self._scope or installed_scope(Path(sys.executable).parent)
 
-    def download_and_install(self):
-        """Download the offered installer, verify it and start it (one at a time; nothing without an offer)."""
+    def download_and_install(self) -> bool:
+        """Download the offered installer, verify it and start it (one at a time; nothing without an offer).
+        False when nothing was started (a check or another download is running, the app is closing, no offer)."""
         if self._busy or self._stopping or self.latest is None:
-            return
+            return False
         self._busy = True
         manifest = self.latest
         self._pool.start(_Job(lambda: self._download(manifest)))
+        return True
 
     def _download(self, manifest):                      # (worker thread)
         path = None
@@ -166,6 +169,8 @@ class UpdateChecker(QObject):
                 self._bridge.progress.emit(done, total)
 
             path = download_installer(manifest, self._download_dir, progress=report)
+            if self._stopping:                           # (closed during the last step: do not start what would relaunch us)
+                raise UpdateError("the app is closing")
             launch_installer(path, self._install_scope())
         except Exception as e:
             self._bridge.install_error.emit(f"{e}" if isinstance(e, UpdateError) else f"{type(e).__name__}: {e} ({path})")

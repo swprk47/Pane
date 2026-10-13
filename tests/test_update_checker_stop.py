@@ -38,3 +38,21 @@ def test_a_download_that_sees_the_stop_flag_is_abandoned(make, monkeypatch):
     checker._bridge.install_error.connect(errors.append)
     checker._download(manifest)
     assert errors and started == []
+
+
+def test_a_close_during_the_last_step_starts_no_installer(make, monkeypatch):
+    """The window closed after the last chunk was reported: the verified file must not be launched (it would relaunch Pane)."""
+    started = []
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope: started.append(path))
+    checker, _, events = make()
+
+    def fake_download(manifest, dest, progress=None, timeout=30.0):
+        checker.request_stop()                           # (closed while the file was being verified and renamed)
+        return Path(dest) / "done.exe"
+
+    monkeypatch.setattr(uc, "download_installer", fake_download)
+    manifest = Manifest(version="1.3.0", url="http://127.0.0.1/x", sha256="a" * 64, size=2, notes="")
+    errors = []
+    checker._bridge.install_error.connect(errors.append)
+    checker._download(manifest)
+    assert errors and started == []
