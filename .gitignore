@@ -10,3 +10,6 @@ build/
 # update signing keys never belong in the repository
 *.key
 update_private*
+
+# knowledge graph made by /graphify (rebuilt on demand)
+graphify-out/
