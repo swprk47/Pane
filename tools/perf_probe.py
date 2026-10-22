@@ -100,7 +100,15 @@ def percentile(values, p):
     return values[min(len(values) - 1, int(len(values) * p))]
 
 
-def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False):
+def sweep_positions(duration: float, span: float, margin: float, t: float) -> tuple:
+    """Where the pointer is at sweep time `t`: along the seek bar and back, one bar width per second.
+    Returns (seconds of the video under it, x in the bar)."""
+    phase = t % 2.0
+    ratio = phase if phase <= 1.0 else 2.0 - phase
+    return ratio * duration, margin + ratio * span
+
+
+def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False, sweep: str = None):
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QTimer
     from ui.main_window import MainWindow
@@ -149,6 +157,23 @@ def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False
                 app.processEvents()
                 time.sleep(0.002)
 
+        thumbs = {"asked": {}, "latency": []}              # (--sweep) when a picture was asked for, how long it took
+        if sweep:
+            w._on_thumbnails_changed(sweep != "thumbs-off")
+            w._on_thumbnails_on_stop_changed(sweep == "stop")
+            real_request = w.thumbnail_provider.request
+
+            def timed_request(path, seconds_):
+                thumbs["asked"][int(seconds_ // 2)] = time.perf_counter()          # (the latest ask: an older one may have been dropped)
+                real_request(path, seconds_)
+
+            def on_ready(_path, bucket, _image):
+                t0 = thumbs["asked"].pop(bucket, None)
+                if t0 is not None:
+                    thumbs["latency"].append((time.perf_counter() - t0) * 1000)
+
+            w.thumbnail_provider.request = timed_request
+            w.thumbnail_provider.thumbnail_ready.connect(on_ready)
         w.load_media_file(clip)
         w.engine.mpv.loop_file = "inf"
         pump(1.0)
@@ -170,8 +195,17 @@ def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False
         last[0] = time.perf_counter()               # restart the reference: the first tick must not include setup time
         timer.start()
         end = time.time() + seconds
+        sweep_t0 = time.perf_counter()
         while time.time() < end:
-            pump(1.0)
+            if sweep:
+                # the pointer walks the bar for a second, 20 moves a second (the signal the seek bar sends on a real hover)
+                tl = w.controller.timeline
+                for _ in range(20):
+                    sec, x = sweep_positions(duration, tl._span(), tl._margin(), time.perf_counter() - sweep_t0)
+                    tl.hover_moved.emit(sec, x)
+                    pump(0.05)
+            else:
+                pump(1.0)
             mem_samples.append(working_set_mb())
             fps_samples.append(info("actual_fps") or 0)
         timer.stop()
@@ -202,7 +236,10 @@ def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False
             "render_mean": statistics.mean(d * 1000 for _t, d in sp) if sp else 0,
             "render_max": max((d * 1000 for _t, d in sp), default=0),
             "lag_p95": percentile(lag, 0.95), "lag_max": max(lag, default=0),
-            "seconds": wall,
+            "seconds": wall, "sweep": sweep or "",
+            "pictures": len(thumbs["latency"]),
+            "pic_ms_median": statistics.median(thumbs["latency"]) if thumbs["latency"] else 0,
+            "pic_ms_max": max(thumbs["latency"], default=0),
         }
     finally:
         MpvGLWidget.paintGL = orig_paint
@@ -247,6 +284,9 @@ def main():
     ap.add_argument("--hwdec", default="auto-copy", help="mpv hwdec option for this run (auto-copy, no, d3d11va, ...)")
     ap.add_argument("--label", default="")
     ap.add_argument("--opaque", action="store_true", help="experiment: opaque window without acrylic")
+    ap.add_argument("--sweep", choices=("thumbs-off", "follow", "stop"),
+                    help="walk the pointer along the seek bar while measuring (the mouse is not used), with seek-bar "
+                         "thumbnails off, following the pointer, or only when it rests")
     args = ap.parse_args()
 
     # keep the probe away from the user's saved settings (resume positions etc.)
@@ -260,7 +300,12 @@ def main():
     for clip in args.clips:
         for mode in args.modes.split(","):
             print(f"[perf] {os.path.basename(clip)} / {mode} / hwdec={args.hwdec} ...", flush=True)
-            results.append(measure(clip, mode, args.seconds, args.hwdec, args.opaque))
+            results.append(measure(clip, mode, args.seconds, args.hwdec, args.opaque, args.sweep))
+            if args.sweep:
+                r = results[-1]
+                print(f"[sweep={args.sweep}] dropped vo+decoder {r['drop_vo']}+{r['drop_dec']}, memory {r['mem_mb']:.0f} MB, "
+                      f"pictures {r['pictures']}, latency median {r['pic_ms_median']:.0f} ms / worst {r['pic_ms_max']:.0f} ms",
+                      flush=True)
     report(results, args.label or f"hwdec={args.hwdec}" + (" opaque" if args.opaque else ""))
 
 

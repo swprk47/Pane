@@ -9,6 +9,7 @@ from PySide6.QtGui import (
     QPainter, QLinearGradient, QColor, QFont, QFontMetrics, QPainterPath, QPen
 )
 
+from core.thumbnails import thumbnail_box
 from ui.glass_button import Tweening, glass_disc_pixmap, icon_swap_params
 from ui.icons import get_svg_icon
 
@@ -437,3 +438,53 @@ class SeekTimeTip(_OverlayBase):
         p.setFont(self._font)
         p.setPen(QColor(255, 255, 255))
         p.drawText(self.rect(), Qt.AlignCenter, self.text)
+
+
+class ThumbnailTip(_OverlayBase):
+    """The picture of the moment under the pointer, just above the time pill (`SeekTimeTip`): 10 px rounded corners and
+    the pill's light border. Its box follows the picture's aspect ratio (see core.thumbnails.thumbnail_box); a picture
+    that does not fill it is fitted inside on dark bars, never stretched. Hidden when not in use."""
+    GAP = 6                  # between this picture and the time pill below it
+    EDGE = 8
+    RADIUS = 10
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._image = None
+        QWidget.setVisible(self, False)
+
+    def show_at(self, image, x_center: float, y_bottom: float, bounds):
+        """Show `image` with its bottom edge at y_bottom, centred on x_center, inside `bounds` (a QRect)."""
+        self._image = image
+        w, h = thumbnail_box(image.width() / image.height() if image.height() else 0)
+        self.resize(w, h)
+        x = round(x_center - w / 2.0)
+        x = max(bounds.left() + self.EDGE, min(x, bounds.right() - self.EDGE - w + 1))
+        self.move(x, round(y_bottom) - h)
+        if not self.isVisible():
+            QWidget.setVisible(self, True)
+            self.raise_()
+        self.update()
+
+    def hide_tip(self):
+        QWidget.setVisible(self, False)
+
+    def paintEvent(self, event):
+        if self._image is None:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        clip = QPainterPath()
+        clip.addRoundedRect(r, self.RADIUS, self.RADIUS)
+        p.setClipPath(clip)
+        p.fillRect(self.rect(), QColor(14, 14, 18))
+        size = self._image.size().scaled(self.size(), Qt.KeepAspectRatio)
+        target = QRectF((self.width() - size.width()) / 2.0, (self.height() - size.height()) / 2.0,
+                        size.width(), size.height())
+        p.drawImage(target, self._image)
+        p.setClipping(False)
+        p.setPen(QPen(QColor(255, 255, 255, 102), 1))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(r, self.RADIUS, self.RADIUS)

@@ -213,3 +213,11 @@ def test_the_switch_turns_the_automatic_check_off_and_is_remembered(window):
     q = c.settings_panel
     assert q.switch_updates.checked is False, "the panel shows what was chosen"
     q.reject()
+
+
+def test_the_thumbnail_rows_sit_on_the_performance_tab_without_changing_the_panel_size(panel):
+    size = panel.size()
+    assert not panel.switch_thumbnails.isVisible()
+    panel.btn_tab_perf.click()
+    assert panel.switch_thumbnails.isVisible() and panel.switch_thumbnails_stop.isVisible()
+    assert panel.size() == size

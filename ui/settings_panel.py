@@ -14,7 +14,7 @@ swallowed) and the dim layer keeps the mouse, so nothing behind it reacts. The p
 """
 from PySide6.QtCore import QEvent, Qt, QRectF, Signal
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QStackedLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QStackedLayout, QVBoxLayout, QWidget
 
 from ui.glass_button import GlassButton, paint_glass_panel
 from ui.glass_switch import GlassSwitch
@@ -37,6 +37,8 @@ LECTURE_ROW = ("강의 음성", "먹먹한 목소리를 또렷하게 하고, 작
                           "켜 두면 오디오 트랙은 1번으로 고정됩니다.")
 
 
+THUMBNAILS_ROW = ("재생바 썸네일", "재생바에 마우스를 올리면 그 위치의 장면을 보여 줍니다.")
+THUMBNAILS_STOP_ROW = ("마우스를 멈췄을 때만 표시", "훑는 동안은 시간만 보이고 잠깐 멈추면 장면이 나타나요. 4K 60fps처럼 영상이 끊길 때 켜 보세요.")
 UPDATES_ROW = ("새 버전 알림", "하루에 한 번 새 버전이 있는지 확인하고, 있으면 알려 줘요. 꺼도 정보 창의 ‘업데이트 확인’은 쓸 수 있어요.")
 
 
@@ -106,9 +108,12 @@ class SettingsPanel(QWidget):
     hwdec_changed = Signal(bool)
     lecture_audio_changed = Signal(bool)
     updates_changed = Signal(bool)
+    thumbnails_changed = Signal(bool)
+    thumbnails_on_stop_changed = Signal(bool)
 
     def __init__(self, current_layout: dict, metadata: dict, default_layout: dict, host: QWidget, *,
-                 hwdec_on: bool = True, lecture_audio_on: bool = False, updates_on: bool = True):
+                 hwdec_on: bool = True, lecture_audio_on: bool = False, updates_on: bool = True,
+                 thumbnails_on: bool = True, thumbnails_on_stop: bool = False):
         super().__init__(host)
         self._host = host
         self._default = default_layout
@@ -152,7 +157,11 @@ class SettingsPanel(QWidget):
         self._pages = QStackedLayout()
         self._pages.addWidget(self._build_layout_page(current_layout, metadata))
         self._pages.addWidget(self._build_options_page(
-            [HWDEC_ROW], [hwdec_on], ["row_hwdec"], ["switch_hwdec"], [self.hwdec_changed], "btn_close_perf"))
+            [HWDEC_ROW, THUMBNAILS_ROW, THUMBNAILS_STOP_ROW], [hwdec_on, thumbnails_on, thumbnails_on_stop],
+            ["row_hwdec", "row_thumbnails", "row_thumbnails_stop"],
+            ["switch_hwdec", "switch_thumbnails", "switch_thumbnails_stop"],
+            [self.hwdec_changed, self.thumbnails_changed, self.thumbnails_on_stop_changed], "btn_close_perf"))
+        self._setup_thumbnail_rows(thumbnails_on)
         self._pages.addWidget(self._build_options_page(
             [LECTURE_ROW], [lecture_audio_on], ["row_lecture"], ["switch_lecture"], [self.lecture_audio_changed],
             "btn_close_audio"))
@@ -229,6 +238,21 @@ class SettingsPanel(QWidget):
         foot.addWidget(close)
         col.addLayout(foot)
         return page
+
+    def _setup_thumbnail_rows(self, thumbnails_on: bool):
+        """The "only when the pointer rests" row belongs to the thumbnail row: indented under it, dimmed and inert
+        while thumbnails are off."""
+        row = self.row_thumbnails_stop
+        margins = row.layout().contentsMargins()
+        row.layout().setContentsMargins(margins.left() + 18, margins.top(), margins.right(), margins.bottom())
+        self._stop_dim = QGraphicsOpacityEffect(row)
+        row.setGraphicsEffect(self._stop_dim)
+        self.switch_thumbnails.toggled.connect(self._sync_thumbnail_rows)
+        self._sync_thumbnail_rows(thumbnails_on)
+
+    def _sync_thumbnail_rows(self, thumbnails_on: bool):
+        self.row_thumbnails_stop.setEnabled(bool(thumbnails_on))
+        self._stop_dim.setOpacity(1.0 if thumbnails_on else 0.45)
 
     # --- tabs ---------------------------------------------------------------------------------
     @property
