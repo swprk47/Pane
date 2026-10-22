@@ -10,7 +10,7 @@ import time
 from collections import OrderedDict
 from typing import Optional
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QImage
 
 from core import player_engine          # noqa: F401  (puts lib/mpv on PATH before mpv is imported)
@@ -72,15 +72,6 @@ class _Bridge(QObject):
     ready = Signal(str, int, QImage)         # emitted from the worker thread, delivered in ours
 
 
-class _Job(QRunnable):
-    def __init__(self, fn):
-        super().__init__()
-        self._fn = fn
-
-    def run(self):
-        self._fn()
-
-
 class ThumbnailProvider(QObject):
     """Makes the pictures: one hidden mpv (no window, no sound, paused) that is created on the first request after a
     file is set, one worker thread where only the newest request is made, a cache, and a 10 s idle close. With the
@@ -108,8 +99,7 @@ class ThumbnailProvider(QObject):
         self._mpv_path = None
         self._mpv_lock = threading.Lock()            # held by whoever uses or closes the mpv
         self._close_pending = False                  # a close was asked while the worker was inside the mpv
-        self._pool = QThreadPool(self)
-        self._pool.setMaxThreadCount(1)
+        self._worker = None                          # a daemon thread: it can never keep the process alive at exit
         self._bridge = _Bridge()
         self._bridge.ready.connect(self.thumbnail_ready)
         self._idle_timer = QTimer(self)
@@ -172,7 +162,8 @@ class ThumbnailProvider(QObject):
         if not self._idle_timer.isActive():
             self._idle_timer.start()
         if start:
-            self._pool.start(_Job(self._work))
+            self._worker = threading.Thread(target=self._work, name="thumbnail-worker", daemon=True)
+            self._worker.start()
 
     def _tick_idle(self) -> None:
         if self._mpv is not None and self._clock() - self._last_request >= IDLE_SECONDS:
@@ -212,7 +203,14 @@ class ThumbnailProvider(QObject):
                         return None
                     if self._mpv is None or self._mpv_path != path:
                         self._open(path)
+                        if self._close_pending or self._shutdown:
+                            return None
                     return self._shoot(seconds)
+                except TimeoutError as e:
+                    # a slow disk or a busy PC is not "this file has no pictures": start afresh on the next hover
+                    self._terminate_locked()
+                    self._log_once(path, f"timed out: {e}")
+                    return None
                 finally:
                     if self._close_pending:
                         self._terminate_locked()
@@ -227,8 +225,8 @@ class ThumbnailProvider(QObject):
                        vf=f"scale={2 * THUMB_MAX_W}:{2 * THUMB_H}:force_original_aspect_ratio=decrease")
         self._mpv = mpv.MPV(**options)
         self._mpv_path = path
-        self._mpv.loadfile(path)
-        self._mpv.wait_for_event("file-loaded", "end-file", timeout=LOAD_SECONDS)
+        with self._mpv.prepare_and_wait_for_event("file-loaded", "end-file", timeout=LOAD_SECONDS):
+            self._mpv.loadfile(path)                 # (the handler exists before the event can come)
         has_video = any(t.get("type") == "video" and not t.get("albumart") for t in (self._mpv.track_list or []))
         if not self._mpv.duration or not has_video:
             self._terminate_locked()
@@ -236,14 +234,18 @@ class ThumbnailProvider(QObject):
 
     def _shoot(self, seconds: float) -> QImage:
         m = self._mpv
-        m.command("seek", float(seconds), "absolute+exact" if self._exact else "absolute+keyframes")
-        m.wait_for_event("playback-restart", timeout=LOAD_SECONDS)
+        with m.prepare_and_wait_for_event("playback-restart", timeout=LOAD_SECONDS):
+            m.command("seek", float(seconds), "absolute+exact" if self._exact else "absolute+keyframes")
         shot = m.command("screenshot-raw", "video")
         image = QImage(shot["data"], shot["w"], shot["h"], shot["stride"], QImage.Format_RGB32)
         return image.copy()                          # (the bytes belong to mpv's reply)
 
     def _give_up(self, path, reason: str) -> None:
+        """This file cannot give pictures (no video track, cannot be opened): not asked for again until it is reopened."""
         self._no_picture.add(path)
+        self._log_once(path, reason)
+
+    def _log_once(self, path, reason: str) -> None:
         if path not in self._logged:
             self._logged.add(path)
             print(f"[thumbnails] {reason}")

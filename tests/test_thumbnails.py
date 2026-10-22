@@ -151,36 +151,49 @@ def test_a_file_that_mpv_cannot_open_gives_no_picture_no_hang_and_one_log_line(q
     p.shutdown()
 
 
-def test_shutdown_while_a_request_runs_returns_quickly(qapp, sample_video):
+def test_shutdown_while_a_request_runs_returns_quickly_and_the_mpv_is_really_closed(qapp, sample_video, monkeypatch):
     import time
     p = ThumbnailProvider(exact=True)
+    real = p._shoot
+    monkeypatch.setattr(p, "_shoot", lambda sec: (time.sleep(1.6), real(sec))[1])   # outlasts shutdown's one second
     p.set_file(sample_video)
     p.request(sample_video, 1.0)
+    time.sleep(0.4)                                                    # the worker is inside the mpv
     t0 = time.time()
     p.shutdown()
     assert time.time() - t0 < 3 and p.has_instance is False
+    p._worker.join(10)
+    assert not p._worker.is_alive() and p._mpv is None, "the worker closed the mpv when it came out"
 
 
-def test_a_picture_that_finishes_after_the_file_changed_is_not_delivered(qapp, sample_video, pump, monkeypatch):
-    import threading
+def test_a_slow_step_does_not_disable_thumbnails_for_the_file(qapp, sample_video, pump, monkeypatch):
+    """A timeout (a slow disk, a missed event) is not "this file has no pictures": the next hover must work."""
     p = ThumbnailProvider(exact=True)
-    started, release = threading.Event(), threading.Event()
-    real = p._grab
+    real, calls, got = p._shoot, [], []
 
-    def slow_grab(sec):
-        image = real(sec)                           # the picture for the OLD file exists ...
-        started.set()
-        release.wait(5)                             # ... but is handed over only after the file changed
-        return image
+    def flaky(sec):
+        calls.append(sec)
+        if len(calls) == 1:
+            raise TimeoutError("took too long")
+        return real(sec)
 
-    monkeypatch.setattr(p, "_grab", slow_grab)
+    monkeypatch.setattr(p, "_shoot", flaky)
+    p.thumbnail_ready.connect(lambda path, b, img: got.append(b))
+    p.set_file(sample_video)
+    p.request(sample_video, 0.2)
+    pump(None, timeout=1.0)
+    assert got == [] and sample_video not in p._no_picture
+    p.request(sample_video, 2.5)
+    assert pump(lambda: 1 in got, timeout=10)
+    p.shutdown()
+
+
+def test_the_worker_is_a_daemon_thread_so_it_can_never_hold_the_process_open(qapp, sample_video, pump):
+    p = ThumbnailProvider(exact=True)
     got = []
-    p.thumbnail_ready.connect(lambda path, b, img: got.append(path))
+    p.thumbnail_ready.connect(lambda path, b, img: got.append(b))
     p.set_file(sample_video)
     p.request(sample_video, 1.0)
-    assert started.wait(5)                          # the picture is being made right now
-    p.set_file(None)                                # ... and the video is closed
-    release.set()
-    pump(None, timeout=1.5)
-    assert got == [] and len(p._cache) == 0, "neither shown nor cached for the closed file"
+    assert p._worker.daemon is True
+    assert pump(lambda: got, timeout=10)
     p.shutdown()

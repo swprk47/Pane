@@ -152,6 +152,11 @@ def test_closing_the_window_with_a_request_running_does_not_hang(qapp, sample_vi
     w.close()
     qapp.processEvents()
     assert time.time() - t0 < 5 and w.thumbnail_provider.has_instance is False
+    worker = w.thumbnail_provider._worker
+    if worker is not None:
+        worker.join(10)
+        assert not worker.is_alive()
+    assert w.thumbnail_provider._mpv is None, "no second mpv is left behind"
 
 
 def test_the_switches_take_effect_at_once(playing, pump):
