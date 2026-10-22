@@ -259,8 +259,6 @@ class ThumbnailProvider(QObject):
 
     def _close_instance(self, wait: float = 0.0) -> None:
         """Close the hidden mpv now, or (the worker is inside it and `wait` ran out) as soon as the worker is out."""
-        if self._mpv is None:
-            return
         got = self._mpv_lock.acquire(timeout=wait) if wait else self._mpv_lock.acquire(blocking=False)
         if got:
             try:

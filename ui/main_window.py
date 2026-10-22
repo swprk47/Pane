@@ -25,7 +25,8 @@ from core import app_log, diagnostics, file_errors, update_config
 from core.update_checker import UpdateChecker
 from ui.update_card import UpdateCard
 from ui.mpv_gl import MpvGLWidget
-from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip
+from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip, ThumbnailTip
+from core.thumbnails import ThumbnailProvider, bucket_of
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
 from core.tracks import format_delay
@@ -238,6 +239,13 @@ class MainWindow(QMainWindow):
         self.center_badge.hide()
         self.seek_indicator = SeekIndicator(self.central_widget)
         self.seek_tip = SeekTimeTip(self.central_widget)
+        self.thumbnail_tip = ThumbnailTip(self.central_widget)
+        self.thumbnail_provider = ThumbnailProvider(self)
+        self.thumbnail_provider.thumbnail_ready.connect(self._on_thumbnail_ready)
+        self._thumb_spot = None                          # (seconds, x) of the pointer while it is over the seek bar
+        self._stop_timer = QTimer(self)                  # "only when the pointer rests": fires STOP_DELAY_MS after the last move
+        self._stop_timer.setSingleShot(True)
+        self._stop_timer.timeout.connect(self._request_thumbnail)
         self.mini_progress = MiniProgress(self.central_widget)
         self.mini_progress.hide()
 
@@ -297,8 +305,8 @@ class MainWindow(QMainWindow):
 
         # Controller -> Engine
         self.controller.timeline.hover_moved.connect(self._show_seek_tip)
-        self.controller.timeline.hover_left.connect(self.seek_tip.hide_tip)
-        self.controller.visibility_changed.connect(lambda shown: None if shown else self.seek_tip.hide_tip())
+        self.controller.timeline.hover_left.connect(self._hide_seek_tips)
+        self.controller.visibility_changed.connect(lambda shown: None if shown else self._hide_seek_tips())
         self.update_card.update_clicked.connect(self._start_update)
         self.update_card.dismissed.connect(self._dismiss_update)
         self.update_checker.update_available.connect(self._on_update_available)
@@ -314,6 +322,7 @@ class MainWindow(QMainWindow):
         self.thumbnails_on_stop = self.app_settings.get_thumbnails_on_stop()
         self.controller.thumbnails_on = self.thumbnails_on
         self.controller.thumbnails_on_stop = self.thumbnails_on_stop
+        self.thumbnail_provider.set_enabled(self.thumbnails_on)
         self.controller.thumbnails_changed.connect(self._on_thumbnails_changed)
         self.controller.thumbnails_on_stop_changed.connect(self._on_thumbnails_on_stop_changed)
         self.controller.updates_on = self.app_settings.get_update_check_enabled()
@@ -500,14 +509,53 @@ class MainWindow(QMainWindow):
         tl = self.controller.timeline
         spot = tl.mapTo(self.central_widget, QPoint(round(x), tl.height() // 2))
         self.seek_tip.show_at(format_clock(seconds), spot.x(), spot.y() - 15, self.viewport.geometry())
+        self._thumb_spot = (seconds, spot.x())
+        if not self._thumbnails_wanted():
+            self.thumbnail_tip.hide_tip()
+        elif self.thumbnails_on_stop:
+            self.thumbnail_tip.hide_tip()                # moving: the time only; the picture comes when the pointer rests
+            self._stop_timer.start(self.STOP_DELAY_MS)
+        else:
+            self._request_thumbnail()
+
+    STOP_DELAY_MS = 300
+
+    def _thumbnails_wanted(self) -> bool:
+        return bool(self.thumbnails_on and self._current_file is not None and self._duration > 0)
+
+    def _request_thumbnail(self):
+        if self._thumb_spot is not None and self._thumbnails_wanted():
+            self.thumbnail_provider.request(self._current_file, self._thumb_spot[0])
+
+    def _on_thumbnail_ready(self, path: str, bucket: int, image):
+        """A picture arrived: shown only for the file and the 2 s step the pointer is at now (a late one is dropped)."""
+        spot = self._thumb_spot
+        if (spot is None or path != self._current_file or bucket != bucket_of(spot[0])
+                or not self.seek_tip.isVisible() or not self._thumbnails_wanted()
+                or (self.thumbnails_on_stop and self._stop_timer.isActive())):
+            return
+        self.thumbnail_tip.show_at(image, spot[1], self.seek_tip.y() - ThumbnailTip.GAP, self.viewport.geometry())
+
+    def _hide_seek_tips(self):
+        """The pill and the picture go together; nothing is asked for any more."""
+        self.seek_tip.hide_tip()
+        self.thumbnail_tip.hide_tip()
+        self._stop_timer.stop()
+        self._thumb_spot = None
 
     def _on_thumbnails_changed(self, enabled: bool):
         self.thumbnails_on = enabled
         self.app_settings.set_thumbnails_enabled(enabled)
+        self.thumbnail_provider.set_enabled(enabled)
+        if not enabled:
+            self._stop_timer.stop()
+            self.thumbnail_tip.hide_tip()
 
     def _on_thumbnails_on_stop_changed(self, enabled: bool):
         self.thumbnails_on_stop = enabled
         self.app_settings.set_thumbnails_on_stop(enabled)
+        self._stop_timer.stop()
+        self.thumbnail_tip.hide_tip()
 
     def _on_hwdec_changed(self, enabled: bool):
         self.engine.set_hardware_decoding(enabled)
@@ -657,7 +705,8 @@ class MainWindow(QMainWindow):
         self._update_playlist_state()
         self.center_badge.reset()
         self.seek_indicator.reset()
-        self.seek_tip.hide_tip()
+        self._hide_seek_tips()
+        self.thumbnail_provider.set_file(file_path)
         file_name = os.path.basename(file_path)
         self.viewport.show_empty_notice(False)
         self.viewport.set_has_frame(True)
@@ -781,7 +830,8 @@ class MainWindow(QMainWindow):
         self._update_playlist_state()
         self.center_badge.reset()
         self.seek_indicator.reset()
-        self.seek_tip.hide_tip()
+        self._hide_seek_tips()
+        self.thumbnail_provider.set_file(None)
         self.top_scrim.hide()
         self.controller.set_media_loaded(False)
         self.viewport.set_has_frame(False)
@@ -1249,6 +1299,8 @@ class MainWindow(QMainWindow):
         c.raise_()
         if self.seek_tip.isVisible():
             self.seek_tip.raise_()
+        if self.thumbnail_tip.isVisible():
+            self.thumbnail_tip.raise_()
         if self.update_card.isVisible():
             self.update_card.raise_()
         if self.speed_popup.isVisible():
@@ -1279,6 +1331,7 @@ class MainWindow(QMainWindow):
     _shut_down = False
 
     def _on_close(self):
+        self.thumbnail_provider.shutdown()              # (a picture in the making gets a second at most)
         self.update_checker.request_stop()             # (a download in flight gives up at its next chunk)
         self.update_checker.wait_for_done(1500)
         # Render context first, then the mpv core (the other order aborts).
