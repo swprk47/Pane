@@ -68,6 +68,8 @@ class GlassController(QWidget):
     hwdec_changed = Signal(bool)        # settings panel: hardware decoding switched
     lecture_audio_changed = Signal(bool)  # settings panel: "lecture voice" switched
     updates_changed = Signal(bool)      # settings panel: the automatic update check switched
+    thumbnails_changed = Signal(bool)           # settings panel: seek-bar thumbnails switched
+    thumbnails_on_stop_changed = Signal(bool)   # settings panel: "only when the pointer rests" switched
     settings_panel_toggled = Signal()   # the settings panel opened or closed
     opacity_changed = Signal(float)     # follows the fade so the top scrim fades with us
 
@@ -349,17 +351,22 @@ class GlassController(QWidget):
     hwdec_on = True              # what the panel's switches show when it opens (the window keeps them current)
     lecture_audio_on = False
     updates_on = True
+    thumbnails_on = True
+    thumbnails_on_stop = False
 
     def _open_settings_dialog(self):
         if self.settings_panel is not None:
             return
         panel = SettingsPanel(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self.parentWidget(),
                               hwdec_on=self.hwdec_on, lecture_audio_on=self.lecture_audio_on,
-                              updates_on=self.updates_on)
+                              updates_on=self.updates_on, thumbnails_on=self.thumbnails_on,
+                              thumbnails_on_stop=self.thumbnails_on_stop)
         panel.layout_changed.connect(self._save_layout)
         panel.hwdec_changed.connect(self._on_hwdec_switched)
         panel.lecture_audio_changed.connect(self._on_lecture_audio_switched)
         panel.updates_changed.connect(self._on_updates_switched)
+        panel.thumbnails_changed.connect(self._on_thumbnails_switched)
+        panel.thumbnails_on_stop_changed.connect(self._on_thumbnails_stop_switched)
         panel.finished.connect(self._on_settings_panel_closed)
         self.settings_panel = panel
         panel.open()
@@ -368,6 +375,14 @@ class GlassController(QWidget):
     def _on_hwdec_switched(self, enabled: bool):
         self.hwdec_on = enabled
         self.hwdec_changed.emit(enabled)
+
+    def _on_thumbnails_switched(self, enabled: bool):
+        self.thumbnails_on = enabled
+        self.thumbnails_changed.emit(enabled)
+
+    def _on_thumbnails_stop_switched(self, enabled: bool):
+        self.thumbnails_on_stop = enabled
+        self.thumbnails_on_stop_changed.emit(enabled)
 
     def _on_updates_switched(self, enabled: bool):
         self.updates_on = enabled

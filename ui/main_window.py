@@ -310,6 +310,12 @@ class MainWindow(QMainWindow):
                        self.controller.settings_panel_toggled):
             signal.connect(self._refresh_update_card)
         QTimer.singleShot(5000, self.update_checker.check)       # the automatic check, a moment after the window is up
+        self.thumbnails_on = self.app_settings.get_thumbnails_enabled()
+        self.thumbnails_on_stop = self.app_settings.get_thumbnails_on_stop()
+        self.controller.thumbnails_on = self.thumbnails_on
+        self.controller.thumbnails_on_stop = self.thumbnails_on_stop
+        self.controller.thumbnails_changed.connect(self._on_thumbnails_changed)
+        self.controller.thumbnails_on_stop_changed.connect(self._on_thumbnails_on_stop_changed)
         self.controller.updates_on = self.app_settings.get_update_check_enabled()
         self.controller.updates_changed.connect(self.app_settings.set_update_check_enabled)
         self.controller.hwdec_on = self.engine.hardware_decoding
@@ -494,6 +500,14 @@ class MainWindow(QMainWindow):
         tl = self.controller.timeline
         spot = tl.mapTo(self.central_widget, QPoint(round(x), tl.height() // 2))
         self.seek_tip.show_at(format_clock(seconds), spot.x(), spot.y() - 15, self.viewport.geometry())
+
+    def _on_thumbnails_changed(self, enabled: bool):
+        self.thumbnails_on = enabled
+        self.app_settings.set_thumbnails_enabled(enabled)
+
+    def _on_thumbnails_on_stop_changed(self, enabled: bool):
+        self.thumbnails_on_stop = enabled
+        self.app_settings.set_thumbnails_on_stop(enabled)
 
     def _on_hwdec_changed(self, enabled: bool):
         self.engine.set_hardware_decoding(enabled)

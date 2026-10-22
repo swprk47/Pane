@@ -92,6 +92,20 @@ class AppSettings:
     def set_hwdec_enabled(self, enabled: bool):
         self.settings.setValue("hwdec_enabled", bool(enabled))
 
+    def get_thumbnails_enabled(self) -> bool:
+        """The picture above the time when the pointer is over the seek bar (on by default)."""
+        return str(self.settings.value("thumbnails_enabled", True)).lower() not in ("false", "0")
+
+    def set_thumbnails_enabled(self, enabled: bool):
+        self.settings.setValue("thumbnails_enabled", bool(enabled))
+
+    def get_thumbnails_on_stop(self) -> bool:
+        """Show that picture only after the pointer rests (off by default: it follows the pointer)."""
+        return str(self.settings.value("thumbnails_on_stop", False)).lower() in ("true", "1")
+
+    def set_thumbnails_on_stop(self, enabled: bool):
+        self.settings.setValue("thumbnails_on_stop", bool(enabled))
+
     def get_lecture_audio(self) -> bool:
         """The "lecture voice" audio preset (off by default)."""
         return str(self.settings.value("lecture_audio", False)).lower() in ("true", "1")
