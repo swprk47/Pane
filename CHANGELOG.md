@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- New seek-bar thumbnails: hovering the seek bar shows a small picture of that moment just above the time. Settings > 성능 has two switches: `재생바 썸네일` (on by default) and `마우스를 멈췄을 때만 표시` (off by default; the picture appears only after the pointer rests, which keeps 4K 60 fps playback undisturbed). The picture is taken from the nearest keyframe, so it can be a few seconds off the time shown; clicking still seeks exactly. Nothing extra is created while the feature is off
+
 ## 1.3.0 - 2026-10-13
 - New in-app update: a few seconds after start Pane checks (at most once a day, only the installed app) whether a newer version exists. A glass card appears at the bottom right while nothing plays; [업데이트] downloads the installer, checks its size and SHA-256, runs it silently, and Pane restarts as the new version. The X on the card stops announcing that version. The check can be switched off in Settings > 일반 > 새 버전 알림, and About > 업데이트 확인 asks at once. The update manifest is signed (Ed25519): a tampered or unsigned manifest or installer is rejected. A copy that was not installed by the setup (unzipped, built from source) is never updated
 - Pane is now free software under the GNU GPL v3 or later; the source is at https://github.com/swprk47/Pane (the full license text and the sources of the bundled mpv / FFmpeg are listed in the installer)

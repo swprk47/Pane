@@ -164,7 +164,7 @@ def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False
             real_request = w.thumbnail_provider.request
 
             def timed_request(path, seconds_):
-                thumbs["asked"].setdefault(int(seconds_ // 2), time.perf_counter())
+                thumbs["asked"][int(seconds_ // 2)] = time.perf_counter()          # (the latest ask: an older one may have been dropped)
                 real_request(path, seconds_)
 
             def on_ready(_path, bucket, _image):
