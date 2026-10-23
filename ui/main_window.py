@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout,
     QFileDialog, QMenu, QApplication
 )
-from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QTimer
+from PySide6.QtCore import Qt, QPoint, QRect, Signal, QEvent, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent
 
 from styles.glass_theme import GLASS_THEME_QSS
@@ -243,6 +243,7 @@ class MainWindow(QMainWindow):
         self.thumbnail_provider = ThumbnailProvider(self)
         self.thumbnail_provider.thumbnail_ready.connect(self._on_thumbnail_ready)
         self._thumb_spot = None                          # (seconds, x) of the pointer while it is over the seek bar
+        self._tips_viewport = None                       # the video area the pill and the picture were placed in
         self._stop_timer = QTimer(self)                  # "only when the pointer rests": fires STOP_DELAY_MS after the last move
         self._stop_timer.setSingleShot(True)
         self._stop_timer.timeout.connect(self._request_thumbnail)
@@ -1259,6 +1260,9 @@ class MainWindow(QMainWindow):
         vp = self.viewport.geometry()
         if vp.width() <= 0 or vp.height() <= 0:
             return
+        if vp != self._tips_viewport:             # (the time pill and the picture were placed for the bar as it was:
+            self._tips_viewport = QRect(vp)       #  only a change of the video area moves it; a layout pass alone does not)
+            self._hide_seek_tips()
 
         # Controls: compact (transport only) when the full set doesn't fit.
         c = self.controller

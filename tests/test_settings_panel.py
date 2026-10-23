@@ -221,3 +221,29 @@ def test_the_thumbnail_rows_sit_on_the_performance_tab_without_changing_the_pane
     panel.btn_tab_perf.click()
     assert panel.switch_thumbnails.isVisible() and panel.switch_thumbnails_stop.isVisible()
     assert panel.size() == size
+
+
+def _panel_with_thumbnails(qapp, on):
+    host = QWidget()
+    host.resize(900, 600)
+    host.show()
+    p = SettingsPanel(DEFAULT_LAYOUT, BUTTON_METADATA, DEFAULT_LAYOUT, host, thumbnails_on=on)
+    p.open()
+    return host, p
+
+
+def test_the_stop_row_is_dimmed_once_and_shows_no_pointing_hand_while_it_is_inert(qapp):
+    """The row's text is dimmed to 0.45 and the switch dims itself to 0.45 when disabled: the whole row must not be dimmed
+    a second time (the switch ended up at about 0.2)."""
+    host, p = _panel_with_thumbnails(qapp, False)
+    row = p.row_thumbnails_stop
+    assert row.graphicsEffect() is None, "no second dimming over the whole row"
+    assert not row.isEnabled() and row.cursor().shape() == Qt.ArrowCursor
+    for label in (row.title_label, row.desc_label):
+        assert label.graphicsEffect() is not None and abs(label.graphicsEffect().opacity() - 0.45) < 1e-6
+    p.switch_thumbnails.toggled.emit(True)                                   # thumbnails on: the row comes alive
+    assert row.isEnabled() and row.cursor().shape() == Qt.PointingHandCursor
+    for label in (row.title_label, row.desc_label):
+        assert abs(label.graphicsEffect().opacity() - 1.0) < 1e-6
+    p.reject()
+    host.close()

@@ -189,3 +189,23 @@ def test_the_length_of_the_previous_video_is_forgotten_when_another_is_opened(pl
     w.load_media_file(sample_video)
     assert w._duration == 0.0, "until the new video says how long it is, nothing may rely on the old length"
     assert pump(lambda: w._duration > 0, timeout=10), "and the new length does arrive"
+
+
+# --- cleanup, stage C --------------------------------------------------------------------------------------
+
+def test_a_resize_or_a_fullscreen_change_hides_the_pill_and_the_picture(playing, pump):
+    """They were drawn for the bar where it was; after the window changed they would hang in the wrong place until the
+    pointer moved again."""
+    w = playing
+    hover(w, 1.5)
+    assert pump(lambda: w.thumbnail_tip.isVisible(), timeout=10) and w.seek_tip.isVisible()
+    w.resize(w.width() + 140, w.height() + 60)
+    pump(None, timeout=0.3)
+    assert not w.seek_tip.isVisible() and not w.thumbnail_tip.isVisible(), "after a resize"
+    hover(w, 1.5)
+    assert pump(lambda: w.thumbnail_tip.isVisible(), timeout=10)
+    w.toggle_fullscreen()
+    pump(None, timeout=0.5)
+    assert not w.seek_tip.isVisible() and not w.thumbnail_tip.isVisible(), "after entering fullscreen"
+    w.toggle_fullscreen()
+    pump(None, timeout=0.5)

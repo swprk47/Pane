@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Resizing the window or switching to full screen (or PIP) no longer leaves the time and the thumbnail hanging at their old place until the pointer moves; the dimmed `마우스를 멈췄을 때만 표시` switch in Settings is dimmed once instead of twice and no longer shows a pointing hand while it does nothing
 - The seek-bar thumbnails are lighter on 4K 60 fps video: the hidden decoder uses two threads (dropped frames while sweeping the bar went from about 58 to the level of having thumbnails off, about 23, in a 10 s test), the same step is no longer made twice, and closing the hidden player no longer stalls the picture. Also: the worker survives an unexpected error, the end of the bar asks for the last second, and a new video forgets the old length
 
 ## 1.3.1 - 2026-10-24
