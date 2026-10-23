@@ -108,6 +108,21 @@ def sweep_positions(duration: float, span: float, margin: float, t: float) -> tu
     return ratio * duration, margin + ratio * span
 
 
+def parse_thumb_options(text: str) -> dict:
+    """"cache=no,vd_lavc_threads=2" -> {"cache": "no", "vd_lavc_threads": 2}: options for the second mpv to try."""
+    out = {}
+    for part in filter(None, (p.strip() for p in (text or "").split(","))):
+        key, _, value = part.partition("=")
+        for cast in (int, float):
+            try:
+                value = cast(value)
+                break
+            except ValueError:
+                continue
+        out[key.strip()] = value
+    return out
+
+
 class LatencyTracker:
     """How long the seek-bar pictures take: from the latest ask for a 2 s step to its answer. A picture served at once from
     the cache took no time to make and is only counted (`cache_hits`), so it cannot pull the median down."""
@@ -318,6 +333,7 @@ def main():
     ap.add_argument("--hwdec", default="auto-copy", help="mpv hwdec option for this run (auto-copy, no, d3d11va, ...)")
     ap.add_argument("--label", default="")
     ap.add_argument("--opaque", action="store_true", help="experiment: opaque window without acrylic")
+    ap.add_argument("--thumb-options", default="", help="extra options for the second mpv, e.g. cache=no,vd_lavc_threads=2")
     ap.add_argument("--sweep", choices=("thumbs-off", "follow", "stop"),
                     help="walk the pointer along the seek bar while measuring (the mouse is not used), with seek-bar "
                          "thumbnails off, following the pointer, or only when it rests")
@@ -330,6 +346,9 @@ def main():
     for group in ("AppSettings", "ControllerLayout", "SpeedSettings"):
         QSettings("PanePerf", group).clear()
 
+    if args.thumb_options:
+        from core.thumbnails import ThumbnailProvider
+        ThumbnailProvider.EXTRA_OPTIONS = parse_thumb_options(args.thumb_options)
     results = []
     for clip in args.clips:
         for mode in args.modes.split(","):

@@ -49,3 +49,10 @@ def test_a_new_ask_for_a_bucket_replaces_the_older_one():
     now[0] += 0.030
     t.answered(5)
     assert round(t.worst_ms) == 30
+
+
+def test_thumb_options_are_parsed_into_mpv_options():
+    from perf_probe import parse_thumb_options
+    assert parse_thumb_options("") == {}
+    assert parse_thumb_options("cache=no,vd_lavc_threads=2,demuxer_max_bytes=1MiB,hr_seek_demux_threshold=0.5") == {
+        "cache": "no", "vd_lavc_threads": 2, "demuxer_max_bytes": "1MiB", "hr_seek_demux_threshold": 0.5}

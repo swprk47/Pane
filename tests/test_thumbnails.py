@@ -284,3 +284,84 @@ def test_an_audio_file_with_cover_art_gets_no_picture_and_one_log_line(qapp, tmp
     assert "no video track" in out, "refused when the file is opened, not after a failed screenshot"
     assert p._mpv is None, "and the second mpv is not kept for a song"
     p.shutdown()
+
+
+# --- the 4K 60 fps budget (cleanup, stage A) ------------------------------------------------------------------
+
+def test_moving_inside_the_step_being_made_does_not_make_it_twice(qapp, sample_video, pump, monkeypatch):
+    import threading
+    p = ThumbnailProvider(exact=True)
+    started, release = threading.Event(), threading.Event()
+    made, got = [], []
+    real = p._grab
+
+    def slow_grab(sec):
+        made.append(sec)
+        started.set()
+        release.wait(5)
+        return real(sec)
+
+    monkeypatch.setattr(p, "_grab", slow_grab)
+    p.thumbnail_ready.connect(lambda path, b, img: got.append(b))
+    p.set_file(sample_video)
+    p.request(sample_video, 1.1)
+    assert started.wait(5)                                              # bucket 0 is being made
+    p.request(sample_video, 1.5)                                        # the pointer moves on inside the same 2 s step
+    p.request(sample_video, 1.9)
+    release.set()
+    assert pump(lambda: got, timeout=10)
+    pump(None, timeout=0.6)
+    assert made == [1.1], "the step was made once, not once per pointer move"
+    assert got == [0], "and its picture was delivered once"
+    p.shutdown()
+
+
+def test_closing_an_idle_instance_does_not_block_the_gui_thread(qapp, sample_video, pump):
+    import time
+    now = [100.0]
+    p = ThumbnailProvider(exact=True, clock=lambda: now[0])
+    got = []
+    p.thumbnail_ready.connect(lambda path, b, img: got.append(b))
+    p.set_file(sample_video)
+    p.request(sample_video, 0.2)
+    assert pump(lambda: got, timeout=10) and p.has_instance
+    real_terminate = p._mpv.terminate
+    p._mpv.terminate = lambda: (time.sleep(0.6), real_terminate())      # a slow shutdown of the second mpv
+    now[0] += 11.0
+    t0 = time.perf_counter()
+    p._tick_idle()
+    assert time.perf_counter() - t0 < 0.2, "the GUI thread (which also draws the video) must not wait for it"
+    assert p.has_instance is False
+    assert pump(lambda: p._mpv is None, timeout=5), "it is closed in the background"
+    p.shutdown()
+
+
+def test_a_request_right_after_a_close_gets_a_fresh_instance_and_a_picture(qapp, sample_video, pump):
+    p = ThumbnailProvider(exact=True)
+    got = []
+    p.thumbnail_ready.connect(lambda path, b, img: got.append(b))
+    p.set_file(sample_video)
+    p.request(sample_video, 0.2)
+    assert pump(lambda: got, timeout=10)
+    p.set_file(sample_video)                                            # the video was opened again: a close is asked ...
+    p.request(sample_video, 2.5)                                        # ... and a picture is wanted at once
+    assert pump(lambda: 1 in got, timeout=10), "not silently dropped because the old instance was still closing"
+    p.shutdown()
+
+
+def test_extra_options_for_the_second_mpv_reach_it(qapp, sample_video, monkeypatch):
+    seen = []
+    real_mpv = thumbnails.mpv.MPV
+
+    class Spy(real_mpv):                                                # (a subclass: python-mpv looks itself up by name)
+        def __init__(self, **kw):
+            seen.append(dict(kw))
+            super().__init__(**kw)
+
+    monkeypatch.setattr(thumbnails.mpv, "MPV", Spy)
+    monkeypatch.setattr(ThumbnailProvider, "EXTRA_OPTIONS", {"cache": "no", "vd_lavc_threads": 2})
+    p = ThumbnailProvider(exact=True)
+    p.set_file(sample_video)
+    assert p._grab(1.0) is not None
+    assert seen and seen[0]["cache"] == "no" and seen[0]["vd_lavc_threads"] == 2 and seen[0]["vo"] == "null"
+    p.shutdown()
