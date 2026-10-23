@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Fix: after the window was closed the process could stay alive for up to 10 seconds (30 while an update was downloading) when the update check was waiting on a slow or silent network, which could leave a dead icon on the taskbar if the PC went to sleep just then. Closing now ends the process at once
+- Closing the app leaves a few timed `[exit]` lines in `%LOCALAPPDATA%\Pane\pane.log`, so a slow or stuck exit can be traced
 - New seek-bar thumbnails: hovering the seek bar shows a small picture of that moment just above the time. Settings > 성능 has two switches: `재생바 썸네일` (on by default) and `마우스를 멈췄을 때만 표시` (off by default; the picture appears only after the pointer rests, which keeps 4K 60 fps playback undisturbed). The picture is taken from the nearest keyframe, so it can be a few seconds off the time shown; clicking still seeks exactly. Nothing extra is created while the feature is off
 
 ## 1.3.0 - 2026-10-13
