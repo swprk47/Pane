@@ -21,7 +21,7 @@ from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
 from core.media_info import format_clock
-from core import app_log, diagnostics, file_errors, update_config
+from core import app_log, diagnostics, exit_trace, file_errors, update_config
 from core.update_checker import UpdateChecker
 from ui.update_card import UpdateCard
 from ui.mpv_gl import MpvGLWidget
@@ -1331,14 +1331,19 @@ class MainWindow(QMainWindow):
     _shut_down = False
 
     def _on_close(self):
-        self.thumbnail_provider.shutdown()              # (a picture in the making gets a second at most)
+        exit_trace.begin()                              # (timed "[exit]" lines in pane.log: where a slow or stuck exit stopped)
         self.update_checker.request_stop()             # (a download in flight gives up at its next chunk)
-        self.update_checker.wait_for_done(1500)
+        self.update_checker.wait_for_done(500)
+        exit_trace.stage("update check stopped")
+        self.thumbnail_provider.shutdown()              # (a picture in the making gets a second at most)
+        exit_trace.stage("thumbnails closed")
         # Render context first, then the mpv core (the other order aborts).
         if hasattr(self, "viewport"):
             self.viewport.release()
+        exit_trace.stage("video surface released")
         if hasattr(self, "engine"):
             self.engine.terminate()
+        exit_trace.stage("mpv terminated")
 
     def closeEvent(self, event):
         # Freeing the render context and stopping mpv takes ~0.4 s while a video plays. The window must not stay on

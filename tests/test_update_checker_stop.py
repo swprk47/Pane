@@ -56,3 +56,58 @@ def test_a_close_during_the_last_step_starts_no_installer(make, monkeypatch):
     checker._bridge.install_error.connect(errors.append)
     checker._download(manifest)
     assert errors and started == []
+
+
+# --- the process must end when the window is closed, whatever the network is doing -----------------------
+
+import subprocess
+
+import pytest
+import sys
+import textwrap
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_the_worker_thread_is_a_daemon_so_a_hanging_request_cannot_hold_the_process(make, monkeypatch):
+    import threading
+    gate = threading.Event()
+    monkeypatch.setattr(uc, "fetch_manifest", lambda *a, **k: gate.wait(30))
+    checker, _, events = make()
+    checker.check(manual=True)
+    assert checker._worker.daemon is True
+    assert checker.wait_for_done(300) is False, "still running: wait_for_done gives up after the time it was given"
+    checker.request_stop()
+    gate.set()
+    assert checker.wait_for_done(3000) is True
+
+
+def test_a_process_with_an_update_check_hanging_on_the_network_still_exits_at_once():
+    """The installed app hung on a silent network for up to 10 s (30 s while downloading) after its window was gone."""
+    script = textwrap.dedent(f"""
+        import sys, threading, time
+        sys.path.insert(0, {str(ROOT)!r})
+        from PySide6.QtCore import QCoreApplication
+        app = QCoreApplication([])
+        import core.update_checker as uc
+        uc.fetch_manifest = lambda *a, **k: threading.Event().wait(60)      # a network that never answers
+
+        class Settings:
+            def get_update_check_enabled(self): return True
+            def get_last_update_check(self): return 0.0
+            def get_update_offer_version(self): return ""
+            def get_update_dismissed_version(self): return ""
+            def set_last_update_check(self, v): pass
+            def set_update_offer_version(self, v): pass
+
+        checker = uc.UpdateChecker(Settings(), "1.0.0", True, "http://127.0.0.1:9/x", bytes(32), scope="user")
+        checker.check(manual=True)
+        time.sleep(0.4)                       # the request is in flight ... and the program ends now
+    """)
+    started = __import__("time").time()
+    try:
+        done = subprocess.run([sys.executable, "-c", script], capture_output=True, timeout=12)
+    except subprocess.TimeoutExpired:
+        pytest.fail("the process was still alive 12 s after its main work ended (a hanging request held it)")
+    assert done.returncode == 0, done.stderr.decode(errors="replace")[-400:]
+    assert __import__("time").time() - started < 8

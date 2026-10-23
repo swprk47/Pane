@@ -15,10 +15,11 @@ Signals (emitted on the GUI thread):
 """
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, Signal
 
 from core.updater import (ManifestError, UpdateError, download_installer, fetch_manifest, installed_scope, is_newer,
                           launch_installer, remove_old_installers, should_check)
@@ -31,15 +32,6 @@ class _Bridge(QObject):
     progress = Signal(int, int)
     install_done = Signal(str)
     install_error = Signal(str)
-
-
-class _Job(QRunnable):
-    def __init__(self, fn):
-        super().__init__()
-        self._fn = fn
-
-    def run(self):
-        self._fn()
 
 
 class UpdateChecker(QObject):
@@ -65,8 +57,8 @@ class UpdateChecker(QObject):
         self._stopping = False
         self.latest = None                         # the Manifest of the newer version, once one was offered
         self._manual = False
-        self._pool = QThreadPool(self)
-        self._pool.setMaxThreadCount(1)
+        self._worker = None                        # a daemon thread: a request hanging on the network must never keep the
+                                                   # process alive after the window is gone (it did, for up to 10-30 s)
         self._bridge = _Bridge()
         self._bridge.check_done.connect(self._on_check_done)
         self._bridge.check_error.connect(self._on_check_error)
@@ -83,13 +75,21 @@ class UpdateChecker(QObject):
         return self._stopping
 
     def request_stop(self):
-        """The app is closing: nothing new starts, queued jobs are dropped and a running download gives up at its next
-        chunk (its partial file is removed)."""
+        """The app is closing: nothing new starts and a running download gives up at its next chunk (its partial file
+        is removed). A request that is stuck on the network is simply left behind: the thread is a daemon."""
         self._stopping = True
-        self._pool.clear()
 
     def wait_for_done(self, msecs: int = 5000) -> bool:
-        return self._pool.waitForDone(msecs)
+        """Wait up to `msecs` for the running job; False when it is still running."""
+        worker = self._worker
+        if worker is None:
+            return True
+        worker.join(msecs / 1000.0)
+        return not worker.is_alive()
+
+    def _start_worker(self, fn) -> None:
+        self._worker = threading.Thread(target=fn, name="update-worker", daemon=True)
+        self._worker.start()
 
     # --- checking --------------------------------------------------------------------------------
     def check(self, manual: bool = False):
@@ -107,7 +107,7 @@ class UpdateChecker(QObject):
             return
         self._busy = True
         self._manual = manual
-        self._pool.start(_Job(self._fetch))
+        self._start_worker(self._fetch)
 
     def _has_pending_offer(self) -> bool:
         """An offer that was found earlier and is still newer than this build: the next start checks at once instead of
@@ -157,7 +157,7 @@ class UpdateChecker(QObject):
             return False
         self._busy = True
         manifest = self.latest
-        self._pool.start(_Job(lambda: self._download(manifest)))
+        self._start_worker(lambda: self._download(manifest))
         return True
 
     def _download(self, manifest):                      # (worker thread)
