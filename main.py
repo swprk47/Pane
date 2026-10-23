@@ -22,7 +22,7 @@ if LIB_MPV.exists():
         except Exception:
             pass
 
-from core import app_log
+from core import app_log, exit_trace
 app_log.install()          # packaged app only: errors go to %LOCALAPPDATA%\Pane\pane.log
 
 from PySide6.QtWidgets import QApplication
@@ -76,7 +76,10 @@ def main():
     if target_file:
         window.load_media_file(target_file)
 
-    sys.exit(app.exec())
+    exit_trace.install_exit_marker()
+    code = app.exec()
+    exit_trace.mark("event loop ended")
+    sys.exit(code)
 
 
 if __name__ == "__main__":
