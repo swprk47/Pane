@@ -68,6 +68,19 @@ class ThumbnailCache:
         return len(self._items)
 
 
+def image_from_shot(shot: dict) -> QImage:
+    """The picture in mpv's `screenshot-raw` reply (a dict with w, h, stride, format, data). Only `bgr0` (what mpv gives
+    on little-endian Windows) is understood; anything else is refused rather than shown with wrong colours."""
+    w, h, stride, data = shot.get("w"), shot.get("h"), shot.get("stride"), shot.get("data")
+    if shot.get("format") != "bgr0":
+        raise ValueError(f"unexpected screenshot format {shot.get('format')!r}")
+    if not (isinstance(w, int) and isinstance(h, int) and w > 0 and h > 0 and isinstance(stride, int) and stride >= 4 * w):
+        raise ValueError(f"unexpected screenshot size {w}x{h}, stride {stride}")
+    if data is None or len(data) < stride * h:
+        raise ValueError("the screenshot data is shorter than its size says")
+    return QImage(data, w, h, stride, QImage.Format_RGB32).copy()      # (the bytes belong to mpv's reply)
+
+
 class _Bridge(QObject):
     ready = Signal(str, int, QImage)         # emitted from the worker thread, delivered in ours
 
@@ -173,25 +186,35 @@ class ThumbnailProvider(QObject):
 
     # --- the worker thread --------------------------------------------------------------------------
     def _work(self) -> None:
-        while True:
-            with self._lock:
-                request, self._pending = self._pending, None
-                if request is None:
-                    self._running = False
-                    return
-            path, seconds, generation = request
-            if self._shutdown or generation != self._generation or path != self._path:
-                continue
-            image = self._grab(seconds)
-            if image is None:
-                continue
-            bucket = bucket_of(seconds)
-            with self._lock:
-                if generation == self._generation:
-                    self._cache.put((path, bucket), image)
-                current = generation == self._generation and self._latest == (path, bucket)
-            if current and not self._shutdown:
-                self._bridge.ready.emit(path, bucket, image)
+        try:
+            while True:
+                with self._lock:
+                    request, self._pending = self._pending, None
+                    if request is None:
+                        self._running = False
+                        return
+                path, seconds, generation = request
+                if self._shutdown or generation != self._generation or path != self._path:
+                    continue
+                try:
+                    self._make_one(path, seconds, generation)
+                except Exception as e:                   # a surprise costs this one picture, not the feature
+                    self._log_once(path, f"worker error: {type(e).__name__}: {e}")
+        finally:
+            with self._lock:                             # (however the loop ended, a later request can start a new worker)
+                self._running = False
+
+    def _make_one(self, path: str, seconds: float, generation: int) -> None:
+        image = self._grab(seconds)
+        if image is None:
+            return
+        bucket = bucket_of(seconds)
+        with self._lock:
+            if generation == self._generation:
+                self._cache.put((path, bucket), image)
+            current = generation == self._generation and self._latest == (path, bucket)
+        if current and not self._shutdown:
+            self._bridge.ready.emit(path, bucket, image)
 
     def _grab(self, seconds: float) -> Optional[QImage]:
         """One picture of the current file at `seconds`, or None (logged once per file)."""
@@ -219,7 +242,9 @@ class ThumbnailProvider(QObject):
             return None
 
     def _open(self, path: str) -> None:
+        close_asked = self._close_pending
         self._terminate_locked()
+        self._close_pending = close_asked                # (the old instance is gone, but a close asked meanwhile still stands)
         options = dict(vo="null", ao="null", aid="no", sid="no", pause="yes", hwdec="no", idle="yes", keep_open="yes",
                        hr_seek="yes" if self._exact else "no", input_default_bindings="no", loglevel="fatal",
                        vf=f"scale={2 * THUMB_MAX_W}:{2 * THUMB_H}:force_original_aspect_ratio=decrease")
@@ -236,9 +261,7 @@ class ThumbnailProvider(QObject):
         m = self._mpv
         with m.prepare_and_wait_for_event("playback-restart", timeout=LOAD_SECONDS):
             m.command("seek", float(seconds), "absolute+exact" if self._exact else "absolute+keyframes")
-        shot = m.command("screenshot-raw", "video")
-        image = QImage(shot["data"], shot["w"], shot["h"], shot["stride"], QImage.Format_RGB32)
-        return image.copy()                          # (the bytes belong to mpv's reply)
+        return image_from_shot(m.command("screenshot-raw", "video"))
 
     def _give_up(self, path, reason: str) -> None:
         """This file cannot give pictures (no video track, cannot be opened): not asked for again until it is reopened."""

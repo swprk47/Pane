@@ -107,15 +107,16 @@ def test_a_picture_for_a_place_the_pointer_left_is_not_shown(playing, pump):
     w = playing
     w.STOP_DELAY_MS = 60000                                 # nothing is requested by itself in this test
     w._on_thumbnails_on_stop_changed(True)
-    hover(w, 3.0)                                           # bucket 1
+    hover(w, 2.5)
+    here = bucket_of(w._thumb_seconds())                    # (the last second at most: sample.mp4 is only 3 s long)
     w._stop_timer.stop()                                    # (the pointer "rests": only the bucket can refuse the picture now)
-    w.thumbnail_provider.thumbnail_ready.emit(w._current_file, 0, solid())
-    assert not w.thumbnail_tip.isVisible(), "a picture for bucket 0 while the pointer is at bucket 1"
-    w.thumbnail_provider.thumbnail_ready.emit(w._current_file, bucket_of(3.0), solid())
+    w.thumbnail_provider.thumbnail_ready.emit(w._current_file, here + 1, solid())
+    assert not w.thumbnail_tip.isVisible(), "a picture for another 2 s step than the one under the pointer"
+    w.thumbnail_provider.thumbnail_ready.emit(w._current_file, here, solid())
     assert w.thumbnail_tip.isVisible()
-    w.thumbnail_provider.thumbnail_ready.emit("C:/other/file.mp4", bucket_of(3.0), solid())   # another file's picture
+    w.thumbnail_provider.thumbnail_ready.emit("C:/other/file.mp4", here, solid())             # another file's picture
     w.controller.timeline.hover_left.emit()
-    w.thumbnail_provider.thumbnail_ready.emit(w._current_file, bucket_of(3.0), solid())       # the pointer is gone
+    w.thumbnail_provider.thumbnail_ready.emit(w._current_file, here, solid())                 # the pointer is gone
     assert not w.thumbnail_tip.isVisible()
 
 
@@ -170,3 +171,21 @@ def test_the_switches_take_effect_at_once(playing, pump):
     w.STOP_DELAY_MS = 60000
     hover(w, 2.6)
     assert w.seek_tip.isVisible() and not w.thumbnail_tip.isVisible(), "stop mode: no picture while moving"
+
+
+# --- cleanup, stage B -----------------------------------------------------------------------------------
+
+def test_the_end_of_the_bar_asks_for_the_last_second_not_the_very_end(playing, monkeypatch):
+    w = playing
+    asked = []
+    monkeypatch.setattr(w.thumbnail_provider, "request", lambda path, sec: asked.append(sec))
+    hover(w, w._duration)                                    # the pointer at the right end of the bar
+    assert asked and asked[-1] <= w._duration - 1.0 + 1e-6 and asked[-1] >= 0.0
+
+
+def test_the_length_of_the_previous_video_is_forgotten_when_another_is_opened(playing, sample_video, pump):
+    w = playing
+    assert w._duration > 0
+    w.load_media_file(sample_video)
+    assert w._duration == 0.0, "until the new video says how long it is, nothing may rely on the old length"
+    assert pump(lambda: w._duration > 0, timeout=10), "and the new length does arrive"

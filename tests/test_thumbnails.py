@@ -197,3 +197,53 @@ def test_the_worker_is_a_daemon_thread_so_it_can_never_hold_the_process_open(qap
     assert p._worker.daemon is True
     assert pump(lambda: got, timeout=10)
     p.shutdown()
+
+
+# --- robustness (cleanup, stage B) --------------------------------------------------------------------
+
+def test_an_unexpected_error_in_the_worker_does_not_stop_thumbnails_for_the_session(qapp, sample_video, pump, monkeypatch):
+    p = ThumbnailProvider(exact=True)
+    got = []
+    p.thumbnail_ready.connect(lambda path, b, img: got.append(b))
+    real_put, calls = p._cache.put, []
+
+    def flaky_put(key, image):
+        calls.append(key)
+        if len(calls) == 1:
+            raise RuntimeError("surprise")
+        real_put(key, image)
+
+    monkeypatch.setattr(p._cache, "put", flaky_put)
+    p.set_file(sample_video)
+    p.request(sample_video, 0.2)
+    pump(None, timeout=1.0)
+    assert got == []
+    p.request(sample_video, 2.5)                                        # the worker must still be there for this one
+    assert pump(lambda: 1 in got, timeout=10)
+    p.shutdown()
+
+
+def test_a_close_asked_while_the_mpv_is_being_opened_is_not_lost(qapp, sample_video, monkeypatch):
+    p = ThumbnailProvider(exact=True)
+    real_open = p._open
+
+    def open_with_a_close_arriving(path):
+        p._close_pending = True                                         # the GUI asked for a close at this very moment
+        real_open(path)
+
+    monkeypatch.setattr(p, "_open", open_with_a_close_arriving)
+    p.set_file(sample_video)
+    p._grab(1.0)
+    assert p._mpv is None, "the close that was asked for must still happen"
+    p.shutdown()
+
+
+def test_a_screenshot_in_an_unexpected_format_is_refused_instead_of_given_wrong_colours():
+    from core.thumbnails import image_from_shot
+    ok = image_from_shot({"w": 4, "h": 2, "stride": 16, "format": "bgr0", "data": bytes(32)})
+    assert (ok.width(), ok.height()) == (4, 2)
+    for bad in ({"w": 4, "h": 2, "stride": 16, "format": "rgba", "data": bytes(32)},
+                {"w": 4, "h": 2, "stride": 16, "format": "bgr0", "data": bytes(10)},          # shorter than stride x height
+                {"w": 0, "h": 2, "stride": 16, "format": "bgr0", "data": bytes(32)}):
+        with pytest.raises(ValueError):
+            image_from_shot(bad)

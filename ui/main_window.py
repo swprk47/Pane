@@ -523,14 +523,19 @@ class MainWindow(QMainWindow):
     def _thumbnails_wanted(self) -> bool:
         return bool(self.thumbnails_on and self._current_file is not None and self._duration > 0)
 
+    def _thumb_seconds(self) -> float:
+        """The moment the picture is for: the time under the pointer, but never the very end (a seek to the end of a file
+        that is kept open is the riskiest one): at most the last second."""
+        return min(self._thumb_spot[0], max(0.0, self._duration - 1.0))
+
     def _request_thumbnail(self):
         if self._thumb_spot is not None and self._thumbnails_wanted():
-            self.thumbnail_provider.request(self._current_file, self._thumb_spot[0])
+            self.thumbnail_provider.request(self._current_file, self._thumb_seconds())
 
     def _on_thumbnail_ready(self, path: str, bucket: int, image):
         """A picture arrived: shown only for the file and the 2 s step the pointer is at now (a late one is dropped)."""
         spot = self._thumb_spot
-        if (spot is None or path != self._current_file or bucket != bucket_of(spot[0])
+        if (spot is None or path != self._current_file or bucket != bucket_of(self._thumb_seconds())
                 or not self.seek_tip.isVisible() or not self._thumbnails_wanted()
                 or (self.thumbnails_on_stop and self._stop_timer.isActive())):
             return
@@ -699,6 +704,7 @@ class MainWindow(QMainWindow):
         self._last_problem = None
 
         self._current_file = file_path
+        self._duration = 0.0                              # (the new video says how long it is in a moment)
         self.track_popup.hide()
         self.next_up.cancel()
         self._next_target = None
