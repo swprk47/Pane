@@ -26,3 +26,33 @@ def test_wait_for_returns_as_soon_as_the_condition_holds():
     calls = []
     assert install_test.wait_for(lambda: calls.append(1) or len(calls) == 3, timeout=5, step=0.01) is True
     assert install_test.wait_for(lambda: False, timeout=0.05, step=0.01) is False
+
+
+def test_the_update_state_is_cleared_between_the_install_and_the_update_phase():
+    """The first run of the installed app checks the real GitHub (now "up to date") and writes the time of that check;
+    left there, the daily limit would silence the check against the local test server."""
+    import winreg
+    sub = r"Software\PaneInstallTestTmp\AppSettings"
+    try:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, sub) as k:
+            for name in ("last_update_check", "update_offer_version", "update_dismissed_version", "volume"):
+                winreg.SetValueEx(k, name, 0, winreg.REG_SZ, "x")
+        install_test.reset_update_state(sub)
+        install_test.reset_update_state(sub)                      # (twice, and with nothing there: no error)
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, sub) as k:
+            left = []
+            try:
+                i = 0
+                while True:
+                    left.append(winreg.EnumValue(k, i)[0])
+                    i += 1
+            except OSError:
+                pass
+        assert left == ["volume"]
+        install_test.reset_update_state(r"Software\PaneInstallTestTmp\NoSuchKey")      # (no key at all: no error)
+    finally:
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, sub)
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, r"Software\PaneInstallTestTmp")
+        except OSError:
+            pass

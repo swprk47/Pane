@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.3.1 - 2026-10-24
+- New seek-bar thumbnails: hovering the seek bar shows a small picture of that moment just above the time. Settings > 성능 has two switches: `재생바 썸네일` (on by default) and `마우스를 멈췄을 때만 표시` (off by default; the picture appears only after the pointer rests, which keeps 4K 60 fps playback undisturbed). The picture is taken from the nearest keyframe, so it can be a few seconds off the time shown; clicking still seeks exactly. Nothing extra is created while the feature is off
 - Fix: after the window was closed the process could stay alive for up to 10 seconds (30 while an update was downloading) when the update check was waiting on a slow or silent network, which could leave a dead icon on the taskbar if the PC went to sleep just then. Closing now ends the process at once
 - Closing the app leaves a few timed `[exit]` lines in `%LOCALAPPDATA%\Pane\pane.log`, so a slow or stuck exit can be traced
-- New seek-bar thumbnails: hovering the seek bar shows a small picture of that moment just above the time. Settings > 성능 has two switches: `재생바 썸네일` (on by default) and `마우스를 멈췄을 때만 표시` (off by default; the picture appears only after the pointer rests, which keeps 4K 60 fps playback undisturbed). The picture is taken from the nearest keyframe, so it can be a few seconds off the time shown; clicking still seeks exactly. Nothing extra is created while the feature is off
 
 ## 1.3.0 - 2026-10-13
 - New in-app update: a few seconds after start Pane checks (at most once a day, only the installed app) whether a newer version exists. A glass card appears at the bottom right while nothing plays; [업데이트] downloads the installer, checks its size and SHA-256, runs it silently, and Pane restarts as the new version. The X on the card stops announcing that version. The check can be switched off in Settings > 일반 > 새 버전 알림, and About > 업데이트 확인 asks at once. The update manifest is signed (Ed25519): a tampered or unsigned manifest or installer is rejected. A copy that was not installed by the setup (unzipped, built from source) is never updated
