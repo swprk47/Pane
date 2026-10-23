@@ -68,6 +68,19 @@ class ThumbnailCache:
         return len(self._items)
 
 
+def image_from_shot(shot: dict) -> QImage:
+    """The picture in mpv's `screenshot-raw` reply (a dict with w, h, stride, format, data). Only `bgr0` (what mpv gives
+    on little-endian Windows) is understood; anything else is refused rather than shown with wrong colours."""
+    w, h, stride, data = shot.get("w"), shot.get("h"), shot.get("stride"), shot.get("data")
+    if shot.get("format") != "bgr0":
+        raise ValueError(f"unexpected screenshot format {shot.get('format')!r}")
+    if not (isinstance(w, int) and isinstance(h, int) and w > 0 and h > 0 and isinstance(stride, int) and stride >= 4 * w):
+        raise ValueError(f"unexpected screenshot size {w}x{h}, stride {stride}")
+    if data is None or len(data) < stride * h:
+        raise ValueError("the screenshot data is shorter than its size says")
+    return QImage(data, w, h, stride, QImage.Format_RGB32).copy()      # (the bytes belong to mpv's reply)
+
+
 class _Bridge(QObject):
     ready = Signal(str, int, QImage)         # emitted from the worker thread, delivered in ours
 
@@ -78,6 +91,8 @@ class ThumbnailProvider(QObject):
     feature switched off (`set_enabled(False)`) no mpv is ever created."""
 
     thumbnail_ready = Signal(str, int, QImage)       # path, bucket, picture (never for a stale request)
+
+    EXTRA_OPTIONS = {}                               # options added to the second mpv (the performance probe tries some)
 
     def __init__(self, parent=None, *, exact: bool = False, clock=time.monotonic):
         super().__init__(parent)
@@ -91,6 +106,7 @@ class ThumbnailProvider(QObject):
         self._lock = threading.Lock()                # guards _pending, _latest, _running and the cache
         self._pending = None                         # (path, seconds, generation): the newest request not yet taken
         self._latest = None                          # (path, bucket) of the newest request: what a delivered picture must match
+        self._making = None                          # (path, bucket) the worker is making right now
         self._running = False
         self._no_picture = set()                     # files that cannot give pictures (no video track, cannot be opened)
         self._logged = set()
@@ -152,6 +168,8 @@ class ThumbnailProvider(QObject):
         with self._lock:
             self._latest = key
             hit = self._cache.get(key)
+            if hit is None and key == self._making:
+                return                                   # (being made right now: it is delivered when it is ready)
             if hit is None:
                 self._pending = (path, seconds, self._generation)
                 start = not self._running
@@ -173,25 +191,50 @@ class ThumbnailProvider(QObject):
 
     # --- the worker thread --------------------------------------------------------------------------
     def _work(self) -> None:
-        while True:
-            with self._lock:
-                request, self._pending = self._pending, None
-                if request is None:
-                    self._running = False
-                    return
-            path, seconds, generation = request
-            if self._shutdown or generation != self._generation or path != self._path:
-                continue
-            image = self._grab(seconds)
-            if image is None:
-                continue
-            bucket = bucket_of(seconds)
-            with self._lock:
-                if generation == self._generation:
-                    self._cache.put((path, bucket), image)
-                current = generation == self._generation and self._latest == (path, bucket)
-            if current and not self._shutdown:
-                self._bridge.ready.emit(path, bucket, image)
+        try:
+            while True:
+                with self._lock:
+                    request, self._pending = self._pending, None
+                    if request is None:
+                        self._running = False
+                        return
+                path, seconds, generation = request
+                if self._shutdown or generation != self._generation or path != self._path:
+                    continue
+                key = (path, bucket_of(seconds))
+                with self._lock:
+                    hit = self._cache.get(key)
+                    self._making = None if hit is not None else key
+                if hit is not None:                      # (made meanwhile by the request before it)
+                    self._deliver(path, key[1], hit, generation)
+                    continue
+                try:
+                    self._make_one(path, seconds, generation)
+                except Exception as e:                   # a surprise costs this one picture, not the feature
+                    self._log_once(path, f"worker error: {type(e).__name__}: {e}")
+                finally:
+                    with self._lock:
+                        self._making = None
+        finally:
+            with self._lock:                             # (however the loop ended, a later request can start a new worker)
+                self._running = False
+
+    def _make_one(self, path: str, seconds: float, generation: int) -> None:
+        image = self._grab(seconds)
+        if image is None:
+            return
+        bucket = bucket_of(seconds)
+        with self._lock:
+            if generation == self._generation:
+                self._cache.put((path, bucket), image)
+        self._deliver(path, bucket, image, generation)
+
+    def _deliver(self, path: str, bucket: int, image: QImage, generation: int) -> None:
+        """Hand the picture over, but only while it is still the one the pointer is waiting for."""
+        with self._lock:
+            current = generation == self._generation and self._latest == (path, bucket)
+        if current and not self._shutdown:
+            self._bridge.ready.emit(path, bucket, image)
 
     def _grab(self, seconds: float) -> Optional[QImage]:
         """One picture of the current file at `seconds`, or None (logged once per file)."""
@@ -199,8 +242,10 @@ class ThumbnailProvider(QObject):
         try:
             with self._mpv_lock:
                 try:
-                    if self._close_pending or self._shutdown:
+                    if self._shutdown:
                         return None
+                    if self._close_pending:
+                        self._terminate_locked()         # (a close was asked for; this request wants a fresh instance)
                     if self._mpv is None or self._mpv_path != path:
                         self._open(path)
                         if self._close_pending or self._shutdown:
@@ -219,10 +264,14 @@ class ThumbnailProvider(QObject):
             return None
 
     def _open(self, path: str) -> None:
+        close_asked = self._close_pending
         self._terminate_locked()
+        self._close_pending = close_asked                # (the old instance is gone, but a close asked meanwhile still stands)
         options = dict(vo="null", ao="null", aid="no", sid="no", pause="yes", hwdec="no", idle="yes", keep_open="yes",
                        hr_seek="yes" if self._exact else "no", input_default_bindings="no", loglevel="fatal",
+                       vd_lavc_threads=2,                # (measured: the hidden mpv must not compete for every core; PROGRESS.md)
                        vf=f"scale={2 * THUMB_MAX_W}:{2 * THUMB_H}:force_original_aspect_ratio=decrease")
+        options.update(self.EXTRA_OPTIONS)
         self._mpv = mpv.MPV(**options)
         self._mpv_path = path
         with self._mpv.prepare_and_wait_for_event("file-loaded", "end-file", timeout=LOAD_SECONDS):
@@ -236,9 +285,7 @@ class ThumbnailProvider(QObject):
         m = self._mpv
         with m.prepare_and_wait_for_event("playback-restart", timeout=LOAD_SECONDS):
             m.command("seek", float(seconds), "absolute+exact" if self._exact else "absolute+keyframes")
-        shot = m.command("screenshot-raw", "video")
-        image = QImage(shot["data"], shot["w"], shot["h"], shot["stride"], QImage.Format_RGB32)
-        return image.copy()                          # (the bytes belong to mpv's reply)
+        return image_from_shot(m.command("screenshot-raw", "video"))
 
     def _give_up(self, path, reason: str) -> None:
         """This file cannot give pictures (no video track, cannot be opened): not asked for again until it is reopened."""
@@ -261,11 +308,19 @@ class ThumbnailProvider(QObject):
 
     def _close_instance(self, wait: float = 0.0) -> None:
         """Close the hidden mpv now, or (the worker is inside it and `wait` ran out) as soon as the worker is out."""
-        got = self._mpv_lock.acquire(timeout=wait) if wait else self._mpv_lock.acquire(blocking=False)
-        if got:
+        if not wait:
+            self._close_pending = True                   # (has_instance is False from now on)
+            threading.Thread(target=self._close_in_background, name="thumbnail-closer", daemon=True).start()
+            return
+        if self._mpv_lock.acquire(timeout=wait):         # (shutdown: the window is closing anyway, wait for it)
             try:
                 self._terminate_locked()
             finally:
                 self._mpv_lock.release()
         else:
             self._close_pending = True
+
+    def _close_in_background(self) -> None:
+        with self._mpv_lock:
+            if self._close_pending:
+                self._terminate_locked()

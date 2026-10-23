@@ -84,6 +84,7 @@ class _SwitchRow(QWidget):
         head.setStyleSheet(ROW_TITLE_QSS)
         desc = QLabel(description, self)
         desc.setStyleSheet(ROW_DESC_QSS)
+        self.title_label, self.desc_label = head, desc
         desc.setWordWrap(True)
         for label in (head, desc):
             label.setAttribute(Qt.WA_TransparentForMouseEvents)        # the row takes the click
@@ -245,14 +246,20 @@ class SettingsPanel(QWidget):
         row = self.row_thumbnails_stop
         margins = row.layout().contentsMargins()
         row.layout().setContentsMargins(margins.left() + 18, margins.top(), margins.right(), margins.bottom())
-        self._stop_dim = QGraphicsOpacityEffect(row)
-        row.setGraphicsEffect(self._stop_dim)
+        self._stop_dims = []                         # the texts are dimmed; the switch dims itself when disabled
+        for label in (row.title_label, row.desc_label):
+            effect = QGraphicsOpacityEffect(label)
+            label.setGraphicsEffect(effect)
+            self._stop_dims.append(effect)
         self.switch_thumbnails.toggled.connect(self._sync_thumbnail_rows)
         self._sync_thumbnail_rows(thumbnails_on)
 
     def _sync_thumbnail_rows(self, thumbnails_on: bool):
-        self.row_thumbnails_stop.setEnabled(bool(thumbnails_on))
-        self._stop_dim.setOpacity(1.0 if thumbnails_on else 0.45)
+        row = self.row_thumbnails_stop
+        row.setEnabled(bool(thumbnails_on))
+        row.setCursor(Qt.PointingHandCursor if thumbnails_on else Qt.ArrowCursor)
+        for effect in self._stop_dims:
+            effect.setOpacity(1.0 if thumbnails_on else 0.45)
 
     # --- tabs ---------------------------------------------------------------------------------
     @property

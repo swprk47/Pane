@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout,
     QFileDialog, QMenu, QApplication
 )
-from PySide6.QtCore import Qt, QPoint, Signal, QEvent, QTimer
+from PySide6.QtCore import Qt, QPoint, QRect, Signal, QEvent, QTimer
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent
 
 from styles.glass_theme import GLASS_THEME_QSS
@@ -243,6 +243,7 @@ class MainWindow(QMainWindow):
         self.thumbnail_provider = ThumbnailProvider(self)
         self.thumbnail_provider.thumbnail_ready.connect(self._on_thumbnail_ready)
         self._thumb_spot = None                          # (seconds, x) of the pointer while it is over the seek bar
+        self._tips_viewport = None                       # the video area the pill and the picture were placed in
         self._stop_timer = QTimer(self)                  # "only when the pointer rests": fires STOP_DELAY_MS after the last move
         self._stop_timer.setSingleShot(True)
         self._stop_timer.timeout.connect(self._request_thumbnail)
@@ -523,14 +524,19 @@ class MainWindow(QMainWindow):
     def _thumbnails_wanted(self) -> bool:
         return bool(self.thumbnails_on and self._current_file is not None and self._duration > 0)
 
+    def _thumb_seconds(self) -> float:
+        """The moment the picture is for: the time under the pointer, but never the very end (a seek to the end of a file
+        that is kept open is the riskiest one): at most the last second."""
+        return min(self._thumb_spot[0], max(0.0, self._duration - 1.0))
+
     def _request_thumbnail(self):
         if self._thumb_spot is not None and self._thumbnails_wanted():
-            self.thumbnail_provider.request(self._current_file, self._thumb_spot[0])
+            self.thumbnail_provider.request(self._current_file, self._thumb_seconds())
 
     def _on_thumbnail_ready(self, path: str, bucket: int, image):
         """A picture arrived: shown only for the file and the 2 s step the pointer is at now (a late one is dropped)."""
         spot = self._thumb_spot
-        if (spot is None or path != self._current_file or bucket != bucket_of(spot[0])
+        if (spot is None or path != self._current_file or bucket != bucket_of(self._thumb_seconds())
                 or not self.seek_tip.isVisible() or not self._thumbnails_wanted()
                 or (self.thumbnails_on_stop and self._stop_timer.isActive())):
             return
@@ -699,6 +705,7 @@ class MainWindow(QMainWindow):
         self._last_problem = None
 
         self._current_file = file_path
+        self._duration = 0.0                              # (the new video says how long it is in a moment)
         self.track_popup.hide()
         self.next_up.cancel()
         self._next_target = None
@@ -1253,6 +1260,9 @@ class MainWindow(QMainWindow):
         vp = self.viewport.geometry()
         if vp.width() <= 0 or vp.height() <= 0:
             return
+        if vp != self._tips_viewport:             # (the time pill and the picture were placed for the bar as it was:
+            self._tips_viewport = QRect(vp)       #  only a change of the video area moves it; a layout pass alone does not)
+            self._hide_seek_tips()
 
         # Controls: compact (transport only) when the full set doesn't fit.
         c = self.controller

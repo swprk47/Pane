@@ -108,6 +108,52 @@ def sweep_positions(duration: float, span: float, margin: float, t: float) -> tu
     return ratio * duration, margin + ratio * span
 
 
+def parse_thumb_options(text: str) -> dict:
+    """"cache=no,vd_lavc_threads=2" -> {"cache": "no", "vd_lavc_threads": 2}: options for the second mpv to try."""
+    out = {}
+    for part in filter(None, (p.strip() for p in (text or "").split(","))):
+        key, _, value = part.partition("=")
+        for cast in (int, float):
+            try:
+                value = cast(value)
+                break
+            except ValueError:
+                continue
+        out[key.strip()] = value
+    return out
+
+
+class LatencyTracker:
+    """How long the seek-bar pictures take: from the latest ask for a 2 s step to its answer. A picture served at once from
+    the cache took no time to make and is only counted (`cache_hits`), so it cannot pull the median down."""
+
+    def __init__(self, clock=time.perf_counter):
+        self._clock = clock
+        self._asked = {}
+        self.latencies_ms = []
+        self.cache_hits = 0
+
+    def asked(self, bucket: int) -> None:
+        self._asked[bucket] = self._clock()           # (the latest ask: an older one may have been dropped for a newer)
+
+    def answered(self, bucket: int, from_cache: bool = False) -> None:
+        t0 = self._asked.pop(bucket, None)
+        if t0 is None:
+            return
+        if from_cache:
+            self.cache_hits += 1
+        else:
+            self.latencies_ms.append((self._clock() - t0) * 1000)
+
+    @property
+    def median_ms(self) -> float:
+        return statistics.median(self.latencies_ms) if self.latencies_ms else 0.0
+
+    @property
+    def worst_ms(self) -> float:
+        return max(self.latencies_ms, default=0.0)
+
+
 def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False, sweep: str = None):
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QTimer
@@ -157,20 +203,24 @@ def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False
                 app.processEvents()
                 time.sleep(0.002)
 
-        thumbs = {"asked": {}, "latency": []}              # (--sweep) when a picture was asked for, how long it took
+        lat = LatencyTracker()                              # (--sweep) how long the pictures take
         if sweep:
             w._on_thumbnails_changed(sweep != "thumbs-off")
             w._on_thumbnails_on_stop_changed(sweep == "stop")
             real_request = w.thumbnail_provider.request
 
+            in_request = [False]
+
             def timed_request(path, seconds_):
-                thumbs["asked"][int(seconds_ // 2)] = time.perf_counter()          # (the latest ask: an older one may have been dropped)
-                real_request(path, seconds_)
+                lat.asked(int(seconds_ // 2))
+                in_request[0] = True                        # (a cache hit answers before request() returns)
+                try:
+                    real_request(path, seconds_)
+                finally:
+                    in_request[0] = False
 
             def on_ready(_path, bucket, _image):
-                t0 = thumbs["asked"].pop(bucket, None)
-                if t0 is not None:
-                    thumbs["latency"].append((time.perf_counter() - t0) * 1000)
+                lat.answered(bucket, from_cache=in_request[0])
 
             w.thumbnail_provider.request = timed_request
             w.thumbnail_provider.thumbnail_ready.connect(on_ready)
@@ -237,9 +287,8 @@ def measure(clip: str, mode: str, seconds: int, hwdec: str, opaque: bool = False
             "render_max": max((d * 1000 for _t, d in sp), default=0),
             "lag_p95": percentile(lag, 0.95), "lag_max": max(lag, default=0),
             "seconds": wall, "sweep": sweep or "",
-            "pictures": len(thumbs["latency"]),
-            "pic_ms_median": statistics.median(thumbs["latency"]) if thumbs["latency"] else 0,
-            "pic_ms_max": max(thumbs["latency"], default=0),
+            "pictures": len(lat.latencies_ms), "cache_hits": lat.cache_hits,
+            "pic_ms_median": lat.median_ms, "pic_ms_max": lat.worst_ms,
         }
     finally:
         MpvGLWidget.paintGL = orig_paint
@@ -284,6 +333,7 @@ def main():
     ap.add_argument("--hwdec", default="auto-copy", help="mpv hwdec option for this run (auto-copy, no, d3d11va, ...)")
     ap.add_argument("--label", default="")
     ap.add_argument("--opaque", action="store_true", help="experiment: opaque window without acrylic")
+    ap.add_argument("--thumb-options", default="", help="extra options for the second mpv, e.g. cache=no,vd_lavc_threads=2")
     ap.add_argument("--sweep", choices=("thumbs-off", "follow", "stop"),
                     help="walk the pointer along the seek bar while measuring (the mouse is not used), with seek-bar "
                          "thumbnails off, following the pointer, or only when it rests")
@@ -296,6 +346,9 @@ def main():
     for group in ("AppSettings", "ControllerLayout", "SpeedSettings"):
         QSettings("PanePerf", group).clear()
 
+    if args.thumb_options:
+        from core.thumbnails import ThumbnailProvider
+        ThumbnailProvider.EXTRA_OPTIONS = parse_thumb_options(args.thumb_options)
     results = []
     for clip in args.clips:
         for mode in args.modes.split(","):
@@ -304,7 +357,7 @@ def main():
             if args.sweep:
                 r = results[-1]
                 print(f"[sweep={args.sweep}] dropped vo+decoder {r['drop_vo']}+{r['drop_dec']}, memory {r['mem_mb']:.0f} MB, "
-                      f"pictures {r['pictures']}, latency median {r['pic_ms_median']:.0f} ms / worst {r['pic_ms_max']:.0f} ms",
+                      f"pictures made {r['pictures']} (+{r['cache_hits']} from the cache), latency median {r['pic_ms_median']:.0f} ms / worst {r['pic_ms_max']:.0f} ms",
                       flush=True)
     report(results, args.label or f"hwdec={args.hwdec}" + (" opaque" if args.opaque else ""))
 
