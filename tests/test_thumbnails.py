@@ -247,3 +247,40 @@ def test_a_screenshot_in_an_unexpected_format_is_refused_instead_of_given_wrong_
                 {"w": 0, "h": 2, "stride": 16, "format": "bgr0", "data": bytes(32)}):
         with pytest.raises(ValueError):
             image_from_shot(bad)
+
+
+# --- an audio file with cover art (cleanup, stage D) -----------------------------------------------------
+
+def make_mp3_with_cover(path):
+    """A tiny MP3 (about 1 s of silence) with a PNG cover in an ID3v2 APIC frame. Opened normally mpv lists the cover as a
+    video track flagged albumart; the second mpv opens files with the sound off (aid=no), and then mpv finds nothing to
+    play in such a file at all: either way no seek-bar picture may come out of a song."""
+    from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+    cover = QImage(32, 32, QImage.Format_RGB32)
+    cover.fill(0xFFC81E1E)
+    raw = QByteArray()
+    buf = QBuffer(raw)
+    buf.open(QIODevice.WriteOnly)
+    cover.save(buf, "PNG")
+    apic = b"\x00" + b"image/png\x00" + b"\x03" + b"\x00" + bytes(raw)
+    frame = b"APIC" + len(apic).to_bytes(4, "big") + b"\x00\x00" + apic
+    n = len(frame)
+    tag = b"ID3" + b"\x03\x00\x00" + bytes([(n >> 21) & 0x7F, (n >> 14) & 0x7F, (n >> 7) & 0x7F, n & 0x7F]) + frame
+    path.write_bytes(tag + (bytes([0xFF, 0xFB, 0x90, 0x04]) + bytes(413)) * 40)      # 40 MPEG frames of 417 bytes
+
+
+def test_an_audio_file_with_cover_art_gets_no_picture_and_one_log_line(qapp, tmp_path, pump, capsys):
+    song = tmp_path / "song.mp3"
+    make_mp3_with_cover(song)
+    p = ThumbnailProvider(exact=True)
+    got = []
+    p.thumbnail_ready.connect(lambda path, b, img: got.append(path))
+    p.set_file(str(song))
+    p.request(str(song), 0.3)
+    pump(None, timeout=3)
+    assert got == [], "no seek-bar picture for a song, whatever its cover looks like"
+    out = capsys.readouterr().out
+    assert str(song) in p._no_picture and out.count("[thumbnails]") == 1
+    assert "no video track" in out, "refused when the file is opened, not after a failed screenshot"
+    assert p._mpv is None, "and the second mpv is not kept for a song"
+    p.shutdown()
