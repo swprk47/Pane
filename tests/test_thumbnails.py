@@ -365,3 +365,23 @@ def test_extra_options_for_the_second_mpv_reach_it(qapp, sample_video, monkeypat
     assert p._grab(1.0) is not None
     assert seen and seen[0]["cache"] == "no" and seen[0]["vd_lavc_threads"] == 2 and seen[0]["vo"] == "null"
     p.shutdown()
+
+
+def test_the_second_mpv_uses_two_decoder_threads(qapp, sample_video, monkeypatch):
+    """Measured 2026-10-24 on 4K 60 fps (10 s sweeps, 6 runs each): dropped frames 58 on average with the default threads,
+    22.5 with two (the same as with thumbnails off, 22.7), and ~42 MB less memory: the hidden mpv must not compete with
+    the playing video for every core."""
+    seen = []
+    real_mpv = thumbnails.mpv.MPV
+
+    class Spy(real_mpv):
+        def __init__(self, **kw):
+            seen.append(dict(kw))
+            super().__init__(**kw)
+
+    monkeypatch.setattr(thumbnails.mpv, "MPV", Spy)
+    p = ThumbnailProvider(exact=True)
+    p.set_file(sample_video)
+    assert p._grab(1.0) is not None
+    assert seen[0]["vd_lavc_threads"] == 2
+    p.shutdown()

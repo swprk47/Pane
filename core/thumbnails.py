@@ -269,6 +269,7 @@ class ThumbnailProvider(QObject):
         self._close_pending = close_asked                # (the old instance is gone, but a close asked meanwhile still stands)
         options = dict(vo="null", ao="null", aid="no", sid="no", pause="yes", hwdec="no", idle="yes", keep_open="yes",
                        hr_seek="yes" if self._exact else "no", input_default_bindings="no", loglevel="fatal",
+                       vd_lavc_threads=2,                # (measured: the hidden mpv must not compete for every core; PROGRESS.md)
                        vf=f"scale={2 * THUMB_MAX_W}:{2 * THUMB_H}:force_original_aspect_ratio=decrease")
         options.update(self.EXTRA_OPTIONS)
         self._mpv = mpv.MPV(**options)
