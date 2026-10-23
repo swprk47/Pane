@@ -88,6 +88,23 @@ if ($w) {{
     return powershell(script) == "pressed"
 
 
+UPDATE_VALUES = ("last_update_check", "update_offer_version", "update_dismissed_version")
+
+
+def reset_update_state(subkey: str = r"Software\Pane\AppSettings") -> None:
+    """Forget what the update check stored. The first run of the installed app checks the real GitHub and writes the
+    time of that check; left there, the daily limit would silence the check against the local test server."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, subkey, 0, winreg.KEY_SET_VALUE) as key:
+            for name in UPDATE_VALUES:
+                try:
+                    winreg.DeleteValue(key, name)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 def wait_for(condition, timeout, step=1.0):
     end = time.time() + timeout
     while time.time() < end:
@@ -182,6 +199,7 @@ def main(argv=None) -> int:
             (serve_dir / "latest.json").write_bytes(update_manifest.make_manifest(
                 newer, version, f"{base}/{newer.name}", "install test", update_manifest.load_private_key(args.sign_key)))
             before = file_version(exe)
+            reset_update_state()
             env["PANE_UPDATE_MANIFEST_URL"] = f"{base}/latest.json"
             proc = subprocess.Popen([str(exe)], env=env)
             card = wait_for(lambda: press_button(proc.pid, "업데이트"), 40, step=2)
