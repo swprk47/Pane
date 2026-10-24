@@ -114,6 +114,11 @@ def test_readme_documents_every_key_binding_in_the_code():
     readme = (RELEASE / "README_RELEASE.txt").read_text(encoding="utf-8")
     for line in ("Space", "음소거", "자막", "PIP", "재생 정보", "전체화면"):
         assert line in readme
+    assert "Key_B" in code                       # bookmarks: B, Shift+B, Alt+arrows
+    top = (ROOT / "README.md").read_text(encoding="utf-8")
+    for text in (readme, top):
+        for needle in ("`B`" if text is top else "B  ", "Shift+B", "Alt+", "북마크"):
+            assert needle in text, needle
 
 
 # --- build script ----------------------------------------------------------
