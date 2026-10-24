@@ -97,3 +97,27 @@ def test_gap_ratios_skip_close_gaps_and_give_up_above_sixty():
     many = bm.gap_ratios([i * 50.0 for i in range(70)], 3860.0, 880.0)             # 11 px apart, 69 gaps
     assert many == []
     assert bm.gap_ratios([], 3860.0, 880.0) == [] and bm.gap_ratios([0.0, 10.0], 0.0, 880.0) == []
+
+
+# --- the engine's chapters ---------------------------------------------------------------------------------------
+
+def test_a_file_without_chapters_has_none(engine, sample_video, pump):
+    engine.load_file(sample_video)
+    assert pump(lambda: engine.get_media_info().get("width"), timeout=10)
+    assert engine.chapters() == []
+
+
+def test_chapters_reads_mpvs_chapter_list(engine, monkeypatch):
+    engine._duration = 3860.0
+    original = engine.mpv._get_property
+    raw = [{"time": 0, "title": "Intro"}, {"time": 760, "title": "Graphs"}, {"time": 1800, "title": "Proofs"}]
+    monkeypatch.setattr(engine.mpv, "_get_property", lambda name, *a, **k: raw if name == "chapter-list" else original(name, *a, **k))
+    assert engine.chapters() == [(0.0, "Intro"), (760.0, "Graphs"), (1800.0, "Proofs")]
+
+
+def test_a_failing_property_read_gives_no_chapters(engine, monkeypatch):
+    def boom(name, *a, **k):
+        raise RuntimeError("mpv is gone")
+
+    monkeypatch.setattr(engine.mpv, "_get_property", boom)
+    assert engine.chapters() == []

@@ -338,6 +338,15 @@ class PlayerEngine(QObject):
         except Exception:
             return []
 
+    def chapters(self) -> list:
+        """[(start seconds, title)] of the loaded file's own chapters (mpv's chapter-list), [] when it has fewer than two."""
+        from core.bookmarks import chapters_from_mpv
+        try:
+            raw = self.mpv._get_property("chapter-list")
+        except Exception:
+            return []
+        return chapters_from_mpv(raw, self._duration)
+
     def audio_tracks(self) -> list:
         from core.tracks import AUDIO, list_tracks
         return list_tracks(self._track_list(), AUDIO)
