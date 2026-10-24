@@ -1,6 +1,6 @@
 import ctypes
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QApplication, QGraphicsOpacityEffect
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QPushButton, QApplication, QGraphicsOpacityEffect, QFrame
+from PySide6.QtCore import Qt, Signal, QSize, QVariantAnimation, QEasingCurve
 from ui.icons import get_svg_icon, get_logo_icon
 from ui.glass_button import GlassButton
 
@@ -16,6 +16,57 @@ def native_start_window_drag(hwnd):
         return False
 
 
+class SpinButton(GlassButton):
+    """A glass button whose icon can turn round and round (while something is being waited for). When told to stop it
+    finishes the turn it is in, so the icon always comes to rest upright."""
+    TURN_MS = 900
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._angle = 0.0
+        self._spin = QVariantAnimation(self)
+        self._spin.setStartValue(0.0)
+        self._spin.setEndValue(360.0)
+        self._spin.setDuration(self.TURN_MS)
+        self._spin.setEasingCurve(QEasingCurve.Linear)
+        self._spin.setLoopCount(-1)
+        self._spin.valueChanged.connect(self._on_angle)
+        self._spin.finished.connect(self._on_spin_finished)
+
+    @property
+    def spinning(self) -> bool:
+        return self._spin.state() == QVariantAnimation.Running
+
+    def angle(self) -> float:
+        return self._angle
+
+    def set_spinning(self, on: bool):
+        if on:
+            self._spin.setLoopCount(-1)
+            if not self.spinning:
+                self._spin.start()
+        elif self.spinning:
+            self._spin.setLoopCount(self._spin.currentLoop() + 1)     # (the turn it is in is the last one)
+
+    def _on_angle(self, value):
+        self._angle = float(value)
+        self.update()
+
+    def _on_spin_finished(self):
+        self._angle = 0.0
+        self.update()
+
+    def _draw_icon(self, p, icon, opacity, scale=1.0):
+        if not self._angle:
+            return super()._draw_icon(p, icon, opacity, scale)
+        p.save()
+        p.translate(self.width() / 2.0, self.height() / 2.0)
+        p.rotate(self._angle)
+        p.translate(-self.width() / 2.0, -self.height() / 2.0)
+        super()._draw_icon(p, icon, opacity, scale)
+        p.restore()
+
+
 class GlassTitleBar(QWidget):
     """
     Apple Glass-styled custom frameless title bar that floats over the top of the video.
@@ -24,6 +75,7 @@ class GlassTitleBar(QWidget):
     window. Uses native Windows dragging and modern SVG vector icons.
     """
     pip_toggled = Signal()
+    update_clicked = Signal()           # the 업데이트 확인 button (home screen only)
     activity = Signal()                 # the mouse moved over the bar: bring the controls back
 
     HEIGHT = 38
@@ -74,6 +126,17 @@ class GlassTitleBar(QWidget):
         self.btn_pip.clicked.connect(self.pip_toggled.emit)
         layout.addWidget(self.btn_pip)
 
+        # Check for a new version (the home screen only; turns while it waits), then a divider before the window buttons
+        self.btn_update = SpinButton(self, "flat", 28, icon_px=13, radius=8)
+        self.btn_update.setIcon(get_svg_icon("refresh", size=13))
+        self.btn_update.setToolTip("업데이트 확인")
+        self.btn_update.clicked.connect(self.update_clicked.emit)
+        layout.addWidget(self.btn_update)
+        self.sep_update = QFrame(self)
+        self.sep_update.setFixedSize(1, 16)
+        self.sep_update.setStyleSheet("background: rgba(255, 255, 255, 0.22); border: none;")
+        layout.addWidget(self.sep_update)
+
         # Minimize Button (SVG)
         self.btn_min = GlassButton(self, "flat", 28, icon_px=12, radius=8)
         self.btn_min.setIcon(get_svg_icon("minimize", size=12))
@@ -96,7 +159,12 @@ class GlassTitleBar(QWidget):
         layout.addWidget(self.btn_close)
 
     def _buttons(self):
-        return (self.logo_btn, self.btn_pip, self.btn_min, self.btn_max, self.btn_close)
+        return (self.logo_btn, self.btn_pip, self.btn_update, self.btn_min, self.btn_max, self.btn_close)
+
+    def set_update_visible(self, visible: bool):
+        """The update button (and its divider) belong to the home screen: out of the way while a video is open."""
+        self.btn_update.setVisible(visible)
+        self.sep_update.setVisible(visible)
 
     def set_opacity(self, value: float):
         value = max(0.0, min(1.0, value))

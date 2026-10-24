@@ -293,6 +293,8 @@ class MainWindow(QMainWindow):
         self.controller.opacity_changed.connect(self._on_controls_opacity)
         self.title_bar.activity.connect(self.controller.trigger_activity)
         self.title_bar.installEventFilter(self)
+        self._home_check = False                          # the home screen's update check is running
+        self.title_bar.update_clicked.connect(self._check_update_from_home)
         self.top_scrim.hide()
 
         self.osd = GlassOSDWidget(self.central_widget)
@@ -738,39 +740,80 @@ class MainWindow(QMainWindow):
     def show_about(self):
         self._build_about_box().exec()
 
-    def _on_about_check(self, box, button):
-        """"업데이트 확인": ask now (whatever the daily time and the switch say) and show the answer in the dialog;
-        when there is an update the button becomes "지금 업데이트"."""
-        if button.text() == "지금 업데이트":
-            self._start_update()
-            box.close()
-            return
+    UPDATE_CHECK_TIMEOUT_MS = 20000
+
+    def _ask_for_update(self, done):
+        """Ask for a version check now (whatever the daily time and the switch say) and call `done(kind, payload)` once
+        with ("current", None), ("available", manifest) or ("failed", message). (A check that was already running, the
+        automatic one, may end without a word: it does not wait for ever.)"""
         checker = self.update_checker
-        button.setEnabled(False)
-        box.setInformativeText("확인하는 중…")
         state = {"done": False}
         handlers = {}
 
-        def done(text, can_update=False):
+        def finish(kind, payload=None):
+            if state["done"]:
+                return
             state["done"] = True
             for signal, handler in handlers.items():
                 try:
                     signal.disconnect(handler)
                 except (RuntimeError, TypeError):
                     pass
-            box.setInformativeText(text)
-            button.setEnabled(True)
-            if can_update:
-                button.setText("지금 업데이트")
+            done(kind, payload)
 
-        handlers[checker.up_to_date] = lambda: done(f"최신 버전이에요 (v{APP_VERSION})")
-        handlers[checker.update_available] = lambda m: done(f"새 버전이 있어요: {m.version}", True)
-        handlers[checker.check_failed] = lambda message: done(message)
+        handlers[checker.up_to_date] = lambda: finish("current")
+        handlers[checker.update_available] = lambda m: finish("available", m)
+        handlers[checker.check_failed] = lambda message: finish("failed", message)
         for signal, handler in handlers.items():
             signal.connect(handler)
-        # (a check that was already running, the automatic one, may end without a word: do not wait for ever)
-        QTimer.singleShot(20000, lambda: None if state["done"] else done("새 버전을 확인하지 못했어요"))
+        QTimer.singleShot(self.UPDATE_CHECK_TIMEOUT_MS, lambda: finish("failed", "새 버전을 확인하지 못했어요"))
         checker.check(manual=True)
+
+    def _on_about_check(self, box, button):
+        """"업데이트 확인": ask now and show the answer in the dialog; when there is an update the button becomes
+        "지금 업데이트"."""
+        if button.text() == "지금 업데이트":
+            self._start_update()
+            box.close()
+            return
+        button.setEnabled(False)
+        box.setInformativeText("확인하는 중…")
+
+        def done(kind, payload):
+            button.setEnabled(True)
+            if kind == "current":
+                box.setInformativeText(f"최신 버전이에요 (v{APP_VERSION})")
+            elif kind == "available":
+                box.setInformativeText(f"새 버전이 있어요: {payload.version}")
+                button.setText("지금 업데이트")
+            else:
+                box.setInformativeText(payload)
+
+        self._ask_for_update(done)
+
+    def _check_update_from_home(self):
+        """The button next to PIP: it turns while the check runs; the answer is a pill at the top (or the update card)."""
+        if self._home_check:
+            return
+        self._home_check = True
+        button = self.title_bar.btn_update
+        button.set_spinning(True)
+        self.osd.show_message("확인하는 중…", "refresh")
+
+        def done(kind, payload):
+            self._home_check = False
+            button.set_spinning(False)
+            if kind == "current":
+                self.osd.show_message(f"최신 버전이에요 (v{APP_VERSION})", "check")
+            elif kind == "available":
+                self._update_offer = payload              # (asked for by hand: shown even if its X was pressed before)
+                if self.update_card.mode not in ("progress", "installing"):
+                    self.update_card.show_offer(payload.version, payload.notes)
+                self._refresh_update_card()
+            else:
+                self.osd.show_message(payload, "warning")
+
+        self._ask_for_update(done)
 
     def _on_copy_diagnostics(self, button):
         self.copy_diagnostics()
@@ -840,6 +883,7 @@ class MainWindow(QMainWindow):
         self.top_scrim.set_title(file_name)
         self.top_scrim.show()
         self.controller.set_media_loaded(True)
+        self.title_bar.set_update_visible(False)
 
         resume_pos = self.app_settings.get_resume_position(file_path)
         start_time = 0.0
@@ -1004,6 +1048,7 @@ class MainWindow(QMainWindow):
         self.thumbnail_provider.set_file(None)
         self.top_scrim.hide()
         self.controller.set_media_loaded(False)
+        self.title_bar.set_update_visible(True)
         self.viewport.set_has_frame(False)
         self.app_settings.remove_recent_file(path)          # (a file that does not open is not one to resume)
         self._refresh_start_screen()
