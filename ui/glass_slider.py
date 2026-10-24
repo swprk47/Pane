@@ -4,8 +4,8 @@ Slider with the glass look: thin track that thickens, a round white handle that 
 Used by the timeline, the volume popup and the speed panel. Click / drag set the value where the pointer
 is (no page-step jumps); ``snap_step`` rounds to a step (the speed slider moves in 0.05x = 5 units).
 """
-from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QColor, QPainter, QRadialGradient
+from PySide6.QtCore import Qt, QRect, QRectF
+from PySide6.QtGui import QColor, QPainter, QRadialGradient, QRegion
 from PySide6.QtWidgets import QSlider
 
 from ui.glass_button import Tweening
@@ -69,7 +69,11 @@ class GlassSlider(QSlider, Tweening):
     def track_thickness(self) -> float:
         return TRACK + (TRACK_HOVER - TRACK) * self._hover
 
-    # --- hook for a slider that adds to the track (the timeline's hover preview) ----------------
+    # --- hooks for a slider that adds to the track (the timeline's hover preview, pins and gaps) ---
+    def track_gaps(self, margin: float, span: float, cy: float, thickness: float) -> list:
+        """Rectangles (QRect) cut out of the track and its filled part: the video shows through (horizontal sliders only)."""
+        return []
+
     def paint_over_track(self, p, margin: float, span: float, cy: float, thickness: float):
         """Called after the filled part and before the handle (horizontal sliders only)."""
 
@@ -136,11 +140,19 @@ class GlassSlider(QSlider, Tweening):
             hx, hy = cx, m + (1.0 - ratio) * span
             fill = QRectF(cx - t / 2, hy, t, (ratio) * span)
         p.setPen(Qt.NoPen)
+        gaps = self.track_gaps(m, span, cy, t) if horizontal else []
+        if gaps:                                       # (drawn through a clip, so the gap is really empty)
+            region = QRegion(self.rect())
+            for gap in gaps:
+                region = region.subtracted(QRegion(gap))
+            p.setClipRegion(region)
         p.setBrush(TRACK_COLOR)
         p.drawRoundedRect(groove, t / 2, t / 2)
         if self.isEnabled() and ratio > 0:
             p.setBrush(FILL_COLOR)
             p.drawRoundedRect(fill, t / 2, t / 2)
+        if gaps:
+            p.setClipping(False)
         if horizontal:
             self.paint_over_track(p, m, span, cy, t)
         d = self.handle_diameter()
