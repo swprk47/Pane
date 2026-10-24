@@ -1,4 +1,5 @@
 import json
+import os
 from PySide6.QtCore import QSettings
 
 APP_NAME = "Pane"
@@ -40,6 +41,74 @@ class AppSettings:
             oldest_key = next(iter(positions))
             del positions[oldest_key]
         self._set_dict("resume_positions", positions)
+
+    # --- what is remembered per video: its speed and its audio / subtitle choice ------------------------------------
+    # A video's own values win; a field it has none of falls back to the last values set in the same folder (a lecture
+    # series keeps its speed from one week to the next). Streams have no folder.
+
+    MEMORY_VIDEOS, MEMORY_FOLDERS = 100, 30
+
+    @staticmethod
+    def _folder_key(file_path: str):
+        if not file_path or "://" in file_path:
+            return None
+        return os.path.normcase(os.path.dirname(os.path.abspath(file_path)))
+
+    @staticmethod
+    def _track_memory(value):
+        """A remembered track: {"lang": str, "title": str} with at least one of them; None when it is anything else."""
+        if not isinstance(value, dict):
+            return None
+        lang, title = value.get("lang", ""), value.get("title", "")
+        if not isinstance(lang, str) or not isinstance(title, str) or not (lang or title):
+            return None
+        return {"lang": lang, "title": title}
+
+    @classmethod
+    def _clean_memory(cls, entry) -> dict:
+        """Only the fields that are valid; an entry that is not even a dict is nothing."""
+        if not isinstance(entry, dict):
+            return {}
+        out = {}
+        speed = entry.get("speed")
+        if isinstance(speed, (int, float)) and not isinstance(speed, bool) and 0 < speed < 100:
+            out["speed"] = round(float(speed), 2)
+        audio = cls._track_memory(entry.get("audio"))
+        if audio:
+            out["audio"] = audio
+        sub = entry.get("sub")
+        if sub == "off":
+            out["sub"] = "off"
+        elif cls._track_memory(sub):
+            out["sub"] = cls._track_memory(sub)
+        return out
+
+    def get_playback_memory(self, file_path: str) -> dict:
+        """{"speed": float, "audio": {...}, "sub": {...} or "off"}: only the fields known for this video or its folder."""
+        mine = self._clean_memory(self._get_dict("playback_memory").get(file_path))
+        key = self._folder_key(file_path)
+        folder = self._clean_memory(self._get_dict("folder_memory").get(key)) if key else {}
+        return {**folder, **mine}
+
+    def save_playback_memory(self, file_path: str, update_folder: bool = True, **fields) -> None:
+        """Remember `speed`, `audio`, `sub` for this video, and (unless update_folder is False: a deliberate exception such
+        as resetting the speed of one hard video) as the folder's last values."""
+        clean = self._clean_memory({k: v for k, v in fields.items() if k in ("speed", "audio", "sub")})
+        if not file_path or not clean:
+            return
+        self._remember("playback_memory", file_path, clean, self.MEMORY_VIDEOS)
+        key = self._folder_key(file_path)
+        if update_folder and key:
+            self._remember("folder_memory", key, clean, self.MEMORY_FOLDERS)
+
+    def _remember(self, store: str, key: str, fields: dict, limit: int) -> None:
+        data = self._get_dict(store)
+        entry = self._clean_memory(data.pop(key, None))
+        entry.update(fields)
+        data[key] = entry                                  # (last in the order = most recently set)
+        while len(data) > limit:
+            del data[next(iter(data))]
+        self._set_dict(store, data)
 
     def get_duration(self, file_path: str) -> float:
         """Length in seconds remembered for a file (0.0 when never seen): the start screen's progress line."""
