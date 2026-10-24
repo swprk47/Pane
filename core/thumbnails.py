@@ -13,7 +13,7 @@ from typing import Optional
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QImage
 
-from core import player_engine          # noqa: F401  (puts lib/mpv on PATH before mpv is imported)
+from core import app_log, player_engine          # noqa: F401  (player_engine puts lib/mpv on PATH before mpv is imported)
 import mpv
 
 THUMB_H = 90                 # the picture's logical height
@@ -302,7 +302,8 @@ class ThumbnailProvider(QObject):
         m, self._mpv, self._mpv_path, self._close_pending = self._mpv, None, None, False
         if m is not None:
             try:
-                m.terminate()
+                with app_log.quiet_native_errors():
+                    m.terminate()
             except Exception as e:
                 print(f"[thumbnails] closing the second mpv failed: {e}")
 

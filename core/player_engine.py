@@ -18,7 +18,7 @@ def _setup_mpv_path():
 
 _setup_mpv_path()
 import mpv
-from core import audio_presets
+from core import app_log, audio_presets
 
 # The one speed range: the keys, the speed panel's slider and its typed input all stay inside it.
 MIN_SPEED, MAX_SPEED = 0.25, 4.0
@@ -521,6 +521,7 @@ class PlayerEngine(QObject):
         """Cleanly terminate the mpv core engine."""
         self._closing = True
         try:
-            self.mpv.terminate()
+            with app_log.quiet_native_errors():
+                self.mpv.terminate()
         except Exception:
             pass

@@ -8,9 +8,11 @@ every user: nothing in the payload is read before it verifies.
 """
 import base64
 import binascii
+import ctypes
 import hashlib
 import http.client
 import json
+import msvcrt
 import os
 import re
 import subprocess
@@ -151,6 +153,7 @@ def download_installer(manifest: Manifest, dest_dir, progress: Optional[Callable
     """Download the installer the manifest names into `dest_dir` and return its path. The bytes go to a `.part` file
     first and are renamed only when the size and the SHA-256 match the manifest; on any failure the `.part` file is
     removed and an earlier good copy is left alone."""
+    release_installer_locks()                     # (a try that did not finish may still hold the file it started)
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
     final = dest_dir / f"Pane-{manifest.version}-setup.exe"
@@ -162,7 +165,11 @@ def download_installer(manifest: Manifest, dest_dir, progress: Optional[Callable
                 raise UpdateError("the file is not the size the manifest says")
             sha = hashlib.sha256()
             done = 0
-            with open(part, "wb") as out:
+            try:
+                out = open(part, "wb")
+            except OSError as e:
+                raise UpdateError(f"could not save the file ({e}); check the disk")
+            with out:
                 while True:
                     try:
                         chunk = response.read(CHUNK)
@@ -173,7 +180,10 @@ def download_installer(manifest: Manifest, dest_dir, progress: Optional[Callable
                     done += len(chunk)
                     if done > manifest.size:
                         raise UpdateError("the file is bigger than the manifest says")
-                    out.write(chunk)
+                    try:
+                        out.write(chunk)
+                    except OSError as e:
+                        raise UpdateError(f"could not save the file ({e}); is the disk full?")
                     sha.update(chunk)
                     if progress:
                         progress(done, manifest.size)
@@ -233,11 +243,57 @@ def installer_command(path, scope: str) -> list:
     return [str(path), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/RELAUNCH", flags[scope]]
 
 
-def launch_installer(path, scope: str) -> None:
+_held_locks = []                                    # installer files this app keeps locked until it is gone or tries again
+
+
+def _open_locked(path):
+    """The file opened for reading with no sharing of write, delete or rename: nobody can change it while it is open."""
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.restype = ctypes.c_void_p
+    kernel32.CreateFileW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32,
+                                     ctypes.c_uint32, ctypes.c_void_p]
+    GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING = 0x80000000, 0x1, 3
+    handle = kernel32.CreateFileW(str(path), GENERIC_READ, FILE_SHARE_READ, None, OPEN_EXISTING, 0, None)
+    if handle is None or handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDONLY | os.O_BINARY), "rb")
+
+
+def release_installer_locks() -> None:
+    while _held_locks:
+        try:
+            _held_locks.pop().close()
+        except OSError:
+            pass
+
+
+def launch_installer(path, scope: str, sha256: Optional[str] = None) -> None:
     """Start the installer and return at once: it closes this app itself. A failure (a policy blocking the file, say)
-    is an UpdateError that names the file, so it can be run by hand."""
+    is an UpdateError that names the file, so it can be run by hand.
+
+    With `sha256` (the manifest's) the file is first locked against any change, then read once more through that lock
+    and compared: what was checked after the download cannot be swapped for another file before it starts. The lock
+    stays until this app is gone (the setup may start a second, elevated copy of the file a moment later)."""
+    locked = None
     try:
-        subprocess.Popen(installer_command(path, scope), creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
-                         close_fds=True)
-    except OSError as e:
-        raise UpdateError(f"could not start the installer ({e}); it is saved at {path}")
+        if sha256:
+            try:
+                locked = _open_locked(path)
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: locked.read(CHUNK), b""):
+                    digest.update(chunk)
+            except OSError as e:
+                raise UpdateError(f"could not read the installer ({e}); it is saved at {path}")
+            if digest.hexdigest() != sha256.lower():
+                raise UpdateError("the installer changed after it was checked; it was not started")
+        try:
+            subprocess.Popen(installer_command(path, scope), creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+                             close_fds=True)
+        except OSError as e:
+            raise UpdateError(f"could not start the installer ({e}); it is saved at {path}")
+    except BaseException:
+        if locked is not None:
+            locked.close()
+        raise
+    if locked is not None:
+        _held_locks.append(locked)

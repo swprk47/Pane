@@ -41,6 +41,10 @@ def restore_streams(monkeypatch):
     monkeypatch.setattr(sys, "stdout", sys.stdout)
     monkeypatch.setattr(sys, "stderr", sys.stderr)
     monkeypatch.setattr(sys, "excepthook", sys.excepthook)
+    yield
+    import faulthandler
+    faulthandler.disable()                          # (install() switches it on for the log file it opened)
+    app_log._fault_stream = None
 
 
 def test_log_is_not_installed_when_running_from_source(restore_streams, tmp_path):
@@ -225,3 +229,77 @@ def test_the_build_bundles_the_cffi_backend_that_pynacl_imports(monkeypatch):
     cmd = seen[0]
     hidden = [cmd[i + 1] for i, a in enumerate(cmd) if a == "--hidden-import"]
     assert "_cffi_backend" in hidden and "pywinstyles" in hidden
+
+
+# --- a crash the Python side cannot catch (a native one) leaves its Python stack in the log -----------------------------
+
+def _run(code: str, log, *, check_exit=None):
+    import subprocess
+    result = subprocess.run([sys.executable, "-c", code, str(ROOT), str(log)], capture_output=True, text=True, timeout=60)
+    if check_exit is not None:
+        assert result.returncode == check_exit, (result.returncode, result.stdout, result.stderr)
+    return result
+
+
+_PRELUDE = '''
+import sys
+sys.path.insert(0, sys.argv[1])
+from core import app_log
+app_log.install(force=True, path=__import__("pathlib").Path(sys.argv[2]))
+import faulthandler, ctypes
+'''
+
+
+def test_a_native_crash_leaves_the_python_stack_in_the_log(tmp_path):
+    log = tmp_path / "pane.log"
+    code = _PRELUDE + '''
+def where_it_dies():
+    print("about to crash", flush=True)
+    faulthandler._read_null()
+where_it_dies()
+'''
+    result = _run(code, log)
+    assert result.returncode != 0, "the process really died"
+    text = log.read_text(encoding="utf-8", errors="replace")
+    assert "about to crash" in text
+    assert "Windows fatal exception: access violation" in text
+    assert "where_it_dies" in text, "the Python call that was running is named"
+
+
+def _raise_benign_seh(guarded: bool) -> str:
+    """What libmpv does inside terminate(): an SEH exception that it handles itself (ctypes survives it too)."""
+    return f'''
+def libmpv_like():
+    try:
+        ctypes.windll.kernel32.RaiseException(0xE24C4A02, 0, 0, None)
+    except OSError:
+        pass
+'''
+
+
+def test_the_harmless_mpv_exception_is_not_logged_as_a_crash_while_quiet_but_real_ones_still_are(tmp_path):
+    log = tmp_path / "pane.log"
+    control = tmp_path / "control.log"
+    benign = _raise_benign_seh(True)
+    # control: with the handler on, the benign exception does look like a crash in the log (so the test below proves something)
+    _run(_PRELUDE + benign + "libmpv_like()\n", control, check_exit=0)
+    assert "0xe24c4a02" in control.read_text(encoding="utf-8", errors="replace").lower()
+    code = _PRELUDE + benign + '''
+with app_log.quiet_native_errors():
+    libmpv_like()
+print("enabled again:", faulthandler.is_enabled(), flush=True)
+faulthandler._read_null()
+'''
+    result = _run(code, log)
+    text = log.read_text(encoding="utf-8", errors="replace")
+    assert "0xe24c4a02" not in text.lower(), "no fake crash for the harmless exception"
+    assert "enabled again: True" in text
+    assert "Windows fatal exception: access violation" in text, "a real crash after it is still recorded"
+    assert result.returncode != 0
+
+
+def test_quiet_native_errors_does_nothing_when_the_log_is_not_installed():
+    with app_log.quiet_native_errors():            # (running from source: nothing was enabled, nothing is touched)
+        pass
+    import faulthandler
+    assert not faulthandler.is_enabled()

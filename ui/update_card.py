@@ -13,6 +13,7 @@ draws itself and reports the two choices: ``update_clicked`` and ``dismissed``.
 """
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import Qt as GuiQt             # (the text helpers of Qt live in QtGui)
 from PySide6.QtWidgets import QWidget
 
 from ui.glass_button import GlassButton, paint_glass_panel
@@ -61,7 +62,11 @@ class UpdateCard(QWidget):
     def show_offer(self, version: str, notes: str = ""):
         self._version = version
         self._set("offer", f"새 버전 {version}", "지금 업데이트할까요?", buttons=True, update_label="업데이트")
-        self.setToolTip(notes)
+        self._set_tip(notes)
+
+    def _set_tip(self, text: str):
+        """The text as it is: Qt shows a tooltip that looks like HTML as HTML (a release note with a `<` would be eaten)."""
+        self.setToolTip(GuiQt.convertFromPlainText(text, GuiQt.WhiteSpaceNormal) if text else "")   # (not the default: it makes every space unbreakable, so a long message could not wrap)
 
     def show_progress(self, done: int, total: int):
         self._fraction = max(0.0, min(1.0, done / total)) if total else 0.0
@@ -73,7 +78,7 @@ class UpdateCard(QWidget):
 
     def show_failure(self, message: str):
         self._set("failed", "업데이트하지 못했어요", message, buttons=True, update_label="다시 시도")
-        self.setToolTip(message)                    # (the line on the card is cut to its width: the tooltip has all of it)
+        self._set_tip(message)                    # (the line on the card is cut to its width: the tooltip has all of it)
 
     def hide_card(self):
         self.mode = "hidden"

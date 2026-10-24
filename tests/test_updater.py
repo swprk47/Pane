@@ -285,3 +285,114 @@ def test_old_installers_and_partial_files_are_removed_from_the_download_folder(t
     remove_old_installers(tmp_path)
     assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt"]
     remove_old_installers(tmp_path / "does-not-exist")          # (no folder yet: nothing to do, no error)
+
+
+def test_a_download_without_a_length_that_ends_early_is_deleted_and_raises(server, tmp_path):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER[:1000], "none")      # no Content-Length at all, the connection just ends
+    with pytest.raises(UpdateError, match="incomplete"):
+        download_installer(manifest_for(server), tmp_path / "dl")
+    assert list((tmp_path / "dl").iterdir()) == []
+
+
+def test_a_full_disk_is_an_update_error_that_says_so_and_leaves_nothing(server, tmp_path, monkeypatch):
+    import errno
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER, None)
+    real_open = open
+
+    class FullDisk:
+        def __init__(self, file):
+            self._file = file
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self._file.close()
+
+        def write(self, data):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(updater_module, "open", lambda path, mode="r": FullDisk(real_open(path, mode)), raising=False)
+    with pytest.raises(UpdateError, match="disk"):
+        download_installer(manifest_for(server), tmp_path / "dl")
+    assert list((tmp_path / "dl").iterdir()) == [], "the half-written file is removed"
+
+
+def test_a_download_folder_that_cannot_be_written_is_an_update_error(server, tmp_path, monkeypatch):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER, None)
+
+    def refuse(path, mode="r"):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(updater_module, "open", refuse, raising=False)
+    with pytest.raises(UpdateError, match="disk"):
+        download_installer(manifest_for(server), tmp_path / "dl")
+
+
+# --- the installer cannot be swapped between the check and the start --------------------------------------
+
+def _sha(data) -> str:
+    import hashlib
+    return hashlib.sha256(data).hexdigest()
+
+
+def test_the_installer_is_locked_against_writes_and_replacement_from_the_check_on(tmp_path, monkeypatch):
+    exe = tmp_path / "Pane-1.3.0-setup.exe"
+    exe.write_bytes(INSTALLER)
+    other = tmp_path / "evil.exe"
+    other.write_bytes(b"MZ-evil")
+    attempts = []
+
+    def fake_popen(command, **kwargs):
+        for label, attempt in (("write", lambda: open(exe, "r+b")),
+                               ("replace", lambda: __import__("os").replace(other, exe)),
+                               ("delete", lambda: exe.unlink())):
+            try:
+                attempt()
+                attempts.append((label, "worked"))
+            except PermissionError:
+                attempts.append((label, "refused"))
+        return object()
+
+    monkeypatch.setattr(updater_module.subprocess, "Popen", fake_popen)
+    try:
+        launch_installer(exe, "user", sha256=_sha(INSTALLER))
+        assert attempts == [("write", "refused"), ("replace", "refused"), ("delete", "refused")], attempts
+        with pytest.raises(PermissionError):                        # (still held: the app is about to close, the installer runs)
+            open(exe, "r+b")
+    finally:
+        updater_module.release_installer_locks()
+    assert exe.read_bytes() == INSTALLER
+    with open(exe, "r+b"):                                          # released: the file is free again
+        pass
+
+
+def test_an_installer_that_no_longer_matches_its_hash_is_not_started(tmp_path, monkeypatch):
+    exe = tmp_path / "Pane-1.3.0-setup.exe"
+    exe.write_bytes(INSTALLER + b"tampered")
+    started = []
+    monkeypatch.setattr(updater_module.subprocess, "Popen", lambda *a, **k: started.append(a))
+    with pytest.raises(UpdateError, match="changed"):
+        launch_installer(exe, "user", sha256=_sha(INSTALLER))
+    assert started == []
+    exe.write_bytes(b"free")                                        # and nothing stays locked
+
+
+def test_a_missing_installer_is_an_update_error_not_a_crash(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater_module.subprocess, "Popen", lambda *a, **k: pytest.fail("started a missing file"))
+    with pytest.raises(UpdateError):
+        launch_installer(tmp_path / "gone.exe", "user", sha256=_sha(INSTALLER))
+
+
+def test_a_new_download_can_replace_a_file_that_is_still_locked_from_a_try_that_did_not_finish(server, tmp_path, monkeypatch):
+    """The administrator prompt was cancelled and the user presses [다시 시도]: the file this app locked must not block it."""
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER, None)
+    dl = tmp_path / "dl"
+    first = download_installer(manifest_for(server), dl)
+    monkeypatch.setattr(updater_module.subprocess, "Popen", lambda *a, **k: object())
+    try:
+        launch_installer(first, "user", sha256=_sha(INSTALLER))
+        again = download_installer(manifest_for(server), dl)
+        assert again.read_bytes() == INSTALLER
+    finally:
+        updater_module.release_installer_locks()

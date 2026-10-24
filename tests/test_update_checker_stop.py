@@ -9,7 +9,7 @@ from update_helpers import server                # noqa: F401  (a fixture the ma
 
 def test_a_stopped_checker_starts_nothing(make, pump, monkeypatch, server):
     started = []
-    monkeypatch.setattr(uc, "launch_installer", lambda path, scope: started.append(path))
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope, sha256=None: started.append(path))
     checker, _, events = make()
     checker.check()
     assert pump(lambda: "update_available" in names(events), timeout=5)
@@ -24,7 +24,7 @@ def test_a_stopped_checker_starts_nothing(make, pump, monkeypatch, server):
 
 def test_a_download_that_sees_the_stop_flag_is_abandoned(make, monkeypatch):
     started = []
-    monkeypatch.setattr(uc, "launch_installer", lambda path, scope: started.append(path))
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope, sha256=None: started.append(path))
 
     def fake_download(manifest, dest, progress=None, timeout=30.0):
         progress(1, 2)                                   # (the worker reports progress: the stop flag is checked here)
@@ -43,7 +43,7 @@ def test_a_download_that_sees_the_stop_flag_is_abandoned(make, monkeypatch):
 def test_a_close_during_the_last_step_starts_no_installer(make, monkeypatch):
     """The window closed after the last chunk was reported: the verified file must not be launched (it would relaunch Pane)."""
     started = []
-    monkeypatch.setattr(uc, "launch_installer", lambda path, scope: started.append(path))
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope, sha256=None: started.append(path))
     checker, _, events = make()
 
     def fake_download(manifest, dest, progress=None, timeout=30.0):

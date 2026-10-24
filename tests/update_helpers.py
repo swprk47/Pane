@@ -32,7 +32,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             return
         body, declared = route
         self.send_response(200)
-        self.send_header("Content-Length", str(len(body) if declared is None else declared))
+        if declared != "none":                       # ("none": no length at all, the body just ends)
+            self.send_header("Content-Length", str(len(body) if declared is None else declared))
         self.end_headers()
         self.wfile.write(body)                       # (declared bigger than the body: the connection just ends early)
 
