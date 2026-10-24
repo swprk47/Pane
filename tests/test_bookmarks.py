@@ -134,3 +134,12 @@ def test_chapters_are_not_cut_by_the_previous_videos_length(engine, monkeypatch)
 
     monkeypatch.setattr(engine.mpv, "_get_property", prop)
     assert engine.chapters() == [(0.0, "Intro"), (1800.0, "Graphs"), (3000.0, "Proofs")]
+
+
+def test_a_file_with_chapters_gives_them_from_the_real_mpv(engine, pump):
+    """tests/assets/chapters.mkv is sample.mp4 remuxed with three chapters (Intro 0 s, Middle 1 s, End 2 s)."""
+    from pathlib import Path
+    path = Path(__file__).parent / "assets" / "chapters.mkv"
+    engine.load_file(str(path))
+    assert pump(lambda: engine.get_media_info().get("width") and engine.chapters(), timeout=10)
+    assert engine.chapters() == [(0.0, "Intro"), (1.0, "Middle"), (2.0, "End")]
