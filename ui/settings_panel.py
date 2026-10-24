@@ -40,6 +40,7 @@ LECTURE_ROW = ("강의 음성", "먹먹한 목소리를 또렷하게 하고, 작
 THUMBNAILS_ROW = ("재생바 썸네일", "재생바에 마우스를 올리면 그 위치의 장면을 보여 줍니다.")
 THUMBNAILS_STOP_ROW = ("마우스를 멈췄을 때만 표시", "훑는 동안은 시간만 보이고 잠깐 멈추면 장면이 나타나요. 4K 60fps처럼 영상이 끊길 때 켜 보세요.")
 UPDATES_ROW = ("새 버전 알림", "하루에 한 번 새 버전이 있는지 확인하고, 있으면 알려 줘요. 꺼도 정보 창의 ‘업데이트 확인’은 쓸 수 있어요.")
+CHAPTERS_ROW = ("재생바에 챕터 표시", "챕터가 있는 영상에서 재생바를 챕터마다 가늘게 끊고, 마우스를 올리면 챕터 이름을 보여 줘요.")
 
 
 class _Dim(QWidget):
@@ -111,10 +112,11 @@ class SettingsPanel(QWidget):
     updates_changed = Signal(bool)
     thumbnails_changed = Signal(bool)
     thumbnails_on_stop_changed = Signal(bool)
+    chapters_changed = Signal(bool)
 
     def __init__(self, current_layout: dict, metadata: dict, default_layout: dict, host: QWidget, *,
                  hwdec_on: bool = True, lecture_audio_on: bool = False, updates_on: bool = True,
-                 thumbnails_on: bool = True, thumbnails_on_stop: bool = False):
+                 thumbnails_on: bool = True, thumbnails_on_stop: bool = False, chapters_on: bool = True):
         super().__init__(host)
         self._host = host
         self._default = default_layout
@@ -167,7 +169,8 @@ class SettingsPanel(QWidget):
             [LECTURE_ROW], [lecture_audio_on], ["row_lecture"], ["switch_lecture"], [self.lecture_audio_changed],
             "btn_close_audio"))
         self._pages.addWidget(self._build_options_page(
-            [UPDATES_ROW], [updates_on], ["row_updates"], ["switch_updates"], [self.updates_changed], "btn_close_general"))
+            [UPDATES_ROW, CHAPTERS_ROW], [updates_on, chapters_on], ["row_updates", "row_chapters"],
+            ["switch_updates", "switch_chapters"], [self.updates_changed, self.chapters_changed], "btn_close_general"))
         root.addLayout(self._pages)
 
         root.activate()

@@ -247,3 +247,10 @@ def test_the_stop_row_is_dimmed_once_and_shows_no_pointing_hand_while_it_is_iner
         assert abs(label.graphicsEffect().opacity() - 1.0) < 1e-6
     p.reject()
     host.close()
+
+
+def test_the_general_tab_has_the_chapter_switch_on_by_default(panel):
+    panel.btn_tab_general.click()
+    assert panel.switch_chapters.isVisible() and panel.switch_chapters.checked is True
+    assert panel.row_chapters.title_label.text() == "재생바에 챕터 표시"
+    assert panel.switch_updates.isVisible(), "next to the update switch"

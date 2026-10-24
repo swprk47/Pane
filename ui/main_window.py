@@ -329,6 +329,9 @@ class MainWindow(QMainWindow):
         self.thumbnail_provider.set_enabled(self.thumbnails_on)
         self.controller.thumbnails_changed.connect(self._on_thumbnails_changed)
         self.controller.thumbnails_on_stop_changed.connect(self._on_thumbnails_on_stop_changed)
+        self.chapters_on = self.app_settings.get_chapters_visible()
+        self.controller.chapters_on = self.chapters_on
+        self.controller.chapters_changed.connect(self._on_chapters_changed)
         self.controller.updates_on = self.app_settings.get_update_check_enabled()
         self.controller.updates_changed.connect(self.app_settings.set_update_check_enabled)
         self.controller.hwdec_on = self.engine.hardware_decoding
@@ -551,6 +554,10 @@ class MainWindow(QMainWindow):
         self.thumbnail_tip.hide_tip()
         self._stop_timer.stop()
         self._thumb_spot = None
+
+    def _on_chapters_changed(self, enabled: bool):
+        self.chapters_on = enabled
+        self.app_settings.set_chapters_visible(enabled)
 
     def _on_thumbnails_changed(self, enabled: bool):
         self.thumbnails_on = enabled

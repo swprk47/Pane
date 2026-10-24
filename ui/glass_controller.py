@@ -77,6 +77,7 @@ class GlassController(QWidget):
     updates_changed = Signal(bool)      # settings panel: the automatic update check switched
     thumbnails_changed = Signal(bool)           # settings panel: seek-bar thumbnails switched
     thumbnails_on_stop_changed = Signal(bool)   # settings panel: "only when the pointer rests" switched
+    chapters_changed = Signal(bool)             # settings panel: chapter marks on the seek bar switched
     settings_panel_toggled = Signal()   # the settings panel opened or closed
     opacity_changed = Signal(float)     # follows the fade so the top scrim fades with us
 
@@ -385,6 +386,7 @@ class GlassController(QWidget):
     updates_on = True
     thumbnails_on = True
     thumbnails_on_stop = False
+    chapters_on = True
 
     def _open_settings_dialog(self):
         if self.settings_panel is not None:
@@ -392,13 +394,14 @@ class GlassController(QWidget):
         panel = SettingsPanel(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self.parentWidget(),
                               hwdec_on=self.hwdec_on, lecture_audio_on=self.lecture_audio_on,
                               updates_on=self.updates_on, thumbnails_on=self.thumbnails_on,
-                              thumbnails_on_stop=self.thumbnails_on_stop)
+                              thumbnails_on_stop=self.thumbnails_on_stop, chapters_on=self.chapters_on)
         panel.layout_changed.connect(self._save_layout)
         panel.hwdec_changed.connect(self._on_hwdec_switched)
         panel.lecture_audio_changed.connect(self._on_lecture_audio_switched)
         panel.updates_changed.connect(self._on_updates_switched)
         panel.thumbnails_changed.connect(self._on_thumbnails_switched)
         panel.thumbnails_on_stop_changed.connect(self._on_thumbnails_stop_switched)
+        panel.chapters_changed.connect(self._on_chapters_switched)
         panel.finished.connect(self._on_settings_panel_closed)
         self.settings_panel = panel
         panel.open()
@@ -415,6 +418,10 @@ class GlassController(QWidget):
     def _on_thumbnails_stop_switched(self, enabled: bool):
         self.thumbnails_on_stop = enabled
         self.thumbnails_on_stop_changed.emit(enabled)
+
+    def _on_chapters_switched(self, enabled: bool):
+        self.chapters_on = enabled
+        self.chapters_changed.emit(enabled)
 
     def _on_updates_switched(self, enabled: bool):
         self.updates_on = enabled
