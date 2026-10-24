@@ -105,3 +105,18 @@ def test_a_long_failure_message_is_cut_to_the_card(card):
     card.show_failure("x" * 500)
     img = render(card)
     assert img.width() == UpdateCard.WIDTH
+
+
+@pytest.mark.parametrize("text", ["<b>굵게</b> & <i>x</i>", "줄 하나\n줄 둘", "<img src=x> a &lt; b", "plain"])
+def test_the_tooltip_shows_the_notes_and_the_failure_as_plain_text_not_as_html(card, text):
+    from PySide6.QtGui import QTextDocument, Qt as QtGuiQt
+
+    def shown(tooltip):
+        doc = QTextDocument()
+        doc.setHtml(tooltip) if QtGuiQt.mightBeRichText(tooltip) else doc.setPlainText(tooltip)
+        return doc.toPlainText()
+
+    card.show_offer("1.3.0", text)
+    assert shown(card.toolTip()).strip() == text
+    card.show_failure(text)
+    assert shown(card.toolTip()).strip() == text
