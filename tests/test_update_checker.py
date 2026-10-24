@@ -291,3 +291,21 @@ def test_a_check_clears_the_old_installers_out_of_the_download_folder(make, pump
     checker.check()
     assert pump(lambda: "update_available" in names(events), timeout=5)
     assert list(folder.iterdir()) == []
+
+
+def test_a_dismissed_offer_does_not_force_a_check_at_the_next_start(make, pump, server):
+    checker, settings, events = make(last=NOW - 100)                 # checked 100 s ago: not due
+    settings.set_update_offer_version("1.3.0")
+    settings.set_update_dismissed_version("1.3.0")                   # the X on the card
+    checker.check()
+    pump(None, timeout=0.4)
+    assert server.requests == [] and events == []
+
+
+def test_a_dismissed_older_offer_does_not_hide_a_newer_pending_one(make, pump, server):
+    checker, settings, events = make(last=NOW - 100)
+    settings.set_update_offer_version("1.3.0")
+    settings.set_update_dismissed_version("1.2.5")
+    checker.check()
+    assert pump(lambda: names(events), timeout=5)
+    assert server.requests == ["/latest.json"]

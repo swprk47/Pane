@@ -113,6 +113,8 @@ class UpdateChecker(QObject):
         """An offer that was found earlier and is still newer than this build: the next start checks at once instead of
         waiting for the daily time, so a notice that was ignored comes back."""
         offered = self._settings.get_update_offer_version()
+        if offered and offered == self._settings.get_update_dismissed_version():
+            return False                    # (the X on the card: that version is not announced again, nor hurried)
         try:
             return bool(offered) and is_newer(offered, self._current)
         except ValueError:
