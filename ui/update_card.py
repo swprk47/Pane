@@ -66,7 +66,7 @@ class UpdateCard(QWidget):
 
     def _set_tip(self, text: str):
         """The text as it is: Qt shows a tooltip that looks like HTML as HTML (a release note with a `<` would be eaten)."""
-        self.setToolTip(GuiQt.convertFromPlainText(text) if text else "")
+        self.setToolTip(GuiQt.convertFromPlainText(text, GuiQt.WhiteSpaceNormal) if text else "")   # (not the default: it makes every space unbreakable, so a long message could not wrap)
 
     def show_progress(self, done: int, total: int):
         self._fraction = max(0.0, min(1.0, done / total)) if total else 0.0

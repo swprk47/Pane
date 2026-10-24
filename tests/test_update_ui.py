@@ -120,3 +120,8 @@ def test_the_tooltip_shows_the_notes_and_the_failure_as_plain_text_not_as_html(c
     assert shown(card.toolTip()).strip() == text
     card.show_failure(text)
     assert shown(card.toolTip()).strip() == text
+
+
+def test_a_long_tooltip_can_still_wrap(card):
+    card.show_failure("긴 이유 " * 40)
+    assert "\xa0" not in card.toolTip(), "no unbreakable spaces: a long message must wrap, not run off the screen"
