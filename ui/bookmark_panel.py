@@ -114,6 +114,8 @@ class _NameEdit(QLineEdit):
             event.accept()
             return
         super().keyPressEvent(event)
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            event.accept()                   # (a QLineEdit leaves it unaccepted, and it would go on up to the player)
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)

@@ -1,7 +1,7 @@
 """The bookmark list panel: rows, rename, delete, jump, and how it is dismissed (a real widget, real events)."""
 import pytest
 from PySide6.QtCore import QEvent, QPointF, Qt
-from PySide6.QtGui import QEnterEvent
+from PySide6.QtGui import QEnterEvent, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QWidget
 
@@ -185,3 +185,15 @@ def test_it_floats_above_the_anchor_inside_the_window(qapp, host):
     assert host.rect().contains(p.geometry())
     p.toggle_above_widget(anchor)
     assert not p.isVisible()
+
+
+@pytest.mark.parametrize("key", [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Escape])
+def test_enter_and_escape_in_the_edit_field_are_consumed_so_the_player_never_sees_them(qapp, panel, key):
+    """A QLineEdit leaves Return unaccepted so it travels up to the parent: there it would toggle full screen."""
+    row = rows(panel)[0]
+    hover(row)
+    row.edit_button.click()
+    field = edit_field(panel)
+    event = QKeyEvent(QEvent.KeyPress, key, Qt.NoModifier)
+    QApplication.sendEvent(field, event)
+    assert event.isAccepted()
