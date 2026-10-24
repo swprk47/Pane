@@ -21,16 +21,16 @@ from ui.icons import get_svg_icon
 
 ZONES = ("left", "center", "right")
 ZONE_TITLES = {"left": "왼쪽", "center": "가운데", "right": "오른쪽"}
-ZONE_WEIGHTS = {"left": 1.0, "center": 2.2, "right": 2.2}
+ZONE_WEIGHTS = {"left": 1.0, "center": 2.3, "right": 2.7}
 SHORT_NAMES = {
     "play_pause": "재생", "prev_file": "이전", "next_file": "다음", "prev_frame": "프레임-", "next_frame": "프레임+",
     "seek_backward": "-5초", "seek_forward": "+5초", "time_label": "시간", "speed_button": "배속",
-    "screenshot": "캡처", "subtitle": "자막", "volume": "볼륨", "fullscreen": "전체", "settings": "설정",
+    "screenshot": "캡처", "subtitle": "자막", "bookmarks": "북마크", "volume": "볼륨", "fullscreen": "전체", "settings": "설정",
 }
 FALLBACK_ICONS = {"time_label": "clock", "speed_button": "speed"}      # buttons that are text, not icons
 
 ITEM_W, ITEM_H, DISC, ICON = 48, 64, 38, 18
-BAR_PAD, ZONE_GAP, ZONE_PAD, ZONE_LABEL_H = 12, 10, 8, 24
+BAR_PAD, ZONE_GAP, ZONE_PAD, ZONE_LABEL_H = 8, 6, 8, 24
 HINT_H = 34
 CHIP_H, CHIP_GAP, TRAY_PAD, TRAY_LABEL_W = 30, 8, 10, 74
 

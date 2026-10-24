@@ -15,11 +15,16 @@ from ui.settings_panel import SettingsPanel
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
     "center": ["prev_file", "seek_backward", "play_pause", "seek_forward", "next_file"],
-    "right": ["screenshot", "subtitle", "volume", "fullscreen", "settings"]
+    "right": ["screenshot", "subtitle", "bookmarks", "volume", "fullscreen", "settings"]
 }
 
 # Bump when DEFAULT_LAYOUT changes so stale saved layouts get replaced once.
 LAYOUT_VERSION = 5
+
+# Buttons added to the default layout later: a saved layout gets each one once (after `after`, else at the end of the
+# zone), so the owner's own arrangement is kept and a button they then remove stays removed. (key, zone, after)
+LAYOUT_ADDITIONS = [("bookmarks", "right", "subtitle")]
+LAYOUT_ADDITIONS_VERSION = 1
 
 BUTTON_METADATA = {
     "play_pause": {"name": "재생 / 일시정지", "icon_name": "play"},
@@ -33,6 +38,7 @@ BUTTON_METADATA = {
     "speed_button": {"name": "정밀 배속 조절", "icon_name": None},
     "screenshot": {"name": "화면 캡처", "icon_name": "screenshot"},
     "subtitle": {"name": "자막 토글", "icon_name": "subtitle"},
+    "bookmarks": {"name": "북마크", "icon_name": "bookmark"},
     "volume": {"name": "볼륨 슬라이더", "icon_name": "volume_high"},
     "fullscreen": {"name": "전체화면 토글", "icon_name": "fullscreen"},
     "settings": {"name": "설정", "icon_name": "settings"}
@@ -59,6 +65,7 @@ class GlassController(QWidget):
     volume_changed = Signal(float)
     mute_clicked = Signal()
     subtitle_clicked = Signal()
+    bookmarks_clicked = Signal()
     screenshot_clicked = Signal()
     fullscreen_clicked = Signal()
     seek_requested = Signal(float)
@@ -126,14 +133,32 @@ class GlassController(QWidget):
             raw = None
             self.settings.setValue("layout_version", LAYOUT_VERSION)
             self.settings.remove("button_layout")
+        layout = None
         if raw:
             try:
                 data = json.loads(raw)
                 if isinstance(data, dict):
-                    return data
+                    layout = data
             except Exception:
                 pass
-        return dict(DEFAULT_LAYOUT)
+        if layout is None:                               # (the default already has every addition)
+            self.settings.setValue("layout_additions_version", LAYOUT_ADDITIONS_VERSION)
+            return dict(DEFAULT_LAYOUT)
+        if int(self.settings.value("layout_additions_version", 0) or 0) < LAYOUT_ADDITIONS_VERSION:
+            layout = self._with_additions(layout)
+            self.settings.setValue("button_layout", json.dumps(layout))
+            self.settings.setValue("layout_additions_version", LAYOUT_ADDITIONS_VERSION)
+        return layout
+
+    @staticmethod
+    def _with_additions(layout: dict) -> dict:
+        out = {zone: list(keys) for zone, keys in layout.items() if isinstance(keys, list)}
+        for key, zone, after in LAYOUT_ADDITIONS:
+            if any(key in keys for keys in out.values()):
+                continue
+            keys = out.setdefault(zone, [])
+            keys.insert(keys.index(after) + 1 if after in keys else len(keys), key)
+        return out
 
     def _save_layout(self, layout_dict: dict):
         self.current_layout = layout_dict
@@ -196,6 +221,7 @@ class GlassController(QWidget):
 
     def _rebuild_buttons(self):
         self.btn_subtitle = None          # (set again when the layout still has the button)
+        self.btn_bookmarks = None
         for box in [self.left_box, self.center_box, self.right_box]:
             while box.count():
                 item = box.takeAt(0)
@@ -326,6 +352,12 @@ class GlassController(QWidget):
             btn = self._plain_button("subtitle", "오디오 · 자막 (C: 자막 켜기/끄기)")
             btn.clicked.connect(self.subtitle_clicked.emit)
             self.btn_subtitle = btn
+            return btn
+
+        elif key == "bookmarks":
+            btn = self._plain_button("bookmark", "북마크 (Shift+B)")
+            btn.clicked.connect(self.bookmarks_clicked.emit)
+            self.btn_bookmarks = btn
             return btn
 
         elif key == "volume":
