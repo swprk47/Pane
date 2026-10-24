@@ -187,3 +187,21 @@ def test_pressing_elsewhere_still_seeks_as_before(slider):
     slider.seek_requested.connect(seeks.append)
     QTest.mouseClick(slider, Qt.LeftButton, Qt.NoModifier, QPoint(int(x_of(slider, 500.0)), slider.height() // 2))
     assert pins == [] and seeks and abs(seeks[-1] - 500.0) < 10.0
+
+
+def test_each_chapter_is_a_rounded_bar_so_the_gap_is_wider_toward_the_edges_of_the_bar(slider):
+    slider.set_marks([], [0.0, 760.0, 1800.0])
+    img = render(slider)
+    cy = slider.height() / 2.0
+    t = slider.track_thickness()
+    top_row, mid_row = int(cy - t / 2.0), int(cy)
+    centre = int(round(x_of(slider, 760.0)))
+    lo, hi = centre - 8, centre + 8
+
+    def missing(row):
+        """How many pixels of the bar are missing around the gap on this row (a full bar there would be 16 wide)."""
+        full = alpha(img, centre - 30, row) / 255.0
+        return 16 * full - coverage(img, row, lo, hi)
+
+    assert abs(missing(mid_row) - 2.0 * alpha(img, centre - 30, mid_row) / 255.0) < 0.8, "about 2 px where the bar is fullest"
+    assert missing(top_row) > missing(mid_row) + 0.3, "the ends of the neighbouring bars are rounded off"

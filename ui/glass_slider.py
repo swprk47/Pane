@@ -141,18 +141,30 @@ class GlassSlider(QSlider, Tweening):
             fill = QRectF(cx - t / 2, hy, t, (ratio) * span)
         p.setPen(Qt.NoPen)
         gaps = self.track_gaps(m, span, cy, t) if horizontal else []
-        if gaps:                                       # (drawn through a clip, so the gap is really empty)
-            region = QRegion(self.rect())
-            for gap in gaps:
-                region = region.subtracted(QRegion(gap))
-            p.setClipRegion(region)
-        p.setBrush(TRACK_COLOR)
-        p.drawRoundedRect(groove, t / 2, t / 2)
-        if self.isEnabled() and ratio > 0:
-            p.setBrush(FILL_COLOR)
-            p.drawRoundedRect(fill, t / 2, t / 2)
-        if gaps:
-            p.setClipping(False)
+        filled = self.isEnabled() and ratio > 0
+        if gaps:                                       # the track is cut into rounded bars; the gaps are really empty
+            edges = [groove.left()]
+            bars = []
+            for gap in sorted(gaps, key=lambda g: g.x()):
+                bars.append((edges[-1], float(gap.x())))
+                edges.append(float(gap.x() + gap.width()))
+            bars.append((edges[-1], groove.right()))
+            for x0, x1 in bars:
+                if x1 - x0 <= 0:
+                    continue
+                r = min(t / 2, (x1 - x0) / 2)
+                p.setBrush(TRACK_COLOR)
+                p.drawRoundedRect(QRectF(x0, groove.top(), x1 - x0, t), r, r)
+                end = min(x1, fill.right())
+                if filled and end - x0 > 0:
+                    p.setBrush(FILL_COLOR)
+                    p.drawRoundedRect(QRectF(x0, groove.top(), end - x0, t), min(r, (end - x0) / 2), min(r, (end - x0) / 2))
+        else:
+            p.setBrush(TRACK_COLOR)
+            p.drawRoundedRect(groove, t / 2, t / 2)
+            if filled:
+                p.setBrush(FILL_COLOR)
+                p.drawRoundedRect(fill, t / 2, t / 2)
         if horizontal:
             self.paint_over_track(p, m, span, cy, t)
         d = self.handle_diameter()
