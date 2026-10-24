@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 - 2026-10-24
 - Fix: a version you closed with the X on the update card is no longer checked for again at every start (it waits for the normal daily check, and a newer version is announced again)
 - Fix: the update installer is locked against changes from the moment it is checked until Pane closes, and its hash is compared once more just before it starts, so another program cannot swap the file in between. A full or unwritable disk during the download now says so instead of showing a raw error. Release notes and error texts in the update card's tooltip are shown as plain text (a `<` in a note no longer breaks it)
 - New: if Pane is killed by a crash that Python cannot catch (a native error in the video library, say), `%LOCALAPPDATA%\Pane\pane.log` now keeps the Python stack of that moment. The harmless internal exception libmpv raises while closing is not logged as a crash

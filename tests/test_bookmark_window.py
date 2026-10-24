@@ -300,3 +300,18 @@ def test_after_a_click_in_the_panel_the_player_keys_still_work_and_still_do_afte
     pump(None, timeout=0.1)
     QTest.keyClick(qapp.focusWidget() or window, Qt.Key_Right)
     assert seeks == [-5.0, 5.0], "closed: the arrows reach the player again"
+
+
+def test_a_real_file_with_chapters_shows_them_on_the_bar_and_in_the_pill(window, pump, pills):
+    from pathlib import Path
+    path = str(Path(__file__).parent / "assets" / "chapters.mkv")
+    window.load_media_file(path)
+    assert pump(lambda: window.chapters and window.controller.timeline._duration > 0, timeout=10)
+    window.engine.pause()
+    assert window.chapters == [(0.0, "Intro"), (1.0, "Middle"), (2.0, "End")]
+    tl = window.controller.timeline
+    assert tl._chapters == [0.0, 1.0, 2.0]
+    assert len(tl.track_gaps(tl._margin(), tl._span(), tl.height() / 2, 4)) == 2, "a gap at 1 s and at 2 s, none at 0"
+    tl.hover_moved.emit(1.4, x_on_bar(window, 1.4))
+    assert (window.seek_tip.text, window.seek_tip.detail) == ("Middle", "0:01")
+    tl.hover_left.emit()
