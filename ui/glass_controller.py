@@ -15,11 +15,16 @@ from ui.settings_panel import SettingsPanel
 DEFAULT_LAYOUT = {
     "left": ["time_label", "speed_button"],
     "center": ["prev_file", "seek_backward", "play_pause", "seek_forward", "next_file"],
-    "right": ["screenshot", "subtitle", "volume", "fullscreen", "settings"]
+    "right": ["screenshot", "subtitle", "bookmarks", "volume", "fullscreen", "settings"]
 }
 
 # Bump when DEFAULT_LAYOUT changes so stale saved layouts get replaced once.
 LAYOUT_VERSION = 5
+
+# Buttons added to the default layout later: a saved layout gets each one once (after `after`, else at the end of the
+# zone), so the owner's own arrangement is kept and a button they then remove stays removed. (key, zone, after)
+LAYOUT_ADDITIONS = [("bookmarks", "right", "subtitle")]
+LAYOUT_ADDITIONS_VERSION = 1
 
 BUTTON_METADATA = {
     "play_pause": {"name": "재생 / 일시정지", "icon_name": "play"},
@@ -33,6 +38,7 @@ BUTTON_METADATA = {
     "speed_button": {"name": "정밀 배속 조절", "icon_name": None},
     "screenshot": {"name": "화면 캡처", "icon_name": "screenshot"},
     "subtitle": {"name": "자막 토글", "icon_name": "subtitle"},
+    "bookmarks": {"name": "북마크", "icon_name": "bookmark"},
     "volume": {"name": "볼륨 슬라이더", "icon_name": "volume_high"},
     "fullscreen": {"name": "전체화면 토글", "icon_name": "fullscreen"},
     "settings": {"name": "설정", "icon_name": "settings"}
@@ -59,6 +65,7 @@ class GlassController(QWidget):
     volume_changed = Signal(float)
     mute_clicked = Signal()
     subtitle_clicked = Signal()
+    bookmarks_clicked = Signal()
     screenshot_clicked = Signal()
     fullscreen_clicked = Signal()
     seek_requested = Signal(float)
@@ -70,6 +77,7 @@ class GlassController(QWidget):
     updates_changed = Signal(bool)      # settings panel: the automatic update check switched
     thumbnails_changed = Signal(bool)           # settings panel: seek-bar thumbnails switched
     thumbnails_on_stop_changed = Signal(bool)   # settings panel: "only when the pointer rests" switched
+    chapters_changed = Signal(bool)             # settings panel: chapter marks on the seek bar switched
     settings_panel_toggled = Signal()   # the settings panel opened or closed
     opacity_changed = Signal(float)     # follows the fade so the top scrim fades with us
 
@@ -126,14 +134,32 @@ class GlassController(QWidget):
             raw = None
             self.settings.setValue("layout_version", LAYOUT_VERSION)
             self.settings.remove("button_layout")
+        layout = None
         if raw:
             try:
                 data = json.loads(raw)
                 if isinstance(data, dict):
-                    return data
+                    layout = data
             except Exception:
                 pass
-        return dict(DEFAULT_LAYOUT)
+        if layout is None:                               # (the default already has every addition)
+            self.settings.setValue("layout_additions_version", LAYOUT_ADDITIONS_VERSION)
+            return dict(DEFAULT_LAYOUT)
+        if int(self.settings.value("layout_additions_version", 0) or 0) < LAYOUT_ADDITIONS_VERSION:
+            layout = self._with_additions(layout)
+            self.settings.setValue("button_layout", json.dumps(layout))
+            self.settings.setValue("layout_additions_version", LAYOUT_ADDITIONS_VERSION)
+        return layout
+
+    @staticmethod
+    def _with_additions(layout: dict) -> dict:
+        out = {zone: list(keys) for zone, keys in layout.items() if isinstance(keys, list)}
+        for key, zone, after in LAYOUT_ADDITIONS:
+            if any(key in keys for keys in out.values()):
+                continue
+            keys = out.setdefault(zone, [])
+            keys.insert(keys.index(after) + 1 if after in keys else len(keys), key)
+        return out
 
     def _save_layout(self, layout_dict: dict):
         self.current_layout = layout_dict
@@ -196,6 +222,7 @@ class GlassController(QWidget):
 
     def _rebuild_buttons(self):
         self.btn_subtitle = None          # (set again when the layout still has the button)
+        self.btn_bookmarks = None
         for box in [self.left_box, self.center_box, self.right_box]:
             while box.count():
                 item = box.takeAt(0)
@@ -328,6 +355,12 @@ class GlassController(QWidget):
             self.btn_subtitle = btn
             return btn
 
+        elif key == "bookmarks":
+            btn = self._plain_button("bookmark", "북마크 (Shift+B)")
+            btn.clicked.connect(self.bookmarks_clicked.emit)
+            self.btn_bookmarks = btn
+            return btn
+
         elif key == "volume":
             self.btn_mute = self._plain_button("volume_high", "음소거 토글 (M) / 마우스를 올리면 볼륨 조절")
             self._update_volume_icon()
@@ -353,6 +386,7 @@ class GlassController(QWidget):
     updates_on = True
     thumbnails_on = True
     thumbnails_on_stop = False
+    chapters_on = True
 
     def _open_settings_dialog(self):
         if self.settings_panel is not None:
@@ -360,13 +394,14 @@ class GlassController(QWidget):
         panel = SettingsPanel(self.current_layout, BUTTON_METADATA, DEFAULT_LAYOUT, self.parentWidget(),
                               hwdec_on=self.hwdec_on, lecture_audio_on=self.lecture_audio_on,
                               updates_on=self.updates_on, thumbnails_on=self.thumbnails_on,
-                              thumbnails_on_stop=self.thumbnails_on_stop)
+                              thumbnails_on_stop=self.thumbnails_on_stop, chapters_on=self.chapters_on)
         panel.layout_changed.connect(self._save_layout)
         panel.hwdec_changed.connect(self._on_hwdec_switched)
         panel.lecture_audio_changed.connect(self._on_lecture_audio_switched)
         panel.updates_changed.connect(self._on_updates_switched)
         panel.thumbnails_changed.connect(self._on_thumbnails_switched)
         panel.thumbnails_on_stop_changed.connect(self._on_thumbnails_stop_switched)
+        panel.chapters_changed.connect(self._on_chapters_switched)
         panel.finished.connect(self._on_settings_panel_closed)
         self.settings_panel = panel
         panel.open()
@@ -383,6 +418,10 @@ class GlassController(QWidget):
     def _on_thumbnails_stop_switched(self, enabled: bool):
         self.thumbnails_on_stop = enabled
         self.thumbnails_on_stop_changed.emit(enabled)
+
+    def _on_chapters_switched(self, enabled: bool):
+        self.chapters_on = enabled
+        self.chapters_changed.emit(enabled)
 
     def _on_updates_switched(self, enabled: bool):
         self.updates_on = enabled

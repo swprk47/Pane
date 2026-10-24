@@ -252,3 +252,63 @@ def test_the_tip_is_drawn_over_the_controls_also_after_the_window_lays_out_again
     w._reposition_floating_widgets()
     kids = w.central_widget.children()
     assert kids.index(w.seek_tip) > kids.index(w.controller)
+
+
+# --- the tip with a dot and a detail (bookmark and chapter pills) ---------------------------------------------------
+
+@pytest.fixture
+def pill_host(qapp):
+    host = QWidget()
+    host.resize(600, 300)
+    host.show()
+    yield host
+    host.close()
+
+
+def test_a_pill_without_dot_or_detail_is_as_before(pill_host):
+    from PySide6.QtGui import QFontMetrics
+    tip = SeekTimeTip(pill_host)
+    tip.show_at("2:36", 300, 200, pill_host.rect())
+    assert tip.width() == QFontMetrics(tip._font).horizontalAdvance("2:36") + 2 * SeekTimeTip.PAD
+    same = SeekTimeTip(pill_host)
+    same.show_at("2:36", 300, 200, pill_host.rect(), dot=None, detail="")
+    assert render(same) == render(tip)
+
+
+def test_a_pill_with_a_dot_is_wider_and_has_an_amber_dot_at_its_left(pill_host):
+    from PySide6.QtGui import QColor
+    amber = QColor(255, 200, 87)
+    plain = SeekTimeTip(pill_host)
+    plain.show_at("증명 다시 보기", 300, 200, pill_host.rect())
+    tip = SeekTimeTip(pill_host)
+    tip.show_at("증명 다시 보기", 300, 200, pill_host.rect(), dot=amber)
+    assert tip.width() == plain.width() + SeekTimeTip.DOT + SeekTimeTip.DOT_GAP
+    img = render(tip)
+    c = img.pixelColor(SeekTimeTip.PAD + SeekTimeTip.DOT // 2, tip.height() // 2)
+    assert (c.red(), c.green(), c.blue()) == (255, 200, 87) and c.alpha() > 240
+
+
+def test_the_detail_is_drawn_after_the_text_and_lighter(pill_host):
+    from PySide6.QtGui import QFontMetrics
+    tip = SeekTimeTip(pill_host)
+    tip.show_at("증명 다시 보기", 300, 200, pill_host.rect(), detail="24:10")
+    fm = QFontMetrics(tip._font)
+    assert tip.width() > fm.horizontalAdvance("증명 다시 보기") + 2 * SeekTimeTip.PAD + SeekTimeTip.DETAIL_GAP
+    img = render(tip)
+    text_x0 = SeekTimeTip.PAD
+    text_x1 = text_x0 + fm.horizontalAdvance("증명 다시 보기")
+    detail_x0 = text_x1 + SeekTimeTip.DETAIL_GAP
+
+    def brightest(x0, x1):
+        return max(img.pixelColor(x, y).red() for x in range(x0, x1) for y in range(tip.height()))
+
+    assert brightest(detail_x0, tip.width() - SeekTimeTip.PAD) < brightest(text_x0, text_x1) - 20, "the detail is lighter"
+
+
+def test_the_wider_pill_still_stays_inside_the_bounds(pill_host):
+    from PySide6.QtGui import QColor
+    tip = SeekTimeTip(pill_host)
+    tip.show_at("예제 5번 풀이", 2, 200, pill_host.rect(), dot=QColor(255, 200, 87), detail="41:05")
+    assert tip.geometry().left() >= 8
+    tip.show_at("예제 5번 풀이", 598, 200, pill_host.rect(), dot=QColor(255, 200, 87), detail="41:05")
+    assert tip.geometry().right() <= pill_host.width() - 8

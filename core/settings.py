@@ -2,6 +2,8 @@ import json
 import os
 from PySide6.QtCore import QSettings
 
+from core import bookmarks
+
 APP_NAME = "Pane"
 LEGACY_APP_NAME = "GlassPlayer"  # name used before the rename
 
@@ -109,6 +111,37 @@ class AppSettings:
         while len(data) > limit:
             del data[next(iter(data))]
         self._set_dict(store, data)
+
+    # --- bookmarks: places of a video marked to look at again (see core/bookmarks.py) --------------------------------
+
+    BOOKMARK_VIDEOS = 200
+
+    def get_bookmarks(self, file_path: str) -> list:
+        """The video's bookmarks, [{"t": seconds, "name": str}] sorted by time; anything broken in the store is ignored."""
+        data = self._get_dict("bookmarks")
+        return bookmarks.clean(data.get(file_path)) if isinstance(data, dict) else []
+
+    def save_bookmarks(self, file_path: str, items: list) -> None:
+        """Remember the video's bookmarks (an empty list forgets the video); it becomes the most recently changed video."""
+        if not file_path:
+            return
+        data = self._get_dict("bookmarks")
+        if not isinstance(data, dict):
+            data = {}
+        data.pop(file_path, None)
+        cleaned = bookmarks.clean(items)
+        if cleaned:
+            data[file_path] = cleaned
+        while len(data) > self.BOOKMARK_VIDEOS:
+            del data[next(iter(data))]
+        self._set_dict("bookmarks", data)
+
+    def get_chapters_visible(self) -> bool:
+        """Chapter starts as gaps of the seek bar, and their names in the hover pill (on by default)."""
+        return str(self.settings.value("chapters_visible", True)).lower() not in ("false", "0")
+
+    def set_chapters_visible(self, enabled: bool) -> None:
+        self.settings.setValue("chapters_visible", bool(enabled))
 
     def get_duration(self, file_path: str) -> float:
         """Length in seconds remembered for a file (0.0 when never seen): the start screen's progress line."""

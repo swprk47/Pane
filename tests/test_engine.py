@@ -244,3 +244,25 @@ def test_relative_seek_asks_mpv_for_an_exact_seek(engine):
     engine.mpv = Spy(engine.mpv)
     engine.seek(5, reference="relative")
     assert calls and calls[0].get("precision") == "exact"
+
+
+def test_an_exact_seek_goes_to_the_asked_time_and_asks_mpv_for_precision(engine):
+    """A bookmark must take you to its time, not to the keyframe before it (the plain absolute seek is for scrubbing)."""
+    calls = []
+
+    class Spy:
+        def __init__(self, real):
+            self._real = real
+
+        def seek(self, *args, **kwargs):
+            calls.append((args, kwargs))
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    engine.mpv = Spy(engine.mpv)
+    engine.seek(12.5, reference="exact")
+    assert calls == [((12.5,), {"reference": "absolute", "precision": "exact"})]
+    calls.clear()
+    engine.seek(12.5, reference="absolute")
+    assert calls == [((12.5,), {"reference": "absolute"})], "scrubbing keeps the quick keyframe seek"

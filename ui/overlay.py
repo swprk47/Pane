@@ -401,21 +401,34 @@ class SeekTimeTip(_OverlayBase):
     HEIGHT = 30
     PAD = 14
     EDGE = 8
+    DOT = 8                  # a bookmark's amber dot before the text
+    DOT_GAP = 8
+    DETAIL_GAP = 8           # before the lighter text after it (the time of a bookmark or a chapter)
 
     def __init__(self, parent):
         super().__init__(parent)
         self.text = ""
+        self.dot = None
+        self.detail = ""
         font = QFont("Segoe UI Variable Text")
         font.setFamilies(["Segoe UI Variable Text", "Segoe UI"])
         font.setPixelSize(14)
         font.setWeight(QFont.DemiBold)
         self._font = font
+        detail_font = QFont(font)
+        detail_font.setWeight(QFont.Normal)
+        self._detail_font = detail_font
         QWidget.setVisible(self, False)
 
-    def show_at(self, text: str, x_center: float, y_bottom: float, bounds):
-        """Show `text` with the pill's bottom edge at y_bottom, centred on x_center, inside `bounds` (a QRect)."""
-        self.text = text
+    def show_at(self, text: str, x_center: float, y_bottom: float, bounds, dot=None, detail: str = ""):
+        """Show `text` with the pill's bottom edge at y_bottom, centred on x_center, inside `bounds` (a QRect). `dot` (a
+        QColor) puts a dot before the text, `detail` a lighter text after it; with neither it is the plain pill."""
+        self.text, self.dot, self.detail = text, dot, detail
         w = QFontMetrics(self._font).horizontalAdvance(text) + 2 * self.PAD
+        if dot is not None:
+            w += self.DOT + self.DOT_GAP
+        if detail:
+            w += self.DETAIL_GAP + QFontMetrics(self._detail_font).horizontalAdvance(detail)
         self.resize(w, self.HEIGHT)
         x = round(x_center - w / 2.0)
         x = max(bounds.left() + self.EDGE, min(x, bounds.right() - self.EDGE - w + 1))
@@ -435,9 +448,26 @@ class SeekTimeTip(_OverlayBase):
         p.setPen(QPen(QColor(255, 255, 255, 77), 1))
         p.setBrush(QColor(14, 14, 18, 168))
         p.drawRoundedRect(r, r.height() / 2, r.height() / 2)
+        if self.dot is None and not self.detail:
+            p.setFont(self._font)
+            p.setPen(QColor(255, 255, 255))
+            p.drawText(self.rect(), Qt.AlignCenter, self.text)
+            return
+        x = float(self.PAD)
+        if self.dot is not None:
+            p.setPen(Qt.NoPen)
+            p.setBrush(self.dot)
+            p.drawEllipse(QRectF(x, (self.height() - self.DOT) / 2.0, self.DOT, self.DOT))
+            x += self.DOT + self.DOT_GAP
         p.setFont(self._font)
         p.setPen(QColor(255, 255, 255))
-        p.drawText(self.rect(), Qt.AlignCenter, self.text)
+        text_w = QFontMetrics(self._font).horizontalAdvance(self.text)
+        p.drawText(QRectF(x, 0, text_w + 2, self.height()), Qt.AlignLeft | Qt.AlignVCenter, self.text)
+        if self.detail:
+            p.setFont(self._detail_font)
+            p.setPen(QColor(255, 255, 255, 180))
+            p.drawText(QRectF(x + text_w + self.DETAIL_GAP, 0, self.width(), self.height()),
+                       Qt.AlignLeft | Qt.AlignVCenter, self.detail)
 
 
 class ThumbnailTip(_OverlayBase):

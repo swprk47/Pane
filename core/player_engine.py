@@ -272,7 +272,7 @@ class PlayerEngine(QObject):
     def seek(self, seconds: float, reference: str = "relative"):
         """
         Seek in media.
-        reference: 'relative' (default), 'absolute', 'relative-percent'
+        reference: 'relative' (default), 'absolute' (quick), 'exact' (absolute, to the frame), 'percent'
         """
         try:
             if reference == "relative":
@@ -281,6 +281,8 @@ class PlayerEngine(QObject):
                 self.mpv.seek(seconds, reference="relative", precision="exact")
             elif reference == "absolute":
                 self.mpv.seek(seconds, reference="absolute")
+            elif reference == "exact":                      # absolute, but to the very time (a bookmark), not the keyframe before
+                self.mpv.seek(seconds, reference="absolute", precision="exact")
             elif reference == "percent":
                 self.mpv.seek(seconds, reference="absolute-percent")
         except Exception as e:
@@ -337,6 +339,19 @@ class PlayerEngine(QObject):
             return self.mpv._get_property("track-list") or []
         except Exception:
             return []
+
+    def chapters(self) -> list:
+        """[(start seconds, title)] of the loaded file's own chapters (mpv's chapter-list), [] when it has fewer than two."""
+        from core.bookmarks import chapters_from_mpv
+        try:
+            raw = self.mpv._get_property("chapter-list")
+        except Exception:
+            return []
+        try:                                    # (mpv's own length: file-loaded comes before the new duration reaches self._duration)
+            duration = float(self.mpv._get_property("duration") or 0.0)
+        except Exception:
+            duration = 0.0
+        return chapters_from_mpv(raw, duration)
 
     def audio_tracks(self) -> list:
         from core.tracks import AUDIO, list_tracks

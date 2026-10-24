@@ -6,7 +6,7 @@ from ui.icons import SVG_ICONS, get_svg_pixmap
 from ui.glass_button import ACCENT_TEXT
 
 # Icons that should not use the default (near-white) color.
-ICON_COLORS = {"warning": "#FFB340", "volume_mute": "#FF6B61"}
+ICON_COLORS = {"warning": "#FFB340", "volume_mute": "#FF6B61", "bookmark": "#FFC857"}
 DEFAULT_ICON_COLOR = "#F2FBFF"
 SPEED_COLOR = ACCENT_TEXT.name()   # the speed value wears the same accent as the speed button on the controls
 
