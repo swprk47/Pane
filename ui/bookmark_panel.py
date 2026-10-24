@@ -55,6 +55,7 @@ class _IconButton(QPushButton):
         super().__init__(parent)
         self.kind = kind
         self.setFixedSize(26, 26)
+        self.setFocusPolicy(Qt.NoFocus)
         self.setCursor(Qt.PointingHandCursor)
         self.setFlat(True)
         self._over = False
@@ -281,6 +282,8 @@ class BookmarkPanel(QWidget):
         self._scroll.setFrameShape(QScrollArea.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._scroll.setStyleSheet(SCROLL_QSS)
+        for part in (self._scroll, self._scroll.viewport(), self._scroll.verticalScrollBar()):
+            part.setFocusPolicy(Qt.NoFocus)           # (a click in the list must not hand the focus to the scroll area: it eats the arrow keys)
         self._body = QWidget()
         self._list = QVBoxLayout(self._body)
         self._list.setContentsMargins(0, 0, 0, 0)
@@ -387,6 +390,9 @@ class BookmarkPanel(QWidget):
         super().hideEvent(event)
         QApplication.instance().removeEventFilter(self)
         self._editing_row = None
+        focus = QApplication.focusWidget()
+        if focus is not None and (focus is self or self.isAncestorOf(focus)):
+            focus.clearFocus()                        # (closed: the keys go back to the player)
 
     def eventFilter(self, obj, event):
         # A click outside the panel (and not on its own button) dismisses it.

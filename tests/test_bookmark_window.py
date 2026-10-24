@@ -276,3 +276,27 @@ def test_resizing_the_window_closes_the_panel(window, video, qapp, pump):
 def test_a_video_with_no_chapters_and_no_bookmarks_has_no_marks(window, video, pump):
     tl = window.controller.timeline
     assert tl._bookmarks == [] and tl._chapters == [] and window.chapters == []
+
+
+def test_after_a_click_in_the_panel_the_player_keys_still_work_and_still_do_after_it_closes(window, video, pills, monkeypatch, qapp, pump):
+    """Final review: the click gave the panel's scroll area the focus, which swallowed the arrow keys (even once closed)."""
+    for t in (0.7, 1.8, 2.9):
+        add_at(window, t)
+    window.toggle_bookmark_panel()
+    pump(None, timeout=0.2)
+    seeks = []
+    monkeypatch.setattr(window, "seek_relative", lambda s: seeks.append(s))
+    row = window.bookmark_panel.findChildren(_BookmarkRow)[1]
+    QTest.mouseClick(row, Qt.LeftButton, Qt.NoModifier, row.rect().center())
+    pump(None, timeout=0.2)
+    window._time_pos = 0.0
+    pills.clear()
+    QTest.keyClick(qapp.focusWidget() or window, Qt.Key_Right, ALT)
+    assert pills and pills[-1][0] == "북마크", "Alt+Right still jumps with the panel open"
+    QTest.keyClick(qapp.focusWidget() or window, Qt.Key_Left)
+    assert seeks == [-5.0], "and the plain arrow still seeks"
+    QTest.keyClick(qapp.focusWidget() or window, Qt.Key_Escape)
+    assert not window.bookmark_panel.isVisible()
+    pump(None, timeout=0.1)
+    QTest.keyClick(qapp.focusWidget() or window, Qt.Key_Right)
+    assert seeks == [-5.0, 5.0], "closed: the arrows reach the player again"

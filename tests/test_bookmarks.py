@@ -121,3 +121,16 @@ def test_a_failing_property_read_gives_no_chapters(engine, monkeypatch):
 
     monkeypatch.setattr(engine.mpv, "_get_property", boom)
     assert engine.chapters() == []
+
+
+def test_chapters_are_not_cut_by_the_previous_videos_length(engine, monkeypatch):
+    """Final review: mpv reports file-loaded before the new duration, so the engine's cached length is still the old one's."""
+    engine._duration = 600.0                              # the 10-minute video watched before
+    original = engine.mpv._get_property
+    raw = [{"time": 0, "title": "Intro"}, {"time": 1800, "title": "Graphs"}, {"time": 3000, "title": "Proofs"}]
+
+    def prop(name, *a, **k):
+        return {"chapter-list": raw, "duration": 5400.0}.get(name) if name in ("chapter-list", "duration") else original(name, *a, **k)
+
+    monkeypatch.setattr(engine.mpv, "_get_property", prop)
+    assert engine.chapters() == [(0.0, "Intro"), (1800.0, "Graphs"), (3000.0, "Proofs")]

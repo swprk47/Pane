@@ -347,7 +347,11 @@ class PlayerEngine(QObject):
             raw = self.mpv._get_property("chapter-list")
         except Exception:
             return []
-        return chapters_from_mpv(raw, self._duration)
+        try:                                    # (mpv's own length: file-loaded comes before the new duration reaches self._duration)
+            duration = float(self.mpv._get_property("duration") or 0.0)
+        except Exception:
+            duration = 0.0
+        return chapters_from_mpv(raw, duration)
 
     def audio_tracks(self) -> list:
         from core.tracks import AUDIO, list_tracks
