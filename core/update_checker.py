@@ -173,7 +173,7 @@ class UpdateChecker(QObject):
             path = download_installer(manifest, self._download_dir, progress=report)
             if self._stopping:                           # (closed during the last step: do not start what would relaunch us)
                 raise UpdateError("the app is closing")
-            launch_installer(path, self._install_scope())
+            launch_installer(path, self._install_scope(), sha256=manifest.sha256)
         except Exception as e:
             self._bridge.install_error.emit(f"{e}" if isinstance(e, UpdateError) else f"{type(e).__name__}: {e} ({path})")
             return

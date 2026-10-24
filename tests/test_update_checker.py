@@ -144,7 +144,7 @@ def test_a_login_page_instead_of_the_manifest_is_a_failure_not_a_crash(make, pum
 
 def test_download_and_install_verifies_then_starts_the_installer_once(make, pump, monkeypatch, tmp_path):
     started = []
-    monkeypatch.setattr(uc, "launch_installer", lambda path, scope: started.append((Path(path), scope)))
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope, sha256=None: started.append((Path(path), scope)))
     checker, _, events = make()
     checker.check()
     assert pump(lambda: "update_available" in names(events), timeout=5)
@@ -163,7 +163,7 @@ def test_download_and_install_verifies_then_starts_the_installer_once(make, pump
 
 def test_a_bad_download_does_not_start_anything_and_a_retry_is_possible(make, pump, monkeypatch, server):
     started = []
-    monkeypatch.setattr(uc, "launch_installer", lambda path, scope: started.append(path))
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope, sha256=None: started.append(path))
     checker, _, events = make(installer_body=b"X" * len(INSTALLER))           # right size, wrong bytes
     checker.check()
     assert pump(lambda: "update_available" in names(events), timeout=5)
@@ -177,7 +177,7 @@ def test_a_bad_download_does_not_start_anything_and_a_retry_is_possible(make, pu
 
 
 def test_the_installer_failing_to_start_is_reported_with_where_the_file_is(make, pump, monkeypatch, tmp_path):
-    def refuse(path, scope):
+    def refuse(path, scope, sha256=None):
         raise uc.UpdateError(f"could not start the installer (blocked); it is saved at {path}")
 
     monkeypatch.setattr(uc, "launch_installer", refuse)
@@ -265,7 +265,7 @@ def test_a_manual_check_in_an_exe_the_setup_did_not_install_says_so_and_asks_not
 def test_the_scope_of_an_installed_exe_comes_from_where_the_setup_registered_it(make, pump, monkeypatch):
     started = []
     monkeypatch.setattr(uc, "installed_scope", lambda exe_dir: "machine")
-    monkeypatch.setattr(uc, "launch_installer", lambda path, scope: started.append(scope))
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope, sha256=None: started.append(scope))
     checker, _, events = make(scope=None)
     checker.check(manual=True)
     assert pump(lambda: "update_available" in names(events), timeout=5)
@@ -309,3 +309,14 @@ def test_a_dismissed_older_offer_does_not_hide_a_newer_pending_one(make, pump, s
     checker.check()
     assert pump(lambda: names(events), timeout=5)
     assert server.requests == ["/latest.json"]
+
+
+def test_the_installer_is_started_with_the_hash_from_the_signed_manifest(make, pump, monkeypatch):
+    seen = []
+    monkeypatch.setattr(uc, "launch_installer", lambda path, scope, sha256=None: seen.append(sha256))
+    checker, _, events = make()
+    checker.check()
+    assert pump(lambda: "update_available" in names(events), timeout=5)
+    checker.download_and_install()
+    assert pump(lambda: "installer_ready" in names(events), timeout=8)
+    assert seen == [hashlib.sha256(INSTALLER).hexdigest()]
