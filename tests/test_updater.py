@@ -285,3 +285,45 @@ def test_old_installers_and_partial_files_are_removed_from_the_download_folder(t
     remove_old_installers(tmp_path)
     assert sorted(p.name for p in tmp_path.iterdir()) == ["notes.txt"]
     remove_old_installers(tmp_path / "does-not-exist")          # (no folder yet: nothing to do, no error)
+
+
+def test_a_download_without_a_length_that_ends_early_is_deleted_and_raises(server, tmp_path):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER[:1000], "none")      # no Content-Length at all, the connection just ends
+    with pytest.raises(UpdateError, match="incomplete"):
+        download_installer(manifest_for(server), tmp_path / "dl")
+    assert list((tmp_path / "dl").iterdir()) == []
+
+
+def test_a_full_disk_is_an_update_error_that_says_so_and_leaves_nothing(server, tmp_path, monkeypatch):
+    import errno
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER, None)
+    real_open = open
+
+    class FullDisk:
+        def __init__(self, file):
+            self._file = file
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self._file.close()
+
+        def write(self, data):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(updater_module, "open", lambda path, mode="r": FullDisk(real_open(path, mode)), raising=False)
+    with pytest.raises(UpdateError, match="disk"):
+        download_installer(manifest_for(server), tmp_path / "dl")
+    assert list((tmp_path / "dl").iterdir()) == [], "the half-written file is removed"
+
+
+def test_a_download_folder_that_cannot_be_written_is_an_update_error(server, tmp_path, monkeypatch):
+    server.routes["/Pane-1.3.0-setup.exe"] = (INSTALLER, None)
+
+    def refuse(path, mode="r"):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(updater_module, "open", refuse, raising=False)
+    with pytest.raises(UpdateError, match="disk"):
+        download_installer(manifest_for(server), tmp_path / "dl")

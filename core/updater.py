@@ -162,7 +162,11 @@ def download_installer(manifest: Manifest, dest_dir, progress: Optional[Callable
                 raise UpdateError("the file is not the size the manifest says")
             sha = hashlib.sha256()
             done = 0
-            with open(part, "wb") as out:
+            try:
+                out = open(part, "wb")
+            except OSError as e:
+                raise UpdateError(f"could not save the file ({e}); check the disk")
+            with out:
                 while True:
                     try:
                         chunk = response.read(CHUNK)
@@ -173,7 +177,10 @@ def download_installer(manifest: Manifest, dest_dir, progress: Optional[Callable
                     done += len(chunk)
                     if done > manifest.size:
                         raise UpdateError("the file is bigger than the manifest says")
-                    out.write(chunk)
+                    try:
+                        out.write(chunk)
+                    except OSError as e:
+                        raise UpdateError(f"could not save the file ({e}); is the disk full?")
                     sha.update(chunk)
                     if progress:
                         progress(done, manifest.size)
