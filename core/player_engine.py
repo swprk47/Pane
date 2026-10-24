@@ -40,6 +40,8 @@ class PlayerEngine(QObject):
     error_occurred = Signal(str)           # Error message
     load_failed = Signal(str, str, list)   # a file mpv could not open: path, mpv's short reason, its recent error lines
     _tracks_changed = Signal()             # mpv's track list changed (emitted from its thread, handled in ours)
+    tracks_ready = Signal()                # a newly opened video is loaded and its tracks are known (once per video)
+    _file_loaded_event = Signal()          # mpv's file-loaded event (from its thread)
 
     def __init__(self, wid=None, parent=None, render_api=False, options_override=None):
         """render_api=True: no window of mpv's own; the caller draws frames via
@@ -95,6 +97,7 @@ class PlayerEngine(QObject):
             raise RuntimeError(f"Failed to initialize MPV engine: {e}")
 
         self._tracks_changed.connect(self._sync_lecture_audio)
+        self._file_loaded_event.connect(self.tracks_ready)
         self._bind_mpv_observers()
 
     def _on_mpv_log(self, level, component, message):
@@ -120,6 +123,10 @@ class PlayerEngine(QObject):
         @self.mpv.property_observer("track-list")
         def _on_track_list(_name, _value):
             self._tracks_changed.emit()
+
+        @self.mpv.event_callback("file-loaded")
+        def _on_file_loaded(_event):
+            self._file_loaded_event.emit()
 
         @self.mpv.property_observer("pause")
         def _on_pause(_name, value):
@@ -359,6 +366,9 @@ class PlayerEngine(QObject):
     def select_subtitle_track(self, track_id: int) -> bool:
         """Show the given subtitle track (also turns subtitles on)."""
         return self._set_prop("sid", int(track_id)) and self._set_prop("sub-visibility", True)
+
+    def set_subtitles_visible(self, visible: bool) -> bool:
+        return self._set_prop("sub-visibility", bool(visible))
 
     def subtitles_visible(self) -> bool:
         try:

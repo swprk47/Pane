@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- New: Pane remembers the speed and the audio / subtitle choice of every video (the last 100) and opens it the same way next time; a video you open for the first time starts with the last values used in the same folder, so a lecture series keeps its speed from week to week. Tracks are recognised by language and title, not by number. Resetting the speed (`\` or Backspace) is remembered for that video only
 - Resizing the window or switching to full screen (or PIP) no longer leaves the time and the thumbnail hanging at their old place until the pointer moves; the dimmed `마우스를 멈췄을 때만 표시` switch in Settings is dimmed once instead of twice and no longer shows a pointing hand while it does nothing
 - The seek-bar thumbnails are lighter on 4K 60 fps video: the hidden decoder uses two threads (dropped frames while sweeping the bar went from about 58 to the level of having thumbnails off, about 23, in a 10 s test), the same step is no longer made twice, and closing the hidden player no longer stalls the picture. Also: the worker survives an unexpected error, the end of the bar asks for the last second, and a new video forgets the old length
 

@@ -41,6 +41,8 @@ class Track:
     detail: str
     selected: bool
     external: bool = False
+    lang: str = ""       # mpv's language code as the file has it ("jpn", "ko"), "" when it has none
+    title: str = ""
 
 
 def language_name(code) -> str:
@@ -93,8 +95,47 @@ def list_tracks(raw, kind: str) -> list:
         tracks.append(Track(
             id=int(t["id"]), kind=kind, name=_name(t, kind, number), detail=detail,
             selected=bool(t.get("selected")), external=bool(t.get("external")),
+            lang=str(t.get("lang") or ""), title=str(t.get("title") or ""),
         ))
     return tracks
+
+
+def _canon_lang(code) -> str:
+    """"ko" and "kor" are the same language; no code, or "und" (undetermined), is no language at all."""
+    c = str(code or "").strip().lower()
+    if not c or c == "und":
+        return ""
+    return _LANGUAGES.get(c, c)
+
+
+def track_choice(track: Track):
+    """What is remembered of a chosen track: enough to recognise the same kind of track in another video. None when
+    the track has neither a language nor a title: nothing could find it again."""
+    if not _canon_lang(track.lang) and not track.title:
+        return None
+    return {"lang": track.lang, "title": track.title}
+
+
+def pick_track(tracks, wanted):
+    """The track of `tracks` that is the one remembered in `wanted` ({"lang", "title"}), or None.
+
+    Same language and same title first; else the same language (the lowest number); a track without a language is found
+    by its title only. Never guessed by position: a wrong track is worse than none."""
+    if not wanted:
+        return None
+    lang, title = _canon_lang(wanted.get("lang")), str(wanted.get("title") or "")
+    if lang:
+        same = [t for t in tracks if _canon_lang(t.lang) == lang]
+        if title:
+            for t in same:
+                if t.title == title:
+                    return t
+        return same[0] if same else None
+    if title:
+        for t in tracks:
+            if t.title == title:
+                return t
+    return None
 
 
 def format_delay(seconds, unit="초") -> str:

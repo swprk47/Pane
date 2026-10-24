@@ -27,6 +27,7 @@ from ui.update_card import UpdateCard
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip, ThumbnailTip
 from core.thumbnails import ThumbnailProvider, bucket_of
+from core.tracks import pick_track, track_choice
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
 from core.tracks import format_delay
@@ -244,6 +245,7 @@ class MainWindow(QMainWindow):
         self.thumbnail_provider.thumbnail_ready.connect(self._on_thumbnail_ready)
         self._thumb_spot = None                          # (seconds, x) of the pointer while it is over the seek bar
         self._tips_viewport = None                       # the video area the pill and the picture were placed in
+        self._applying_speed = None                      # a speed set from memory: its change notice is not a user choice
         self._stop_timer = QTimer(self)                  # "only when the pointer rests": fires STOP_DELAY_MS after the last move
         self._stop_timer.setSingleShot(True)
         self._stop_timer.timeout.connect(self._request_thumbnail)
@@ -298,6 +300,7 @@ class MainWindow(QMainWindow):
         self.engine.playback_state_changed.connect(self.controller.set_playback_state)
         self.engine.playback_state_changed.connect(self._on_playback_state)
         self.engine.speed_changed.connect(self._on_speed_changed)
+        self.engine.tracks_ready.connect(self._apply_remembered_tracks)
         self.engine.volume_changed.connect(self._on_volume_changed)
         self.engine.file_ended.connect(self._on_file_ended)
         self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "warning"))
@@ -728,6 +731,7 @@ class MainWindow(QMainWindow):
             self.osd.show_message(f"이어서 재생 ({self._format_seconds(resume_pos)})", "clock")
 
         self.engine.load_file(file_path, start_time=start_time)
+        self._apply_remembered_speed(file_path)
         self._refresh_update_card()
         self.engine.play()
         # mpv reports no change when it was already un-paused, so tell the controller it is playing: without
@@ -787,6 +791,45 @@ class MainWindow(QMainWindow):
     def _on_speed_changed(self, speed: float):
         self.controller.set_speed_display(speed)
         self.speed_popup.set_current_speed(speed)
+        applied, self._applying_speed = self._applying_speed, None
+        if applied is not None and abs(speed - applied) < 0.005:
+            return                                       # (the change the app made from memory, not the user's)
+        if self._current_file:
+            self.app_settings.save_playback_memory(self._current_file, speed=speed)
+
+    # --- what is remembered per video (speed, audio / subtitle choice): see AppSettings.get_playback_memory ---------
+
+    def _apply_remembered_speed(self, file_path: str):
+        speed = self.app_settings.get_playback_memory(file_path).get("speed")
+        if speed is not None:
+            self._applying_speed = self.engine.set_speed(speed)          # (set_speed brings it into 0.25..4.0)
+
+    def _apply_remembered_tracks(self):
+        """The new video's tracks are known: choose again what was chosen for this video or its folder, by language."""
+        path = self._current_file
+        if not path:
+            return
+        memory, e = self.app_settings.get_playback_memory(path), self.engine
+        if "audio" in memory and not e.lecture_audio:                  # (the lecture preset keeps track 1 for itself)
+            track = pick_track(e.audio_tracks(), memory["audio"])
+            if track and not track.selected:
+                e.select_audio_track(track.id)
+        sub = memory.get("sub")
+        if sub == "off":
+            e.set_subtitles_visible(False)
+        elif isinstance(sub, dict):
+            track = pick_track(e.subtitle_tracks(), sub)
+            if track and not (track.selected and e.subtitles_visible()):
+                e.select_subtitle_track(track.id)
+
+    def _remember_track(self, kind: str, track_id: int):
+        if not self._current_file:
+            return
+        tracks = self.engine.audio_tracks() if kind == "audio" else self.engine.subtitle_tracks()
+        track = next((t for t in tracks if t.id == track_id), None)
+        choice = track_choice(track) if track else None
+        if choice:
+            self.app_settings.save_playback_memory(self._current_file, **{"audio" if kind == "audio" else "sub": choice})
 
     def _on_volume_changed(self, volume: float):
         self.controller.set_volume_display(volume)
@@ -945,7 +988,12 @@ class MainWindow(QMainWindow):
         self._show_speed_osd(self.engine.change_speed_relative(delta))
 
     def reset_speed(self):
-        self._show_speed_osd(self.engine.reset_speed())
+        speed = self.engine.reset_speed()
+        if self._current_file:
+            # remembered for this video only: the folder keeps its speed for the next video (an exception, not a new habit)
+            self.app_settings.save_playback_memory(self._current_file, speed=speed, update_folder=False)
+            self._applying_speed = speed                                   # (its change notice is not a second choice)
+        self._show_speed_osd(speed)
 
     def _show_speed_osd(self, speed: float):
         self.osd.show_message("배속", "speed", f"{speed:.2f}x", accent=True)
@@ -964,6 +1012,14 @@ class MainWindow(QMainWindow):
 
     def toggle_subtitle(self, osd: bool = True):
         visible = self.engine.toggle_subtitle_visibility()
+        if self._current_file:
+            if not visible:
+                self.app_settings.save_playback_memory(self._current_file, sub="off")
+            else:
+                selected = next((t for t in self.engine.subtitle_tracks() if t.selected), None)
+                choice = track_choice(selected) if selected else None
+                if choice:
+                    self.app_settings.save_playback_memory(self._current_file, sub=choice)
         if osd:
             self.osd.show_message("자막 켬" if visible else "자막 끔", "subtitle")
         self._refresh_track_popup_soon()
@@ -990,10 +1046,12 @@ class MainWindow(QMainWindow):
 
     def _choose_audio_track(self, track_id: int):
         self.engine.select_audio_track(track_id)
+        self._remember_track("audio", track_id)
         self._refresh_track_popup_soon()
 
     def _choose_subtitle_track(self, track_id: int):
         self.engine.select_subtitle_track(track_id)
+        self._remember_track("sub", track_id)
         self._refresh_track_popup_soon()
 
     def _set_subtitles_visible(self, visible: bool):
