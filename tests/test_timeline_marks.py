@@ -205,3 +205,14 @@ def test_each_chapter_is_a_rounded_bar_so_the_gap_is_wider_toward_the_edges_of_t
 
     assert abs(missing(mid_row) - 2.0 * alpha(img, centre - 30, mid_row) / 255.0) < 0.8, "about 2 px where the bar is fullest"
     assert missing(top_row) > missing(mid_row) + 0.3, "the ends of the neighbouring bars are rounded off"
+
+
+def test_the_hover_preview_does_not_paint_over_a_chapter_gap(slider):
+    slider.set_marks([], [0.0, 760.0, 1800.0])
+    slider.set_time_pos(100.0)
+    slider._hover_ratio = 0.9                       # the pointer far to the right: the preview runs across both gaps
+    img = render(slider)
+    cy = slider.height() // 2
+    runs = transparent_runs(img, cy, x1=int(x_of(slider, 3000.0)))
+    assert len(runs) == 2 and all(width == 2 for _start, width in runs), runs
+    assert alpha(img, runs[0][0] - 3, cy) > 0 and alpha(img, runs[0][0] + 5, cy) > 0, "the preview is there on both sides"

@@ -123,6 +123,16 @@ class GlassSlider(QSlider, Tweening):
         super().hideEvent(event)
 
     # --- painting -----------------------------------------------------------------------------
+    @staticmethod
+    def track_bars(left: float, right: float, gaps: list) -> list:
+        """[(x0, x1)] of the bars the track is cut into by `gaps` (QRects), empty ones left out."""
+        bars, start = [], left
+        for gap in sorted(gaps, key=lambda g: g.x()):
+            bars.append((start, float(gap.x())))
+            start = float(gap.x() + gap.width())
+        bars.append((start, right))
+        return [(x0, x1) for x0, x1 in bars if x1 - x0 > 0]
+
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
@@ -143,13 +153,7 @@ class GlassSlider(QSlider, Tweening):
         gaps = self.track_gaps(m, span, cy, t) if horizontal else []
         filled = self.isEnabled() and ratio > 0
         if gaps:                                       # the track is cut into rounded bars; the gaps are really empty
-            edges = [groove.left()]
-            bars = []
-            for gap in sorted(gaps, key=lambda g: g.x()):
-                bars.append((edges[-1], float(gap.x())))
-                edges.append(float(gap.x() + gap.width()))
-            bars.append((edges[-1], groove.right()))
-            for x0, x1 in bars:
+            for x0, x1 in self.track_bars(groove.left(), groove.right(), gaps):
                 if x1 - x0 <= 0:
                     continue
                 r = min(t / 2, (x1 - x0) / 2)

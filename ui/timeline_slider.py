@@ -1,5 +1,5 @@
 from PySide6.QtCore import QRect, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPen
+from PySide6.QtGui import QColor, QMouseEvent, QPainterPath, QPen
 
 from core import bookmarks
 from ui.glass_slider import GlassSlider
@@ -95,7 +95,15 @@ class TimelineSlider(GlassSlider):
             x0, x1 = margin + r * span, margin + h * span
             p.setPen(Qt.NoPen)
             p.setBrush(PREVIEW_COLOR)
+            gaps = self.track_gaps(margin, span, cy, thickness)
+            if gaps:                                # (the preview stays on the bars: a chapter gap stays a gap)
+                bars = QPainterPath()
+                for b0, b1 in self.track_bars(margin, margin + span, gaps):
+                    radius = min(thickness / 2, (b1 - b0) / 2)
+                    bars.addRoundedRect(QRectF(b0, cy - thickness / 2, b1 - b0, thickness), radius, radius)
+                p.setClipPath(bars)
             p.drawRect(QRectF(x0, cy - thickness / 2, x1 - x0, thickness))
+            p.setClipping(False)
             p.setBrush(MARKER_COLOR)
             p.drawRoundedRect(QRectF(margin + h * span - MARKER_WIDTH / 2, cy - thickness / 2, MARKER_WIDTH, thickness),
                               MARKER_WIDTH / 2, MARKER_WIDTH / 2)
