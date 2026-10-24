@@ -12,6 +12,8 @@ from styles.glass_theme import GLASS_THEME_QSS
 from ui.title_bar import GlassTitleBar, native_start_window_drag
 from ui.speed_popup import SpeedPopup
 from ui.track_popup import TrackPopup
+from ui.bookmark_panel import BookmarkPanel
+from ui.timeline_slider import PIN_COLOR
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.next_up import NextUpCard, NEXT_UP_SECONDS
@@ -26,6 +28,7 @@ from core.update_checker import UpdateChecker
 from ui.update_card import UpdateCard
 from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip, ThumbnailTip
+from core import bookmarks
 from core.thumbnails import ThumbnailProvider, bucket_of
 from core.tracks import pick_track, track_choice
 from ui.icons import get_svg_icon
@@ -170,6 +173,10 @@ class MainWindow(QMainWindow):
         self._is_pip = False
         self._saved_geometry = None
         self._current_file = None
+        self.bookmarks = []                              # the loaded video's bookmarks [{"t", "name"}]
+        self.chapters = []                               # its chapters [(start, title)]
+        self.bookmark_panel = None                       # made on first use
+        self._time_pos = 0.0                             # the playback position as the window last knew it
         self._last_problem = None          # what mpv said about the last file that would not open (for the diagnostics)
 
         self.app_settings = AppSettings()
@@ -280,6 +287,7 @@ class MainWindow(QMainWindow):
         # keep the controls on screen while the speed panel is open
         # (and while the mouse is on the title bar, which fades with them)
         self.controller.hold_visible = (lambda: self.speed_popup.isVisible() or self.track_popup.isVisible()
+                                        or (self.bookmark_panel is not None and self.bookmark_panel.isVisible())
                                         or self.title_bar.underMouse())
         self.controller.visibility_changed.connect(self._on_controls_visibility)
         self.controller.opacity_changed.connect(self._on_controls_opacity)
@@ -301,6 +309,7 @@ class MainWindow(QMainWindow):
         self.engine.playback_state_changed.connect(self._on_playback_state)
         self.engine.speed_changed.connect(self._on_speed_changed)
         self.engine.tracks_ready.connect(self._apply_remembered_tracks)
+        self.engine.tracks_ready.connect(self._load_chapters)
         self.engine.volume_changed.connect(self._on_volume_changed)
         self.engine.file_ended.connect(self._on_file_ended)
         self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "warning"))
@@ -310,6 +319,8 @@ class MainWindow(QMainWindow):
         # Controller -> Engine
         self.controller.timeline.hover_moved.connect(self._show_seek_tip)
         self.controller.timeline.hover_left.connect(self._hide_seek_tips)
+        self.controller.timeline.pin_pressed.connect(lambda t: self._seek_to_mark(t, say=False))
+        self.controller.bookmarks_clicked.connect(self.toggle_bookmark_panel)
         self.controller.visibility_changed.connect(lambda shown: None if shown else self._hide_seek_tips())
         self.update_card.update_clicked.connect(self._start_update)
         self.update_card.dismissed.connect(self._dismiss_update)
@@ -515,7 +526,16 @@ class MainWindow(QMainWindow):
         """The time under the pointer, as a pill just above the seek bar."""
         tl = self.controller.timeline
         spot = tl.mapTo(self.central_widget, QPoint(round(x), tl.height() // 2))
-        self.seek_tip.show_at(format_clock(seconds), spot.x(), spot.y() - 15, self.viewport.geometry())
+        text, dot, detail = format_clock(seconds), None, ""         # (a bookmark under the pointer, else its chapter, else the time)
+        pin = tl.pin_at(x)
+        item = next((b for b in self.bookmarks if b["t"] == pin), None) if pin is not None else None
+        chapter = bookmarks.chapter_at(self.chapters, seconds) if self.chapters_on else None
+        if item is not None:
+            text, dot = bookmarks.display_name(item), PIN_COLOR
+            detail = format_clock(item["t"]) if item["name"] else ""
+        elif chapter is not None:
+            text, detail = chapter[1], format_clock(seconds)
+        self.seek_tip.show_at(text, spot.x(), spot.y() - 15, self.viewport.geometry(), dot=dot, detail=detail)
         self._thumb_spot = (seconds, spot.x())
         if not self._thumbnails_wanted():
             self.thumbnail_tip.hide_tip()
@@ -558,6 +578,92 @@ class MainWindow(QMainWindow):
     def _on_chapters_changed(self, enabled: bool):
         self.chapters_on = enabled
         self.app_settings.set_chapters_visible(enabled)
+        self._refresh_marks()
+        self._hide_seek_tips()
+
+    # --- bookmarks and chapter marks ------------------------------------------------------------------
+
+    def _marks_usable(self) -> bool:
+        return self._current_file is not None and self._duration > 0
+
+    def _forget_marks(self):
+        self.bookmarks, self.chapters = [], []
+        if self.bookmark_panel is not None:
+            self.bookmark_panel.hide()
+        self._refresh_marks()
+
+    def _load_chapters(self):
+        """(Once per video, when mpv has loaded the file.) The file's own chapters for the bar and the pill."""
+        self.chapters = self.engine.chapters() if self._current_file else []
+        self._refresh_marks()
+
+    def _refresh_marks(self):
+        """The pins and the chapter gaps into the seek bar, and the list into the panel when it is open."""
+        tl = self.controller.timeline
+        tl.set_chapters_visible(self.chapters_on)
+        tl.set_marks([b["t"] for b in self.bookmarks], [t for t, _title in self.chapters])
+        if self.bookmark_panel is not None and self.bookmark_panel.isVisible():
+            self.bookmark_panel.set_items(self.bookmarks, self._duration)
+
+    def _set_bookmarks(self, items: list):
+        self.bookmarks = items
+        if self._current_file:
+            self.app_settings.save_bookmarks(self._current_file, items)
+        self._refresh_marks()
+
+    def add_bookmark(self):
+        if not self._marks_usable():
+            return
+        t = min(self._time_pos, self._duration)
+        items, added, existing = bookmarks.add(self.bookmarks, t)
+        if added:
+            self._set_bookmarks(items)
+            self.osd.show_message("북마크", "bookmark", format_clock(t))
+        elif existing is not None:
+            self.osd.show_message("이미 북마크가 있어요", "bookmark", format_clock(existing))
+        else:
+            self.osd.show_message(f"북마크는 영상마다 {bookmarks.MAX_PER_VIDEO}개까지 저장돼요", "warning")
+
+    def rename_bookmark(self, t: float, name: str):
+        self._set_bookmarks(bookmarks.rename(self.bookmarks, t, name))
+
+    def delete_bookmark(self, t: float):
+        self._set_bookmarks(bookmarks.remove(self.bookmarks, t))
+
+    def _seek_to_mark(self, t: float, say: bool):
+        """An exact seek (the position is noted at once, so a quick second key press goes on from here)."""
+        self.next_up.cancel()
+        self._time_pos = t
+        self.engine.seek(t, reference="exact")
+        if say:
+            self.osd.show_message("북마크", "bookmark", format_clock(t))
+
+    def jump_bookmark(self, direction: int):
+        """Alt+Right (+1) / Alt+Left (-1): the next / previous bookmark (one beyond the video's length is skipped)."""
+        if not self._marks_usable():
+            return
+        usable = [b for b in self.bookmarks if b["t"] <= self._duration]
+        target = bookmarks.next_after(usable, self._time_pos) if direction > 0 else bookmarks.previous(usable, self._time_pos)
+        if target is None:
+            self.osd.show_message("다음 북마크가 없어요" if direction > 0 else "이전 북마크가 없어요", "warning")
+        else:
+            self._seek_to_mark(target, say=True)
+
+    def toggle_bookmark_panel(self):
+        if not self._marks_usable():
+            return
+        if self.bookmark_panel is None:
+            panel = BookmarkPanel(self.central_widget)
+            panel.opened.connect(lambda: panel.set_items(self.bookmarks, self._duration))
+            panel.jump_requested.connect(lambda t: self._seek_to_mark(t, say=False))
+            panel.add_requested.connect(self.add_bookmark)
+            panel.rename_requested.connect(self.rename_bookmark)
+            panel.delete_requested.connect(self.delete_bookmark)
+            self.bookmark_panel = panel
+        button = self.controller.btn_bookmarks
+        if button is None or not button.isVisible():
+            button = self.controller.timeline
+        self.bookmark_panel.toggle_above_widget(button, align_to=self.controller.right_zone, above=self.controller.timeline)
 
     def _on_thumbnails_changed(self, enabled: bool):
         self.thumbnails_on = enabled
@@ -716,6 +822,10 @@ class MainWindow(QMainWindow):
 
         self._current_file = file_path
         self._duration = 0.0                              # (the new video says how long it is in a moment)
+        self._time_pos = 0.0
+        self._forget_marks()
+        self.bookmarks = self.app_settings.get_bookmarks(file_path)
+        self._refresh_marks()
         self.track_popup.hide()
         self.next_up.cancel()
         self._next_target = None
@@ -763,6 +873,7 @@ class MainWindow(QMainWindow):
         self._duration = duration
         if self._current_file and duration > 0:
             self.app_settings.save_duration(self._current_file, duration)     # (the start screen's progress line)
+        self._refresh_marks()
 
     def _on_playback_state(self, is_playing: bool):
         if is_playing:
@@ -789,6 +900,7 @@ class MainWindow(QMainWindow):
     def _on_time_pos_changed(self, time_pos: float):
         if time_pos > 0.0 and not self.center_badge.armed:
             self.center_badge.arm()
+        self._time_pos = time_pos
         self.controller.set_time_pos(time_pos)
         if self._duration > 0:
             self.mini_progress.set_ratio(time_pos / self._duration)
@@ -882,6 +994,7 @@ class MainWindow(QMainWindow):
         problem = file_errors.classify(path, why, log_lines)
         self._last_problem = problem.detail
         self._current_file = None
+        self._forget_marks()
         self.next_up.cancel()
         self._next_target = None
         self._update_playlist_state()
@@ -1183,6 +1296,23 @@ class MainWindow(QMainWindow):
             event.accept()
             return
 
+        # Bookmarks (before the plain Left / Right seek): B adds one, Shift+B opens the list, Alt+Left / Alt+Right jump
+        # to the previous / next one. While a name is being typed, every key belongs to the field.
+        if self.bookmark_panel is not None and self.bookmark_panel.is_editing:
+            event.accept()
+            return
+        if key == Qt.Key_B and not (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
+            if modifiers & Qt.ShiftModifier:
+                self.toggle_bookmark_panel()
+            else:
+                self.add_bookmark()
+            event.accept()
+            return
+        if key in (Qt.Key_Left, Qt.Key_Right) and (modifiers & Qt.AltModifier):
+            self.jump_bookmark(+1 if key == Qt.Key_Right else -1)
+            event.accept()
+            return
+
         # Space: Play/Pause
         if key == Qt.Key_Space:
             self.engine.toggle_play()
@@ -1295,6 +1425,8 @@ class MainWindow(QMainWindow):
         elif key == Qt.Key_Escape:
             if self.next_up.is_counting():
                 self.next_up.cancel()
+            elif self.bookmark_panel is not None and self.bookmark_panel.isVisible():
+                self.bookmark_panel.hide()
             elif self.track_popup.isVisible():
                 self.track_popup.hide()
             elif self.info_panel.isVisible():
@@ -1328,6 +1460,8 @@ class MainWindow(QMainWindow):
         if vp != self._tips_viewport:             # (the time pill and the picture were placed for the bar as it was:
             self._tips_viewport = QRect(vp)       #  only a change of the video area moves it; a layout pass alone does not)
             self._hide_seek_tips()
+            if self.bookmark_panel is not None:
+                self.bookmark_panel.hide()
 
         # Controls: compact (transport only) when the full set doesn't fit.
         c = self.controller
@@ -1382,6 +1516,8 @@ class MainWindow(QMainWindow):
             self.speed_popup.raise_()
         if self.track_popup.isVisible():
             self.track_popup.raise_()
+        if self.bookmark_panel is not None and self.bookmark_panel.isVisible():
+            self.bookmark_panel.raise_()
         if self.next_up.isVisible():
             self.next_up.raise_()
         if self.info_panel.isVisible():

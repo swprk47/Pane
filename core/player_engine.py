@@ -272,7 +272,7 @@ class PlayerEngine(QObject):
     def seek(self, seconds: float, reference: str = "relative"):
         """
         Seek in media.
-        reference: 'relative' (default), 'absolute', 'relative-percent'
+        reference: 'relative' (default), 'absolute' (quick), 'exact' (absolute, to the frame), 'percent'
         """
         try:
             if reference == "relative":
@@ -281,6 +281,8 @@ class PlayerEngine(QObject):
                 self.mpv.seek(seconds, reference="relative", precision="exact")
             elif reference == "absolute":
                 self.mpv.seek(seconds, reference="absolute")
+            elif reference == "exact":                      # absolute, but to the very time (a bookmark), not the keyframe before
+                self.mpv.seek(seconds, reference="absolute", precision="exact")
             elif reference == "percent":
                 self.mpv.seek(seconds, reference="absolute-percent")
         except Exception as e:
