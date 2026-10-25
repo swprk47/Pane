@@ -59,6 +59,12 @@ SVG_ICONS = {
         <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z"/>
     </svg>""",
 
+    "help": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9.5"/>
+        <path d="M9.4 9.2a2.7 2.7 0 1 1 3.8 2.5c-.8.4-1.2 1-1.2 1.9"/>
+        <circle cx="12" cy="17" r="0.6" fill="#FFFFFF"/>
+    </svg>""",
+
     "refresh": """<svg viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 12a9 9 0 1 1-3-6.7L21 8"/>
         <polyline points="21 3 21 8 16 8"/>

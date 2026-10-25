@@ -75,6 +75,7 @@ class GlassTitleBar(QWidget):
     window. Uses native Windows dragging and modern SVG vector icons.
     """
     pip_toggled = Signal()
+    help_clicked = Signal()             # the 단축키 도움말 button (always there)
     update_clicked = Signal()           # the 업데이트 확인 button (home screen only)
     activity = Signal()                 # the mouse moved over the bar: bring the controls back
 
@@ -132,6 +133,11 @@ class GlassTitleBar(QWidget):
         self.btn_update.setToolTip("업데이트 확인")
         self.btn_update.clicked.connect(self.update_clicked.emit)
         layout.addWidget(self.btn_update)
+        self.btn_help = GlassButton(self, "flat", 28, icon_px=14, radius=8)
+        self.btn_help.setIcon(get_svg_icon("help", size=14))
+        self.btn_help.setToolTip("단축키 도움말 (?)")
+        self.btn_help.clicked.connect(self.help_clicked.emit)
+        layout.addWidget(self.btn_help)
         self.sep_update = QFrame(self)
         self.sep_update.setFixedSize(1, 16)
         self.sep_update.setStyleSheet("background: rgba(255, 255, 255, 0.22); border: none;")
@@ -159,12 +165,11 @@ class GlassTitleBar(QWidget):
         layout.addWidget(self.btn_close)
 
     def _buttons(self):
-        return (self.logo_btn, self.btn_pip, self.btn_update, self.btn_min, self.btn_max, self.btn_close)
+        return (self.logo_btn, self.btn_pip, self.btn_update, self.btn_help, self.btn_min, self.btn_max, self.btn_close)
 
     def set_update_visible(self, visible: bool):
-        """The update button (and its divider) belong to the home screen: out of the way while a video is open."""
+        """The update button belongs to the home screen: out of the way while a video is open (the divider stays)."""
         self.btn_update.setVisible(visible)
-        self.sep_update.setVisible(visible)
 
     def set_opacity(self, value: float):
         value = max(0.0, min(1.0, value))
