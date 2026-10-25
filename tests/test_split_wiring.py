@@ -5,7 +5,6 @@ They pin three kinds of things: the right-click menu's entries, that a signal re
 connected twice would act twice, one connected nowhere would go silent), and the order in which closing is traced."""
 import importlib
 
-import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QMenu
@@ -128,3 +127,33 @@ def test_closing_keeps_the_traced_order(window, monkeypatch):
     monkeypatch.setattr(exit_trace, "stage", lambda name, *a, **k: stages.append(name))
     window.close()
     assert stages == ["update check stopped", "thumbnails closed", "video surface released", "mpv terminated"]
+
+
+def test_a_drag_on_the_video_starts_the_window_move_through_ui_viewport(window, monkeypatch):
+    """The opt-in mouse tests (tests/test_input_e2e.py) keep the system's move loop from starting by patching this name in
+    ui.viewport, where VideoViewport uses it: the patch must really intercept a drag (no mouse is moved here)."""
+    import ui.viewport as viewport_module
+    from PySide6.QtCore import QEvent, QPointF
+    from PySide6.QtGui import QMouseEvent
+    started = []
+    monkeypatch.setattr(viewport_module, "native_start_window_drag", lambda hwnd: started.append(hwnd) or True)
+    view = window.viewport
+    press = QMouseEvent(QEvent.MouseButtonPress, QPointF(20, 20), QPointF(20, 20), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+    move = QMouseEvent(QEvent.MouseMove, QPointF(120, 80), QPointF(120, 80), Qt.NoButton, Qt.LeftButton, Qt.NoModifier)
+    view.mousePressEvent(press)
+    view.mouseMoveEvent(move)
+    assert started == [int(window.winId())]
+
+
+def test_the_update_cards_buttons_each_act_once(window, monkeypatch):
+    """[업데이트] starts one download (a second handler would ask twice) and the X remembers the version once."""
+    window.update_card.show_offer("9.9.9", "")
+    window.updates.offer = MANIFEST
+    downloads = Counter(result=False)
+    monkeypatch.setattr(window.update_checker, "download_and_install", downloads)
+    window.update_card.update_clicked.emit()
+    assert len(downloads.calls) == 1
+    remembered = Counter(result=None)
+    monkeypatch.setattr(window.app_settings, "set_update_dismissed_version", remembered)
+    window.update_card.dismissed.emit()
+    assert len(remembered.calls) == 1 and remembered.calls[0][0] == ("9.9.9",)
