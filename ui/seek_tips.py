@@ -4,11 +4,8 @@ the two thumbnail switches; the window forwards the old names (`seek_tip`, `thum
 `thumbnails_on`, `thumbnails_on_stop`, `_hide_seek_tips`, `_on_thumbnails_changed`, `_on_thumbnails_on_stop_changed`)."""
 from PySide6.QtCore import QObject, QPoint, QRect, QTimer
 
-from core import bookmarks as bookmark_logic
-from core.media_info import format_clock
 from core.thumbnails import ThumbnailProvider, bucket_of
 from ui.overlay import SeekTimeTip, ThumbnailTip
-from ui.timeline_slider import PIN_COLOR
 
 
 class SeekTips(QObject):
@@ -33,15 +30,7 @@ class SeekTips(QObject):
         window = self.window
         tl = window.controller.timeline
         spot = tl.mapTo(window.central_widget, QPoint(round(x), tl.height() // 2))
-        text, dot, detail = format_clock(seconds), None, ""         # (a bookmark under the pointer, else its chapter, else the time)
-        pin = tl.pin_at(x)
-        item = next((b for b in window.bookmarks if b["t"] == pin), None) if pin is not None else None
-        chapter = bookmark_logic.chapter_at(window.chapters, seconds) if window.chapters_on else None
-        if item is not None:
-            text, dot = bookmark_logic.display_name(item), PIN_COLOR
-            detail = format_clock(item["t"]) if item["name"] else ""
-        elif chapter is not None:
-            text, detail = chapter[1], format_clock(seconds)
+        text, dot, detail = window.marks.pill_for(seconds, x)       # (a bookmark under the pointer, else its chapter, else the time)
         self.seek_tip.show_at(text, spot.x(), spot.y() - 15, window.viewport.geometry(), dot=dot, detail=detail)
         self._spot = (seconds, spot.x())
         if not self._wanted():
