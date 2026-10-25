@@ -137,3 +137,13 @@ def test_hide_help_hides_the_panel_and_the_dim(make):
     assert not p.is_open() and not p.isVisible() and not p._dim.isVisible()
     p.show_as(HelpPanel.DRAWER, QRect(0, 0, 1060, 640))
     assert p.is_open() and not p._dim.isVisible(), "the drawer has no dim"
+
+
+@pytest.mark.parametrize("kind", [HelpPanel.CENTERED, HelpPanel.DRAWER])
+def test_no_key_chip_is_clipped_by_its_column(make, kind):
+    """(Seen in a real window: the drawer's 150 px column cut `PageDown` off.)"""
+    _host, p = make(1060, 640, kind)
+    for chip in texts(p, "KeyChip"):
+        box = chip.parentWidget()
+        needed = box.layout().minimumSize().width()
+        assert needed <= box.width(), f"{chip.text()!r}: its row needs {needed}px, the column is {box.width()}px"

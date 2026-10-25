@@ -38,7 +38,7 @@ SCROLL_QSS = ('QScrollArea { background: transparent; border: none; } QScrollAre
 LEFT_GROUPS = ("재생", "소리 · 자막", "북마크")
 CHIP_COLUMN = {"재생": 190, "소리 · 자막": 190, "북마크": 190, "화면 · 파일": 150}
 MOUSE_COLUMN = 110
-DRAWER_COLUMN = 150
+DRAWER_COLUMN = 185
 
 
 def _text(text: str, px: int, color: str, bold=False, name="", wrap=True) -> QLabel:
