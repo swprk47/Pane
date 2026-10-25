@@ -49,6 +49,7 @@ from ui.context_menu import show_context_menu as _show_context_menu
 from ui.key_bindings import KeyRouter
 from ui.seek_tips import SeekTips
 from ui.bookmark_flow import BookmarkFlow
+from ui.help_flow import HelpFlow
 from ui.update_flow import UpdateFlow
 
 
@@ -158,6 +159,8 @@ class MainWindow(QMainWindow):
         # the update notice: a card over the window and the checker behind it (ui/update_flow.py)
         self.updates = UpdateFlow(self)
 
+        self.help = HelpFlow(self)                       # the shortcut help (ui/help_flow.py)
+
         self.info_panel = MediaInfoPanel(self.central_widget)
         self.info_panel.set_provider(self.engine.get_media_info)
 
@@ -174,6 +177,7 @@ class MainWindow(QMainWindow):
         self.title_bar.activity.connect(self.controller.trigger_activity)
         self.title_bar.installEventFilter(self)
         self.title_bar.update_clicked.connect(self.updates.check_from_home)
+        self.title_bar.help_clicked.connect(self.help.toggle)
         self.top_scrim.hide()
 
         self.osd = GlassOSDWidget(self.central_widget)
@@ -513,6 +517,7 @@ class MainWindow(QMainWindow):
             return
         self.viewport.start_screen.clear_problem()
         self._last_problem = None
+        self.help.close()                                 # (its layout was chosen for the home screen)
 
         self._current_file = file_path
         self._duration = 0.0                              # (the new video says how long it is in a moment)
@@ -688,6 +693,7 @@ class MainWindow(QMainWindow):
         problem = file_errors.classify(path, why, log_lines)
         self._last_problem = problem.detail
         self._current_file = None
+        self.help.close()
         self.marks.forget()
         self.next_up.cancel()
         self._next_target = None
@@ -956,6 +962,8 @@ class MainWindow(QMainWindow):
             self.info_panel.adjustSize()
             self.info_panel.move(max(vp.x() + 8, vp.right() - self.info_panel.width() - 14), vp.y() + inset + 10)
 
+        self.help.relayout()
+
         # stacking order, bottom to top
         self.top_scrim.raise_()
         if bar_shown:
@@ -980,6 +988,7 @@ class MainWindow(QMainWindow):
             self.next_up.raise_()
         if self.info_panel.isVisible():
             self.info_panel.raise_()
+        self.help.raise_panel()
         if hasattr(self, "controller") and self.controller.settings_panel is not None:
             self.controller.settings_panel.raise_overlay()
         if hasattr(self, "osd"):
