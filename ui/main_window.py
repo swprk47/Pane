@@ -866,6 +866,7 @@ class MainWindow(QMainWindow):
 
         self._current_file = file_path
         self._duration = 0.0                              # (the new video says how long it is in a moment)
+        self.controller.set_duration(0.0)                 # (the seek bar too: pins must not use the old video's length)
         self._time_pos = 0.0
         self._forget_marks()
         self.bookmarks = self.app_settings.get_bookmarks(file_path)

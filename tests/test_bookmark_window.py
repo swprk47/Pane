@@ -328,3 +328,14 @@ def test_the_list_is_not_rebuilt_while_a_name_is_being_typed(window, video, pill
     window._refresh_marks()
     assert window.bookmark_panel.is_editing
     assert window.bookmark_panel.findChildren(QLineEdit)[0] is field and field.text() == "half a na"
+
+
+def test_a_newly_opened_video_has_no_pins_until_its_length_is_known(window, sample_video, pump, tmp_path):
+    other = str(tmp_path / "other.mp4")
+    shutil.copy(sample_video, other)
+    AppSettings().save_bookmarks(other, [{"t": 1.0, "name": ""}])
+    load(window, sample_video, pump)                          # a length is known (about 3 s)
+    window.load_media_file(other)
+    tl = window.controller.timeline
+    assert tl._duration == 0 and tl._pin_marks() == [], "the old video's length must not place the new video's pins"
+    assert pump(lambda: len(tl._pin_marks()) == 1, timeout=10)
