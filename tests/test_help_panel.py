@@ -165,3 +165,26 @@ def test_the_centred_panel_needs_no_scrolling_in_the_default_window_and_groups_s
     chips = [c.mapTo(p, QPoint(0, 0)).y() for c in texts(p, "KeyChip")]
     last_play_chip = max(y for y in chips if titles[0] < y < titles[1])
     assert titles[1] - last_play_chip < 50, "the next group starts right after the last row of the one above"
+
+
+def test_the_chips_draw_their_own_smooth_border_a_little_thicker_than_one_pixel(make):
+    """(A QSS border of 1 px looked torn on the rounded ends: the chip paints an antialiased 1.5 px outline instead.)"""
+    from ui.help_panel import CHIP_BORDER_WIDTH
+    _host, p = make(1060, 640, HelpPanel.CENTERED)
+    assert CHIP_BORDER_WIDTH == 1.5
+    for chip in texts(p, "KeyChip"):
+        assert "border" not in chip.styleSheet()
+        img = chip.grab().toImage()
+        assert img.pixelColor(img.width() // 2, 0).alpha() > 60, "the outline reaches the top edge"
+
+
+def _group_gap(p):
+    titles = sorted(lbl.mapTo(p, QPoint(0, 0)).y() for lbl in p.findChildren(QLabel) if lbl.text() in ("재생", "소리 · 자막"))
+    bottoms = [c.mapTo(p, QPoint(0, 0)).y() + c.height() for c in texts(p, "KeyChip")]
+    return titles[1] - max(y for y in bottoms if y < titles[1])
+
+
+def test_in_the_drawer_the_groups_have_more_room_between_them_than_in_the_centred_panel(make):
+    _host, centred = make(1060, 640, HelpPanel.CENTERED)
+    _host, drawer = make(1060, 640, HelpPanel.DRAWER)
+    assert _group_gap(drawer) >= _group_gap(centred) + 8

@@ -5,7 +5,7 @@ right edge, the video stays visible; for a playing video). The body scrolls when
 edge that has more to see. The panel only draws and sizes itself: ``ui.help_flow.HelpFlow`` decides when and which.
 """
 from PySide6.QtCore import QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QLinearGradient, QPainter
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from ui.glass_button import paint_glass_panel
@@ -28,8 +28,9 @@ DRAWER_BOTTOM = 14
 DRAWER_MAX_HEIGHT = 640
 
 CHIP_HEIGHT = 20
-CHIP_QSS = (f'QLabel {{ background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.28); border-radius: 10px;'
-            f' padding: 0 8px; color: #FFFFFF; font-family: {FONT}; font-size: 11px; font-weight: 700; }}')
+CHIP_BORDER_WIDTH = 1.5                          # (painted, not a QSS border: that one looked torn on the rounded ends)
+CHIP_QSS = f'QLabel {{ color: #FFFFFF; font-family: {FONT}; font-size: 11px; font-weight: 700; }}'
+GROUP_GAP_DRAWER = 16
 SCROLL_QSS = ('QScrollArea { background: transparent; border: none; } QScrollArea > QWidget > QWidget { background: transparent; }'
               ' QScrollBar:vertical { background: transparent; width: 6px; margin: 2px; }'
               ' QScrollBar::handle:vertical { background: rgba(255, 255, 255, 0.25); border-radius: 2px; min-height: 24px; }'
@@ -59,6 +60,22 @@ def _group_title(text: str) -> QLabel:
     return lbl
 
 
+class _Chip(QLabel):
+    """A key label: a glass pill with a smooth outline."""
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        half = CHIP_BORDER_WIDTH / 2
+        rect = QRectF(self.rect()).adjusted(half, half, -half, -half)
+        radius = rect.height() / 2
+        p.setBrush(QColor(255, 255, 255, 20))
+        p.setPen(QPen(QColor(255, 255, 255, 105), CHIP_BORDER_WIDTH))
+        p.drawRoundedRect(rect, radius, radius)
+        p.end()
+        super().paintEvent(event)
+
+
 def _key_row(chips, description: str, column: int) -> QWidget:
     row = QWidget()
     lay = QHBoxLayout(row)
@@ -70,7 +87,10 @@ def _key_row(chips, description: str, column: int) -> QWidget:
     box_lay.setContentsMargins(0, 0, 0, 0)
     box_lay.setSpacing(4)
     for chip in chips:
-        c = QLabel(chip)
+        c = _Chip(chip)
+        c.setAlignment(Qt.AlignCenter)
+        c.setContentsMargins(9, 0, 9, 0)
+        c.setMinimumWidth(24)
         c.setObjectName("KeyChip")
         c.setFixedHeight(CHIP_HEIGHT)
         c.setStyleSheet(CHIP_QSS)
@@ -330,7 +350,9 @@ class HelpPanel(QFrame):
             root.setSpacing(0)
             for title, _rows in KEY_GROUPS:
                 root.addLayout(self._group(title, DRAWER_COLUMN))
+                root.addSpacing(GROUP_GAP_DRAWER)
             root.addLayout(self._mouse(DRAWER_COLUMN))
+            root.addSpacing(GROUP_GAP_DRAWER)
             root.addLayout(self._tips())
             root.addStretch(1)
         return body
