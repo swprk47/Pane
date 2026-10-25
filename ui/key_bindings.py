@@ -22,9 +22,21 @@ class KeyRouter:
             event.accept()
             return True
 
+        # The centred help is modal too: Esc and ? close it, every other key is swallowed (the drawer is not: see below).
+        if window.help.is_modal():
+            if key == Qt.Key_Escape or key == Qt.Key_Question or (key == Qt.Key_Slash and modifiers & Qt.ShiftModifier):
+                window.help.close()
+            event.accept()
+            return True
+
         # Bookmarks (before the plain Left / Right seek): B adds one, Shift+B opens the list, Alt+Left / Alt+Right jump
         # to the previous / next one. While a name is being typed, every key belongs to the field.
         if window.bookmark_panel is not None and window.bookmark_panel.is_editing:
+            event.accept()
+            return True
+        # ? opens and closes the shortcut help (after the guard above: typed into a name it is a character)
+        if (key == Qt.Key_Question or (key == Qt.Key_Slash and modifiers & Qt.ShiftModifier))                 and not (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
+            window.help.toggle()
             event.accept()
             return True
         if key == Qt.Key_B and not (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
@@ -149,7 +161,9 @@ class KeyRouter:
             event.accept()
             return True
         elif key == Qt.Key_Escape:
-            if window.next_up.is_counting():
+            if window.help.is_open():
+                window.help.close()
+            elif window.next_up.is_counting():
                 window.next_up.cancel()
             elif window.bookmark_panel is not None and window.bookmark_panel.isVisible():
                 window.bookmark_panel.hide()

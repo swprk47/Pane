@@ -105,7 +105,10 @@ def show_context_menu(window, global_pos: QPoint) -> None:
 
     menu.addSeparator()
 
-    # 8. Customize Buttons
+    # 8. The shortcut help, then the settings
+    act_help = menu.addAction("단축키 (?)")
+    act_help.triggered.connect(window.help.toggle)
+
     act_layout = menu.addAction("설정...")
     act_layout.triggered.connect(window.controller._open_settings_dialog)
 

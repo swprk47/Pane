@@ -73,8 +73,24 @@ def test_the_right_click_menu_has_these_entries(window, monkeypatch):
         "  정밀 배속 슬라이더 & 프리셋 설정...",
         "자막 (Subtitles)", "  자막 켜기 / 끄기 (C)", "  외부 자막 파일 선택...", "---",
         "현재 화면 고화질 캡처 (Ctrl+S)", "재생 정보 - 코덱, 디코더 (I)", "PIP 항상 위 모드 (P)", "전체화면 (F)", "---",
-        "설정...", f"Pane 정보 (v{APP_VERSION})", "Pane 종료 (Alt+F4)",
+        "단축키 (?)", "설정...", f"Pane 정보 (v{APP_VERSION})", "Pane 종료 (Alt+F4)",
     ]
+
+
+def test_the_menu_entry_toggles_the_help_once(window, monkeypatch):
+    class TriggerMenu(QMenu):
+        """Never shown: exec() triggers the help entry."""
+
+        def exec(self, *args, **kwargs):
+            next(a for a in self.actions() if a.text() == "단축키 (?)").trigger()
+            return None
+
+    for module in _menu_modules():
+        monkeypatch.setattr(module, "QMenu", TriggerMenu)
+    window.show_context_menu(QPoint(10, 10))
+    assert window.help.is_open()
+    window.show_context_menu(QPoint(10, 10))
+    assert not window.help.is_open(), "one trigger, one toggle (a second connection would cancel the first)"
 
 
 # --- a signal reaches its handler exactly once ------------------------------------------------------------------

@@ -43,7 +43,8 @@ def test_the_button_sits_between_pip_and_the_window_buttons_with_a_divider(windo
     lay = bar.layout()
     order = [lay.itemAt(i).widget() for i in range(lay.count()) if lay.itemAt(i).widget()]
     assert order.index(bar.btn_pip) + 1 == order.index(bar.btn_update), "right after PIP"
-    assert order.index(bar.btn_update) + 1 == order.index(bar.sep_update) and order.index(bar.sep_update) + 1 == order.index(bar.btn_min)
+    # the help button (always there) now sits between the update button and the divider
+    assert order.index(bar.btn_update) + 2 == order.index(bar.sep_update) and order.index(bar.sep_update) + 1 == order.index(bar.btn_min)
     assert bar.btn_update.toolTip() == "업데이트 확인"
     assert (bar.btn_update.width(), bar.btn_update.height()) == (28, 28)
     assert bar.btn_update in bar._buttons(), "it fades and goes inert with the other buttons"
@@ -51,9 +52,9 @@ def test_the_button_sits_between_pip_and_the_window_buttons_with_a_divider(windo
 
 def test_it_shows_on_the_home_screen_and_hides_while_a_video_is_open(window, sample_video, pump):
     bar = window.title_bar
-    assert bar.btn_update.isVisible() and bar.sep_update.isVisible()
+    assert bar.btn_update.isVisible()
     window.load_media_file(sample_video)
-    assert not bar.btn_update.isVisible() and not bar.sep_update.isVisible()
+    assert not bar.btn_update.isVisible() and bar.sep_update.isVisible(), "the divider stays: the help button is always there"
     window._show_file_problem(sample_video, "gone")
     assert bar.btn_update.isVisible() and bar.sep_update.isVisible(), "back on the home screen"
 
