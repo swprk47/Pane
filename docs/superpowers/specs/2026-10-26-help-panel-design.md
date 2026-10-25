@@ -27,8 +27,11 @@ friend who installs Pane never sees them. A help panel inside the app lists them
   `Esc` does: next-video card, bookmark list, track popup, info panel, full screen, PIP). A click on the dim (centred layout)
   closes it.
 - **Layout choice (decided each time it opens):** centred when no video is loaded **and** the video area is at least
-  940 × 680 px; otherwise the drawer. (The window can be as small as 640 × 380, and the PIP window 480 × 270: there the drawer
-  is the only layout that fits; its content scrolls.)
+  720 × 460 px; otherwise the drawer. The centred panel is sized to the window (at most 900 × 640, at least 80 px of room
+  left and right and 46 px above and below); when the window is too short for all of it (the default window is 1060 × 640)
+  its body scrolls. (The window can be as small as 640 × 380, and the PIP window 480 × 270: there the drawer is the only
+  layout that fits; its content scrolls.) *Changed from the first draft (940 × 680), which would have shown the drawer on
+  the default window's home screen.*
 - **Keys while it is open.** Centred layout: it is modal, like the settings panel: only `Esc` and `?` do anything, every other
   key is swallowed. Drawer: it is a reference sheet, so every shortcut keeps working (that is how you try what you read);
   `?` and `Esc` close it.
