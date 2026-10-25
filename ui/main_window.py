@@ -1,5 +1,4 @@
 import os
-import sys
 import ctypes
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout,
@@ -15,14 +14,11 @@ from ui.track_popup import TrackPopup
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.next_up import NextUpCard, NEXT_UP_SECONDS
-from ui.start_screen import DOCK_BOTTOM, DOCK_H
 from core import playlist
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
-from core import app_log, diagnostics, exit_trace, file_errors, update_config
-from core.update_checker import UpdateChecker
-from ui.update_card import UpdateCard
+from core import app_log, diagnostics, exit_trace, file_errors
 from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator
 from core.tracks import pick_track, track_choice
 from ui.icons import get_svg_icon
@@ -53,6 +49,7 @@ from ui.context_menu import show_context_menu as _show_context_menu
 from ui.key_bindings import KeyRouter
 from ui.seek_tips import SeekTips
 from ui.bookmark_flow import BookmarkFlow
+from ui.update_flow import UpdateFlow
 
 
 class MainWindow(QMainWindow):
@@ -158,16 +155,8 @@ class MainWindow(QMainWindow):
         self.next_up.finished.connect(self._play_next_target)
         self.next_up.play_now.connect(self._play_next_target)
 
-        # the update notice: a card over the window (see _refresh_update_card) and the checker behind it
-        self.update_card = UpdateCard(self.central_widget)
-        self._install_wait = QTimer(self)          # the setup was started: Pane should be closed by it soon
-        self._install_wait.setSingleShot(True)
-        self._install_wait.timeout.connect(self._installer_stalled)
-        self._installer_path = ""
-        self._update_offer = None                 # the Manifest of the newer version the checker found
-        self.update_checker = UpdateChecker(self.app_settings, APP_VERSION, getattr(sys, "frozen", False),
-                                            update_config.UPDATE_MANIFEST_URL,
-                                            bytes.fromhex(update_config.UPDATE_PUBLIC_KEY_HEX), parent=self)
+        # the update notice: a card over the window and the checker behind it (ui/update_flow.py)
+        self.updates = UpdateFlow(self)
 
         self.info_panel = MediaInfoPanel(self.central_widget)
         self.info_panel.set_provider(self.engine.get_media_info)
@@ -184,8 +173,7 @@ class MainWindow(QMainWindow):
         self.controller.opacity_changed.connect(self._on_controls_opacity)
         self.title_bar.activity.connect(self.controller.trigger_activity)
         self.title_bar.installEventFilter(self)
-        self._home_check = False                          # the home screen's update check is running
-        self.title_bar.update_clicked.connect(self._check_update_from_home)
+        self.title_bar.update_clicked.connect(self.updates.check_from_home)
         self.top_scrim.hide()
 
         self.osd = GlassOSDWidget(self.central_widget)
@@ -215,17 +203,17 @@ class MainWindow(QMainWindow):
         self.controller.timeline.pin_pressed.connect(lambda t: self.marks.seek_to(t, say=False))
         self.controller.bookmarks_clicked.connect(self.marks.toggle_panel)
         self.controller.visibility_changed.connect(lambda shown: None if shown else self.tips.hide())
-        self.update_card.update_clicked.connect(self._start_update)
-        self.update_card.dismissed.connect(self._dismiss_update)
-        self.update_checker.update_available.connect(self._on_update_available)
-        self.update_checker.download_progress.connect(self._on_update_progress)
-        self.update_checker.installer_ready.connect(self._on_update_installer_ready)
-        self.update_checker.install_failed.connect(self._on_update_failed)
-        self.engine.playback_state_changed.connect(lambda _playing: self._refresh_update_card())
+        self.updates.card.update_clicked.connect(self.updates.start)
+        self.updates.card.dismissed.connect(self.updates.dismiss)
+        self.updates.checker.update_available.connect(self.updates.on_available)
+        self.updates.checker.download_progress.connect(self.updates.on_progress)
+        self.updates.checker.installer_ready.connect(self.updates.on_installer_ready)
+        self.updates.checker.install_failed.connect(self.updates.on_failed)
+        self.engine.playback_state_changed.connect(lambda _playing: self.updates.refresh_card())
         for signal in (self.next_up.finished, self.next_up.cancelled, self.next_up.play_now,
                        self.controller.settings_panel_toggled):
-            signal.connect(self._refresh_update_card)
-        QTimer.singleShot(5000, self.update_checker.check)       # the automatic check, a moment after the window is up
+            signal.connect(self.updates.refresh_card)
+        QTimer.singleShot(5000, self.updates.checker.check)       # the automatic check, a moment after the window is up
         self.controller.thumbnails_on = self.tips.thumbnails_on
         self.controller.thumbnails_on_stop = self.tips.thumbnails_on_stop
         self.controller.thumbnails_changed.connect(self.tips.on_thumbnails_changed)
@@ -452,80 +440,31 @@ class MainWindow(QMainWindow):
     def show_about(self):
         self._build_about_box().exec()
 
-    UPDATE_CHECK_TIMEOUT_MS = 20000
+    UPDATE_CHECK_TIMEOUT_MS = 20000                      # (the update notice reads these two through the window)
+    INSTALL_WAIT_MS = 60000
+
+    # The update notice lives in ui/update_flow.py; the old names stay here as forwarders.
+    @property
+    def update_card(self):
+        return self.updates.card
+
+    @property
+    def update_checker(self):
+        return self.updates.checker
 
     def _ask_for_update(self, done):
-        """Ask for a version check now (whatever the daily time and the switch say) and call `done(kind, payload)` once
-        with ("current", None), ("available", manifest) or ("failed", message). (A check that was already running, the
-        automatic one, may end without a word: it does not wait for ever.)"""
-        checker = self.update_checker
-        state = {"done": False}
-        handlers = {}
-
-        def finish(kind, payload=None):
-            if state["done"]:
-                return
-            state["done"] = True
-            for signal, handler in handlers.items():
-                try:
-                    signal.disconnect(handler)
-                except (RuntimeError, TypeError):
-                    pass
-            done(kind, payload)
-
-        handlers[checker.up_to_date] = lambda: finish("current")
-        handlers[checker.update_available] = lambda m: finish("available", m)
-        handlers[checker.check_failed] = lambda message: finish("failed", message)
-        for signal, handler in handlers.items():
-            signal.connect(handler)
-        QTimer.singleShot(self.UPDATE_CHECK_TIMEOUT_MS, lambda: finish("failed", "새 버전을 확인하지 못했어요"))
-        checker.check(manual=True)
+        self.updates.ask(done)
 
     def _on_about_check(self, box, button):
-        """"업데이트 확인": ask now and show the answer in the dialog; when there is an update the button becomes
-        "지금 업데이트"."""
-        if button.text() == "지금 업데이트":
-            self._start_update()
-            box.close()
-            return
-        button.setEnabled(False)
-        box.setInformativeText("확인하는 중…")
-
-        def done(kind, payload):
-            button.setEnabled(True)
-            if kind == "current":
-                box.setInformativeText(f"최신 버전이에요 (v{APP_VERSION})")
-            elif kind == "available":
-                box.setInformativeText(f"새 버전이 있어요: {payload.version}")
-                button.setText("지금 업데이트")
-            else:
-                box.setInformativeText(payload)
-
-        self._ask_for_update(done)
+        self.updates.on_about_check(box, button)
 
     def _check_update_from_home(self):
-        """The button next to PIP: it turns while the check runs; the answer is a pill at the top (or the update card)."""
-        if self._home_check:
-            return
-        self._home_check = True
-        button = self.title_bar.btn_update
-        button.set_spinning(True)
-        self.osd.show_message("확인하는 중…", "refresh")
+        self.updates.check_from_home()
 
-        def done(kind, payload):
-            self._home_check = False
-            button.set_spinning(False)
-            if kind == "current":
-                self.osd.show_message(f"최신 버전이에요 (v{APP_VERSION})", "check")
-            elif kind == "available":
-                self._update_offer = payload              # (asked for by hand: shown even if its X was pressed before)
-                if self.update_card.mode not in ("progress", "installing"):
-                    self.update_card.show_offer(payload.version, payload.notes)
-                self._refresh_update_card()
-            else:
-                self.osd.show_message(payload, "warning")
-
-        self._ask_for_update(done)
+    def _refresh_update_card(self):
+        updates = getattr(self, "updates", None)
+        if updates is not None:
+            updates.refresh_card()
 
     def _on_copy_diagnostics(self, button):
         self.copy_diagnostics()
@@ -767,84 +706,6 @@ class MainWindow(QMainWindow):
         self.viewport.show_empty_notice(True)
         self._refresh_update_card()
 
-    # --- the update card -------------------------------------------------------------------------
-
-    def _on_update_available(self, manifest):
-        self._update_offer = manifest
-        if self.update_card.mode not in ("progress", "installing") \
-                and manifest.version != self.app_settings.get_update_dismissed_version():
-            self.update_card.show_offer(manifest.version, manifest.notes)
-        self._refresh_update_card()
-
-    def _on_update_progress(self, done: int, total: int):
-        if self.update_card.mode == "progress":
-            self.update_card.show_progress(done, total)
-
-    INSTALL_WAIT_MS = 60000
-
-    def _on_update_installer_ready(self, path: str):
-        self._installer_path = path
-        self.update_card.show_installing()
-        self._install_wait.start(self.INSTALL_WAIT_MS)
-        self._refresh_update_card()
-
-    def _installer_stalled(self):
-        """The setup was started but Pane is still running a minute later (administrator prompt cancelled, the file
-        blocked after it started, the setup failed): say so and keep the file's place, with [다시 시도]."""
-        if self.update_card.mode == "installing":
-            self.update_card.show_failure(f"설치가 시작되지 않았어요. 설치 파일: {self._installer_path}")
-            self._refresh_update_card()
-
-    def _on_update_failed(self, message: str):
-        self._install_wait.stop()
-        self.update_card.show_failure(message)
-        self._refresh_update_card()
-
-    def _start_update(self):
-        offer = self._update_offer
-        if offer is None:
-            return
-        self._install_wait.stop()
-        self.update_card.show_offer(offer.version, offer.notes)       # (sets the version the progress text names)
-        if self.update_checker.download_and_install():                # (False: a check is still running, stay as the offer)
-            self.update_card.show_progress(0, offer.size)
-        self._refresh_update_card()
-
-    def _dismiss_update(self):
-        """The X: this version is not announced again (a newer one is); 정보 > 업데이트 확인 still offers it."""
-        if self._update_offer is not None:
-            self.app_settings.set_update_dismissed_version(self._update_offer.version)
-        self.update_card.hide_card()
-
-    def _update_card_blocked(self) -> bool:
-        """Never over a playing video; the next-video card, the settings panel and a file-error notice come first."""
-        playing = self._current_file is not None and self.engine.is_playing()
-        return bool(playing or self.next_up.isVisible() or self.controller.settings_panel is not None
-                    or self.viewport.start_screen.has_problem())
-
-    def _refresh_update_card(self):
-        """Show or hide the card as the window's state allows (it keeps its content while hidden)."""
-        if not hasattr(self, "update_card") or not hasattr(self, "controller"):
-            return
-        card = self.update_card
-        if card.mode == "hidden" or self._update_card_blocked():
-            card.setVisible(False)
-            return
-        card.setVisible(True)
-        self._place_update_card()
-        card.raise_()
-
-    def _place_update_card(self):
-        """Bottom right, like the next-video card: above the controls of a loaded video, above the dock otherwise."""
-        vp = self.viewport.geometry()
-        card = self.update_card
-        x = max(vp.x() + 8, vp.right() - card.width() - 24)
-        if self._current_file is not None:
-            y = vp.bottom() - self.controller.CONTROLS_HEIGHT - card.height() - 6
-        else:
-            y = vp.bottom() - (DOCK_BOTTOM + DOCK_H) - card.height() - 12
-        card.move(x, max(vp.y() + 8, y))
-
     def _update_playlist_state(self):
         prev_, next_ = playlist.neighbors(self._current_file) if self._current_file else (None, None)
         self.controller.set_playlist_state(prev_ is not None, next_ is not None)
@@ -1080,8 +941,8 @@ class MainWindow(QMainWindow):
                                vp.y() + (vp.height() - self.center_badge.height()) // 2)
 
         self.seek_indicator.place(vp)
-        if self.update_card.isVisible():
-            self._place_update_card()
+        if self.updates.card.isVisible():
+            self.updates.place_card()
         if hasattr(self, "osd"):
             self.osd.place(vp.x() + vp.width() // 2, vp.y())      # (the same spot with or without the title bar)
 
@@ -1140,9 +1001,7 @@ class MainWindow(QMainWindow):
 
     def _on_close(self):
         exit_trace.begin()                              # (timed "[exit]" lines in pane.log: where a slow or stuck exit stopped)
-        self.update_checker.request_stop()             # (a download in flight gives up at its next chunk)
-        self.update_checker.wait_for_done(500)
-        exit_trace.stage("update check stopped")
+        self.updates.request_stop()                     # (a download in flight gives up at its next chunk; traced)
         self.tips.shutdown()                            # (a picture in the making gets a second at most)
         exit_trace.stage("thumbnails closed")
         # Render context first, then the mpv core (the other order aborts).
