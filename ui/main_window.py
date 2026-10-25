@@ -5,11 +5,11 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout,
     QFileDialog, QMenu, QApplication
 )
-from PySide6.QtCore import Qt, QPoint, QRect, Signal, QEvent, QTimer
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent
+from PySide6.QtCore import Qt, QPoint, QRect, QEvent, QTimer
+from PySide6.QtGui import QKeyEvent
 
 from styles.glass_theme import GLASS_THEME_QSS
-from ui.title_bar import GlassTitleBar, native_start_window_drag
+from ui.title_bar import GlassTitleBar
 from ui.speed_popup import SpeedPopup
 from ui.track_popup import TrackPopup
 from ui.bookmark_panel import BookmarkPanel
@@ -17,7 +17,7 @@ from ui.timeline_slider import PIN_COLOR
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.next_up import NextUpCard, NEXT_UP_SECONDS
-from ui.start_screen import StartScreen, DOCK_BOTTOM, DOCK_H
+from ui.start_screen import DOCK_BOTTOM, DOCK_H
 from core import playlist
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
@@ -26,7 +26,6 @@ from core.media_info import format_clock
 from core import app_log, diagnostics, exit_trace, file_errors, update_config
 from core.update_checker import UpdateChecker
 from ui.update_card import UpdateCard
-from ui.mpv_gl import MpvGLWidget
 from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip, ThumbnailTip
 from core import bookmarks
 from core.thumbnails import ThumbnailProvider, bucket_of
@@ -54,105 +53,7 @@ def apply_windows_11_rounded_corners(hwnd):
         print(f"[DWM] Corner preference notice: {e}")
 
 
-class VideoViewport(MpvGLWidget):
-    """
-    Dedicated video rendering viewport.
-    Supports dragging anywhere on the screen to move the window,
-    right-click context menu, and file drag-and-drop.
-    """
-    file_dropped = Signal(str)
-    double_clicked = Signal()
-    clicked = Signal()
-    context_menu_requested = Signal(QPoint)
-
-    def __init__(self, parent_window):
-        super().__init__(parent_window)
-        self.parent_window = parent_window
-        self.setAcceptDrops(True)
-        self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.NoFocus)
-        self._press_pos = None
-        self._drag_started = False
-        self._after_double_click = False
-
-        # Empty state: the start screen covers the viewport until a video is loaded
-        self.start_screen = StartScreen(self)
-        self.notice_widget = self.start_screen          # (what "is the empty state showing" asks)
-        self.start_screen.setGeometry(self.rect())
-        self.start_screen.show()
-
-    def show_empty_notice(self, show: bool):
-        self.start_screen.setVisible(show)
-        if show:
-            self.start_screen.raise_()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.start_screen.setGeometry(self.rect())
-
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            self.start_screen.set_dragging(True)
-            event.acceptProposedAction()
-
-    def dragLeaveEvent(self, event):
-        self.start_screen.set_dragging(False)
-        super().dragLeaveEvent(event)
-
-    def dropEvent(self, event: QDropEvent):
-        self.start_screen.set_dragging(False)
-        urls = event.mimeData().urls()
-        if urls:
-            file_path = urls[0].toLocalFile()
-            if os.path.exists(file_path):
-                self.file_dropped.emit(file_path)
-        event.acceptProposedAction()
-
-    def mouseDoubleClickEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            self._after_double_click = True
-            self.double_clicked.emit()
-            event.accept()
-
-    def mousePressEvent(self, event: QMouseEvent):
-        # Right button is deliberately not handled here: it falls through to
-        # contextMenuEvent so the menu opens through exactly one code path.
-        if event.button() == Qt.LeftButton:
-            self._press_pos = event.position().toPoint()
-            self._drag_started = False
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        # Start the native window move only once the cursor really drags.
-        # Starting it on press would swallow the button-up and break
-        # click / double-click detection.
-        if (event.buttons() & Qt.LeftButton and self._press_pos is not None
-                and not self._drag_started
-                and not self.parent_window.isFullScreen()
-                and not self.parent_window.isMaximized()):
-            moved = (event.position().toPoint() - self._press_pos).manhattanLength()
-            if moved >= QApplication.startDragDistance():
-                self._drag_started = True
-                native_start_window_drag(int(self.parent_window.winId()))
-                event.accept()
-                return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton and self._press_pos is not None:
-            if not self._drag_started and not self._after_double_click:
-                self.clicked.emit()
-            self._after_double_click = False
-            self._press_pos = None
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
-
-    def contextMenuEvent(self, event):
-        self.context_menu_requested.emit(event.globalPos())
-        event.accept()
+from ui.viewport import VideoViewport  # noqa: F401  (the name stays importable from here)
 
 
 class MainWindow(QMainWindow):
