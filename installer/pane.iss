@@ -1,8 +1,8 @@
 ; Pane installer (Inno Setup 6). Build with:  python tools/build_release.py --installer
-; Standalone:  ISCC.exe /DAppVersion=1.4.1 installer\pane.iss      (needs dist\Pane\ from PyInstaller)
+; Standalone:  ISCC.exe /DAppVersion=1.4.2 installer\pane.iss      (needs dist\Pane\ from PyInstaller)
 
 #ifndef AppVersion
-  #define AppVersion "1.4.1"
+  #define AppVersion "1.4.2"
 #endif
 #define AppName "Pane"
 #define AppExe "Pane.exe"
