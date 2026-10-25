@@ -968,6 +968,7 @@ class MainWindow(QMainWindow):
         self.top_scrim.raise_()
         if bar_shown:
             self.title_bar.raise_()
+        self.help.raise_drawer()
         self.center_badge.raise_()
         self.seek_indicator.raise_()
         self.mini_progress.raise_()
@@ -988,7 +989,7 @@ class MainWindow(QMainWindow):
             self.next_up.raise_()
         if self.info_panel.isVisible():
             self.info_panel.raise_()
-        self.help.raise_panel()
+        self.help.raise_modal()
         if hasattr(self, "controller") and self.controller.settings_panel is not None:
             self.controller.settings_panel.raise_overlay()
         if hasattr(self, "osd"):

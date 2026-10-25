@@ -4,7 +4,7 @@ Two layouts: ``CENTERED`` (two columns over a dimmed window, modal; for the home
 right edge, the video stays visible; for a playing video). The body scrolls when it does not fit, with a soft fade at the
 edge that has more to see. The panel only draws and sizes itself: ``ui.help_flow.HelpFlow`` decides when and which.
 """
-from PySide6.QtCore import QRect, QRectF, Qt, Signal
+from PySide6.QtCore import QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QLinearGradient, QPainter
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
@@ -99,10 +99,12 @@ class _Dim(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.setFocusPolicy(Qt.NoFocus)
+        self.clear = False                     # (after the help closed: still there to absorb a double click, but invisible)
         self.hide()
 
     def paintEvent(self, event):
-        QPainter(self).fillRect(self.rect(), DIM)
+        if not self.clear:
+            QPainter(self).fillRect(self.rect(), DIM)
 
     def mousePressEvent(self, event):
         event.accept()
@@ -212,8 +214,10 @@ class HelpPanel(QFrame):
         self._place(area)
         parent = self.parentWidget()
         if kind == self.CENTERED:
+            self._dim.clear = False
             self._dim.setGeometry(parent.rect())
             self._dim.show()
+            self._dim.update()
             self._dim.raise_()
         else:
             self._dim.hide()
@@ -221,10 +225,25 @@ class HelpPanel(QFrame):
         self.raise_()
         self._update_fades()
 
-    def hide_help(self) -> None:
+    def hide_help(self, absorb_ms: int = 0) -> None:
+        """Close. ``absorb_ms``: keep the (now invisible) dim for that long, so the second click of a double click that
+        closed the help does not land on the video below it."""
         self._open = False
-        self._dim.hide()
         self.hide()
+        if absorb_ms > 0 and self._dim.isVisible():
+            self._dim.clear = True
+            self._dim.update()
+            QTimer.singleShot(absorb_ms, self._end_absorb)
+        else:
+            self._dim.hide()
+        self._update_fades()
+
+    def _end_absorb(self) -> None:
+        if not self._open and self._dim.clear:
+            self._dim.hide()
+
+    def raise_dim(self) -> None:
+        self._dim.raise_()
 
     def _place(self, area: QRect) -> None:
         if self._kind == self.CENTERED:
