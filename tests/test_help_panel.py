@@ -147,3 +147,21 @@ def test_no_key_chip_is_clipped_by_its_column(make, kind):
         box = chip.parentWidget()
         needed = box.layout().minimumSize().width()
         assert needed <= box.width(), f"{chip.text()!r}: its row needs {needed}px, the column is {box.width()}px"
+
+
+@pytest.mark.parametrize("kind", [HelpPanel.CENTERED, HelpPanel.DRAWER])
+def test_the_key_chips_are_small_and_all_the_same_height(make, kind):
+    """(Polish: the chips were 26 px tall and, with the large text, made the sheet look crude.)"""
+    _host, p = make(1060, 640, kind)
+    heights = {chip.height() for chip in texts(p, "KeyChip")}
+    assert len(heights) == 1 and heights.pop() <= 22
+
+
+def test_the_centred_panel_needs_no_scrolling_in_the_default_window_and_groups_sit_close(make):
+    """(Polish: spare height was shared between the groups as big gaps, and the tips fell below the fold.)"""
+    _host, p = make(1060, 640, HelpPanel.CENTERED)
+    assert p.scroll_area.verticalScrollBar().maximum() == 0
+    titles = sorted(lbl.mapTo(p, QPoint(0, 0)).y() for lbl in p.findChildren(QLabel) if lbl.text() in ("재생", "소리 · 자막"))
+    chips = [c.mapTo(p, QPoint(0, 0)).y() for c in texts(p, "KeyChip")]
+    last_play_chip = max(y for y in chips if titles[0] < y < titles[1])
+    assert titles[1] - last_play_chip < 50, "the next group starts right after the last row of the one above"

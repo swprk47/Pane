@@ -27,8 +27,9 @@ DRAWER_TOP = 46
 DRAWER_BOTTOM = 14
 DRAWER_MAX_HEIGHT = 640
 
-CHIP_QSS = (f'QLabel {{ background: rgba(255, 255, 255, 0.16); border: 1px solid rgba(255, 255, 255, 0.26); border-radius: 6px;'
-            f' padding: 3px 9px; color: #FFFFFF; font-family: {FONT}; font-size: 13px; font-weight: 700; }}')
+CHIP_HEIGHT = 20
+CHIP_QSS = (f'QLabel {{ background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.28); border-radius: 10px;'
+            f' padding: 0 8px; color: #FFFFFF; font-family: {FONT}; font-size: 11px; font-weight: 700; }}')
 SCROLL_QSS = ('QScrollArea { background: transparent; border: none; } QScrollArea > QWidget > QWidget { background: transparent; }'
               ' QScrollBar:vertical { background: transparent; width: 6px; margin: 2px; }'
               ' QScrollBar::handle:vertical { background: rgba(255, 255, 255, 0.25); border-radius: 2px; min-height: 24px; }'
@@ -36,9 +37,9 @@ SCROLL_QSS = ('QScrollArea { background: transparent; border: none; } QScrollAre
               ' QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }')
 
 LEFT_GROUPS = ("재생", "소리 · 자막", "북마크")
-CHIP_COLUMN = {"재생": 190, "소리 · 자막": 190, "북마크": 190, "화면 · 파일": 150}
-MOUSE_COLUMN = 110
-DRAWER_COLUMN = 185
+CHIP_COLUMN = {"재생": 160, "소리 · 자막": 160, "북마크": 160, "화면 · 파일": 130}
+MOUSE_COLUMN = 84
+DRAWER_COLUMN = 170
 
 
 def _text(text: str, px: int, color: str, bold=False, name="", wrap=True) -> QLabel:
@@ -53,8 +54,8 @@ def _text(text: str, px: int, color: str, bold=False, name="", wrap=True) -> QLa
 
 
 def _group_title(text: str) -> QLabel:
-    lbl = _text(text, 13, "#9FC5FF", bold=True, wrap=False)
-    lbl.setContentsMargins(0, 8, 0, 2)
+    lbl = _text(text, 12, "#9FC5FF", bold=True, wrap=False)
+    lbl.setContentsMargins(0, 10, 0, 3)
     return lbl
 
 
@@ -62,7 +63,7 @@ def _key_row(chips, description: str, column: int) -> QWidget:
     row = QWidget()
     lay = QHBoxLayout(row)
     lay.setContentsMargins(0, 0, 0, 0)
-    lay.setSpacing(10)
+    lay.setSpacing(8)
     box = QWidget()
     box.setFixedWidth(column)
     box_lay = QHBoxLayout(box)
@@ -71,11 +72,12 @@ def _key_row(chips, description: str, column: int) -> QWidget:
     for chip in chips:
         c = QLabel(chip)
         c.setObjectName("KeyChip")
+        c.setFixedHeight(CHIP_HEIGHT)
         c.setStyleSheet(CHIP_QSS)
         box_lay.addWidget(c)
     box_lay.addStretch()
-    lay.addWidget(box, 0, Qt.AlignTop)
-    lay.addWidget(_text(description, 14, "rgba(255, 255, 255, 0.92)"), 1)
+    lay.addWidget(box, 0, Qt.AlignVCenter)
+    lay.addWidget(_text(description, 12, "rgba(255, 255, 255, 0.88)", wrap=False), 1)
     return row
 
 
@@ -84,10 +86,10 @@ def _mouse_row(gesture: str, description: str, column: int) -> QWidget:
     lay = QHBoxLayout(row)
     lay.setContentsMargins(0, 0, 0, 0)
     lay.setSpacing(10)
-    g = _text(gesture, 13, "rgba(255, 255, 255, 0.78)", bold=True, name="MouseGesture")
+    g = _text(gesture, 12, "rgba(255, 255, 255, 0.55)", name="MouseGesture")
     g.setFixedWidth(column)
-    lay.addWidget(g, 0, Qt.AlignTop)
-    lay.addWidget(_text(description, 14, "rgba(255, 255, 255, 0.92)"), 1)
+    lay.addWidget(g, 0, Qt.AlignVCenter)
+    lay.addWidget(_text(description, 12, "rgba(255, 255, 255, 0.88)", wrap=False), 1)
     return row
 
 
@@ -163,9 +165,9 @@ class HelpPanel(QFrame):
         outer.setContentsMargins(PAD, 16, PAD - 6, 14)
         outer.setSpacing(6)
         header = QHBoxLayout()
-        header.addWidget(_text("단축키와 사용법", 16, "#FFFFFF", bold=True, wrap=False))
+        header.addWidget(_text("단축키와 사용법", 14, "#FFFFFF", bold=True, wrap=False))
         header.addStretch()
-        header.addWidget(_text("Esc 로 닫기", 12, "rgba(255, 255, 255, 0.5)", wrap=False))
+        header.addWidget(_text("Esc 로 닫기", 11, "rgba(255, 255, 255, 0.5)", wrap=False))
         outer.addLayout(header)
 
         self.scroll_area = QScrollArea(self)
@@ -280,7 +282,7 @@ class HelpPanel(QFrame):
 
     def _group(self, title: str, column_for_keys: int) -> QVBoxLayout:
         lay = QVBoxLayout()
-        lay.setSpacing(5)
+        lay.setSpacing(3)
         lay.addWidget(_group_title(title))
         rows = dict(KEY_GROUPS)[title]
         for chips, description in rows:
@@ -297,10 +299,10 @@ class HelpPanel(QFrame):
 
     def _tips(self) -> QVBoxLayout:
         lay = QVBoxLayout()
-        lay.setSpacing(6)
+        lay.setSpacing(8)
         lay.addWidget(_group_title("팁"))
         for tip in TIPS:
-            lay.addWidget(_text(tip, 13, "rgba(255, 255, 255, 0.88)", name="TipText"))
+            lay.addWidget(_text(tip, 11, "rgba(255, 255, 255, 0.66)", name="TipText"))
         return lay
 
     def _build_body(self, kind: str) -> QWidget:
@@ -310,6 +312,8 @@ class HelpPanel(QFrame):
             root.setContentsMargins(0, 0, 14, 0)
             root.setSpacing(36)
             left, right = QVBoxLayout(), QVBoxLayout()
+            for col in (left, right):
+                col.setSpacing(4)
             for title, _rows in KEY_GROUPS:
                 if title in LEFT_GROUPS:
                     left.addLayout(self._group(title, CHIP_COLUMN[title]))
@@ -317,7 +321,7 @@ class HelpPanel(QFrame):
             right.addLayout(self._mouse(MOUSE_COLUMN))
             right.addLayout(self._tips())
             for col in (left, right):
-                col.addStretch()
+                col.addStretch(1)
             root.addLayout(left, 1)
             root.addLayout(right, 1)
         else:
@@ -328,7 +332,7 @@ class HelpPanel(QFrame):
                 root.addLayout(self._group(title, DRAWER_COLUMN))
             root.addLayout(self._mouse(DRAWER_COLUMN))
             root.addLayout(self._tips())
-            root.addStretch()
+            root.addStretch(1)
         return body
 
     # --- painting and the mouse ---------------------------------------------------------------------------------------
