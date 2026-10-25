@@ -47,9 +47,9 @@ def test_the_centred_panel_is_centred_and_sized_to_the_area(make):
 
 
 @pytest.mark.parametrize("w,h", [(1060, 640), (640, 380), (480, 270)])
-def test_the_drawer_is_420_wide_at_the_right_and_inside_the_area(make, w, h):
+def test_the_drawer_is_390_wide_at_the_right_and_inside_the_area(make, w, h):
     host, p = make(w, h, HelpPanel.DRAWER)
-    assert p.width() == 420
+    assert p.width() == 390
     assert p.geometry().right() == w - 15, "14 px from the right edge"
     assert p.y() == 46 and p.geometry().bottom() <= h - 14
     assert host.rect().contains(p.geometry())
@@ -188,3 +188,23 @@ def test_in_the_drawer_the_groups_have_more_room_between_them_than_in_the_centre
     _host, centred = make(1060, 640, HelpPanel.CENTERED)
     _host, drawer = make(1060, 640, HelpPanel.DRAWER)
     assert _group_gap(drawer) >= _group_gap(centred) + 8
+
+
+def test_no_description_in_the_drawer_runs_past_its_label(make):
+    """(The drawer was made narrower: every line must still fit beside its keys.)"""
+    _host, p = make(1060, 640, HelpPanel.DRAWER)
+    from PySide6.QtWidgets import QLabel as _L
+    for lbl in p.scroll_area.widget().findChildren(_L):
+        if lbl.objectName() in ("KeyChip", "TipText"):
+            continue
+        assert lbl.sizeHint().width() <= lbl.width() + 1, f"{lbl.text()!r} needs {lbl.sizeHint().width()}px, has {lbl.width()}"
+
+
+def test_the_drawer_lets_the_video_show_through_a_little_but_the_centred_panel_does_not(make):
+    def red_at_header(kind):
+        host, p = make(1060, 640, kind)
+        img = QImage(host.size(), QImage.Format_ARGB32)
+        host.render(img)
+        return QColor(img.pixel(QPoint(p.geometry().center().x(), p.geometry().top() + 28))).red()
+    assert red_at_header(HelpPanel.CENTERED) < 50
+    assert 60 < red_at_header(HelpPanel.DRAWER) < 170   # (measured 68 over pure red: well above the centred panel)

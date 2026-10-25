@@ -13,6 +13,7 @@ from ui.help_content import KEY_GROUPS, MOUSE, TIPS
 
 FONT = '"Segoe UI Variable Text", "Segoe UI", sans-serif'
 BODY = QColor(11, 13, 19, 242)                 # almost opaque: the first mock let the logo show through
+DRAWER_BODY = QColor(11, 13, 19, 175)          # the drawer lets the playing video show through a little
 DIM = QColor(0, 0, 0, 215)
 RADIUS = 18
 PAD = 22
@@ -21,7 +22,7 @@ FADE_HEIGHT = 26
 CENTER_MAX = (900, 640)
 CENTER_SIDE = 80                               # room taken from the area's width (40 each side)
 CENTER_VERTICAL = 92                           # ... and from its height (46 above and below)
-DRAWER_WIDTH = 420
+DRAWER_WIDTH = 390
 DRAWER_RIGHT = 14
 DRAWER_TOP = 46
 DRAWER_BOTTOM = 14
@@ -40,7 +41,7 @@ SCROLL_QSS = ('QScrollArea { background: transparent; border: none; } QScrollAre
 LEFT_GROUPS = ("재생", "소리 · 자막", "북마크")
 CHIP_COLUMN = {"재생": 160, "소리 · 자막": 160, "북마크": 160, "화면 · 파일": 130}
 MOUSE_COLUMN = 84
-DRAWER_COLUMN = 170
+DRAWER_COLUMN = 146
 
 
 def _text(text: str, px: int, color: str, bold=False, name="", wrap=True) -> QLabel:
@@ -151,13 +152,14 @@ class _Fade(QWidget):
     def __init__(self, parent, top: bool):
         super().__init__(parent)
         self._top = top
+        self.color = BODY
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.hide()
 
     def paintEvent(self, event):
         p = QPainter(self)
         g = QLinearGradient(0, 0, 0, self.height())
-        solid, clear = QColor(BODY), QColor(BODY)
+        solid, clear = QColor(self.color), QColor(self.color)
         clear.setAlpha(0)
         g.setColorAt(0, solid if self._top else clear)
         g.setColorAt(1, clear if self._top else solid)
@@ -233,6 +235,7 @@ class HelpPanel(QFrame):
             self.scroll_area.setWidget(self._build_body(kind))
             self._built_kind = kind
         self._open = True
+        self._fade_top_w.color = self._fade_bottom_w.color = self._body_color()
         self._place(area)
         parent = self.parentWidget()
         if kind == self.CENTERED:
@@ -277,6 +280,9 @@ class HelpPanel(QFrame):
             h = min(DRAWER_MAX_HEIGHT, area.height() - DRAWER_TOP - DRAWER_BOTTOM)
             self.setGeometry(area.right() + 1 - DRAWER_RIGHT - w, area.y() + DRAWER_TOP, w, max(80, h))
         self._place_fades()
+
+    def _body_color(self) -> QColor:
+        return BODY if self._kind == self.CENTERED else DRAWER_BODY
 
     def _place_fades(self) -> None:
         sa = self.scroll_area.geometry()
@@ -363,7 +369,7 @@ class HelpPanel(QFrame):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(Qt.NoPen)
-        p.setBrush(BODY)
+        p.setBrush(self._body_color())
         p.drawRoundedRect(QRectF(self.rect()), RADIUS, RADIUS)
         paint_glass_panel(p, QRectF(self.rect()), RADIUS, calm=True)
 
