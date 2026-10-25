@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout,
     QFileDialog, QApplication
 )
-from PySide6.QtCore import Qt, QPoint, QRect, QEvent, QTimer
+from PySide6.QtCore import Qt, QPoint, QEvent, QTimer
 from PySide6.QtGui import QKeyEvent
 
 from styles.glass_theme import GLASS_THEME_QSS
@@ -13,7 +13,6 @@ from ui.title_bar import GlassTitleBar
 from ui.speed_popup import SpeedPopup
 from ui.track_popup import TrackPopup
 from ui.bookmark_panel import BookmarkPanel
-from ui.timeline_slider import PIN_COLOR
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.next_up import NextUpCard, NEXT_UP_SECONDS
@@ -26,9 +25,8 @@ from core.media_info import format_clock
 from core import app_log, diagnostics, exit_trace, file_errors, update_config
 from core.update_checker import UpdateChecker
 from ui.update_card import UpdateCard
-from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip, ThumbnailTip
+from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator
 from core import bookmarks
-from core.thumbnails import ThumbnailProvider, bucket_of
 from core.tracks import pick_track, track_choice
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
@@ -56,6 +54,7 @@ def apply_windows_11_rounded_corners(hwnd):
 from ui.viewport import VideoViewport  # noqa: F401  (the name stays importable from here)
 from ui.context_menu import show_context_menu as _show_context_menu
 from ui.key_bindings import KeyRouter
+from ui.seek_tips import SeekTips
 
 
 class MainWindow(QMainWindow):
@@ -150,16 +149,8 @@ class MainWindow(QMainWindow):
         self.center_badge = CenterBadge(self.central_widget)
         self.center_badge.hide()
         self.seek_indicator = SeekIndicator(self.central_widget)
-        self.seek_tip = SeekTimeTip(self.central_widget)
-        self.thumbnail_tip = ThumbnailTip(self.central_widget)
-        self.thumbnail_provider = ThumbnailProvider(self)
-        self.thumbnail_provider.thumbnail_ready.connect(self._on_thumbnail_ready)
-        self._thumb_spot = None                          # (seconds, x) of the pointer while it is over the seek bar
-        self._tips_viewport = None                       # the video area the pill and the picture were placed in
+        self.tips = SeekTips(self)                       # the pill and the picture above the seek bar (ui/seek_tips.py)
         self._applying_speed = None                      # a speed set from memory: its change notice is not a user choice
-        self._stop_timer = QTimer(self)                  # "only when the pointer rests": fires STOP_DELAY_MS after the last move
-        self._stop_timer.setSingleShot(True)
-        self._stop_timer.timeout.connect(self._request_thumbnail)
         self.mini_progress = MiniProgress(self.central_widget)
         self.mini_progress.hide()
 
@@ -223,11 +214,11 @@ class MainWindow(QMainWindow):
         self.viewport.start_screen.copy_requested.connect(self.copy_diagnostics)
 
         # Controller -> Engine
-        self.controller.timeline.hover_moved.connect(self._show_seek_tip)
-        self.controller.timeline.hover_left.connect(self._hide_seek_tips)
+        self.controller.timeline.hover_moved.connect(self.tips.show)
+        self.controller.timeline.hover_left.connect(self.tips.hide)
         self.controller.timeline.pin_pressed.connect(lambda t: self._seek_to_mark(t, say=False))
         self.controller.bookmarks_clicked.connect(self.toggle_bookmark_panel)
-        self.controller.visibility_changed.connect(lambda shown: None if shown else self._hide_seek_tips())
+        self.controller.visibility_changed.connect(lambda shown: None if shown else self.tips.hide())
         self.update_card.update_clicked.connect(self._start_update)
         self.update_card.dismissed.connect(self._dismiss_update)
         self.update_checker.update_available.connect(self._on_update_available)
@@ -239,13 +230,10 @@ class MainWindow(QMainWindow):
                        self.controller.settings_panel_toggled):
             signal.connect(self._refresh_update_card)
         QTimer.singleShot(5000, self.update_checker.check)       # the automatic check, a moment after the window is up
-        self.thumbnails_on = self.app_settings.get_thumbnails_enabled()
-        self.thumbnails_on_stop = self.app_settings.get_thumbnails_on_stop()
-        self.controller.thumbnails_on = self.thumbnails_on
-        self.controller.thumbnails_on_stop = self.thumbnails_on_stop
-        self.thumbnail_provider.set_enabled(self.thumbnails_on)
-        self.controller.thumbnails_changed.connect(self._on_thumbnails_changed)
-        self.controller.thumbnails_on_stop_changed.connect(self._on_thumbnails_on_stop_changed)
+        self.controller.thumbnails_on = self.tips.thumbnails_on
+        self.controller.thumbnails_on_stop = self.tips.thumbnails_on_stop
+        self.controller.thumbnails_changed.connect(self.tips.on_thumbnails_changed)
+        self.controller.thumbnails_on_stop_changed.connect(self.tips.on_thumbnails_on_stop_changed)
         self.chapters_on = self.app_settings.get_chapters_visible()
         self.controller.chapters_on = self.chapters_on
         self.controller.chapters_changed.connect(self._on_chapters_changed)
@@ -319,58 +307,52 @@ class MainWindow(QMainWindow):
     def show_context_menu(self, global_pos: QPoint):
         _show_context_menu(self, global_pos)
 
-    def _show_seek_tip(self, seconds: float, x: float):
-        """The time under the pointer, as a pill just above the seek bar."""
-        tl = self.controller.timeline
-        spot = tl.mapTo(self.central_widget, QPoint(round(x), tl.height() // 2))
-        text, dot, detail = format_clock(seconds), None, ""         # (a bookmark under the pointer, else its chapter, else the time)
-        pin = tl.pin_at(x)
-        item = next((b for b in self.bookmarks if b["t"] == pin), None) if pin is not None else None
-        chapter = bookmarks.chapter_at(self.chapters, seconds) if self.chapters_on else None
-        if item is not None:
-            text, dot = bookmarks.display_name(item), PIN_COLOR
-            detail = format_clock(item["t"]) if item["name"] else ""
-        elif chapter is not None:
-            text, detail = chapter[1], format_clock(seconds)
-        self.seek_tip.show_at(text, spot.x(), spot.y() - 15, self.viewport.geometry(), dot=dot, detail=detail)
-        self._thumb_spot = (seconds, spot.x())
-        if not self._thumbnails_wanted():
-            self.thumbnail_tip.hide_tip()
-        elif self.thumbnails_on_stop:
-            self.thumbnail_tip.hide_tip()                # moving: the time only; the picture comes when the pointer rests
-            self._stop_timer.start(self.STOP_DELAY_MS)
-        else:
-            self._request_thumbnail()
+    STOP_DELAY_MS = 300                                  # ("only when the pointer rests": SeekTips reads it through the window)
 
-    STOP_DELAY_MS = 300
+    # The tips live in ui/seek_tips.py; the old names stay here as forwarders.
+    @property
+    def seek_tip(self):
+        return self.tips.seek_tip
 
-    def _thumbnails_wanted(self) -> bool:
-        return bool(self.thumbnails_on and self._current_file is not None and self._duration > 0)
+    @property
+    def thumbnail_tip(self):
+        return self.tips.thumbnail_tip
 
-    def _thumb_seconds(self) -> float:
-        """The moment the picture is for: the time under the pointer, but never the very end (a seek to the end of a file
-        that is kept open is the riskiest one): at most the last second."""
-        return min(self._thumb_spot[0], max(0.0, self._duration - 1.0))
+    @property
+    def thumbnail_provider(self):
+        return self.tips.thumbnail_provider
 
-    def _request_thumbnail(self):
-        if self._thumb_spot is not None and self._thumbnails_wanted():
-            self.thumbnail_provider.request(self._current_file, self._thumb_seconds())
+    @property
+    def thumbnails_on(self) -> bool:
+        return self.tips.thumbnails_on
 
-    def _on_thumbnail_ready(self, path: str, bucket: int, image):
-        """A picture arrived: shown only for the file and the 2 s step the pointer is at now (a late one is dropped)."""
-        spot = self._thumb_spot
-        if (spot is None or path != self._current_file or bucket != bucket_of(self._thumb_seconds())
-                or not self.seek_tip.isVisible() or not self._thumbnails_wanted()
-                or (self.thumbnails_on_stop and self._stop_timer.isActive())):
-            return
-        self.thumbnail_tip.show_at(image, spot[1], self.seek_tip.y() - ThumbnailTip.GAP, self.viewport.geometry())
+    @thumbnails_on.setter
+    def thumbnails_on(self, value: bool):
+        self.tips.thumbnails_on = value
+
+    @property
+    def thumbnails_on_stop(self) -> bool:
+        return self.tips.thumbnails_on_stop
+
+    @thumbnails_on_stop.setter
+    def thumbnails_on_stop(self, value: bool):
+        self.tips.thumbnails_on_stop = value
 
     def _hide_seek_tips(self):
-        """The pill and the picture go together; nothing is asked for any more."""
-        self.seek_tip.hide_tip()
-        self.thumbnail_tip.hide_tip()
-        self._stop_timer.stop()
-        self._thumb_spot = None
+        self.tips.hide()
+
+    @property
+    def _stop_timer(self):
+        return self.tips._stop_timer
+
+    def _thumb_seconds(self) -> float:
+        return self.tips._seconds()
+
+    def _on_thumbnails_changed(self, enabled: bool):
+        self.tips.on_thumbnails_changed(enabled)
+
+    def _on_thumbnails_on_stop_changed(self, enabled: bool):
+        self.tips.on_thumbnails_on_stop_changed(enabled)
 
     def _on_chapters_changed(self, enabled: bool):
         self.chapters_on = enabled
@@ -462,20 +444,6 @@ class MainWindow(QMainWindow):
         if button is None or not button.isVisible():
             button = self.controller.timeline
         self.bookmark_panel.toggle_above_widget(button, align_to=self.controller.right_zone, above=self.controller.timeline)
-
-    def _on_thumbnails_changed(self, enabled: bool):
-        self.thumbnails_on = enabled
-        self.app_settings.set_thumbnails_enabled(enabled)
-        self.thumbnail_provider.set_enabled(enabled)
-        if not enabled:
-            self._stop_timer.stop()
-            self.thumbnail_tip.hide_tip()
-
-    def _on_thumbnails_on_stop_changed(self, enabled: bool):
-        self.thumbnails_on_stop = enabled
-        self.app_settings.set_thumbnails_on_stop(enabled)
-        self._stop_timer.stop()
-        self.thumbnail_tip.hide_tip()
 
     def _on_hwdec_changed(self, enabled: bool):
         self.engine.set_hardware_decoding(enabled)
@@ -1143,10 +1111,8 @@ class MainWindow(QMainWindow):
         vp = self.viewport.geometry()
         if vp.width() <= 0 or vp.height() <= 0:
             return
-        if vp != self._tips_viewport:             # (the time pill and the picture were placed for the bar as it was:
-            self._tips_viewport = QRect(vp)       #  only a change of the video area moves it; a layout pass alone does not)
-            self._hide_seek_tips()
-            if self.bookmark_panel is not None:
+        if self.tips.area_changed(vp):            # (the tips were placed for the bar as it was: only a change of the video
+            if self.bookmark_panel is not None:   #  area moves them, and the list; a layout pass alone does not)
                 self.bookmark_panel.hide()
 
         # Controls: compact (transport only) when the full set doesn't fit.
@@ -1232,7 +1198,7 @@ class MainWindow(QMainWindow):
         self.update_checker.request_stop()             # (a download in flight gives up at its next chunk)
         self.update_checker.wait_for_done(500)
         exit_trace.stage("update check stopped")
-        self.thumbnail_provider.shutdown()              # (a picture in the making gets a second at most)
+        self.tips.shutdown()                            # (a picture in the making gets a second at most)
         exit_trace.stage("thumbnails closed")
         # Render context first, then the mpv core (the other order aborts).
         if hasattr(self, "viewport"):
