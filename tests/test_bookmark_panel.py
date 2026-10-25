@@ -1,7 +1,7 @@
 """The bookmark list panel: rows, rename, delete, jump, and how it is dismissed (a real widget, real events)."""
 import pytest
 from PySide6.QtCore import QEvent, QPointF, Qt
-from PySide6.QtGui import QEnterEvent, QKeyEvent
+from PySide6.QtGui import QEnterEvent, QFocusEvent, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QWidget
 
@@ -197,3 +197,17 @@ def test_enter_and_escape_in_the_edit_field_are_consumed_so_the_player_never_see
     event = QKeyEvent(QEvent.KeyPress, key, Qt.NoModifier)
     QApplication.sendEvent(field, event)
     assert event.isAccepted()
+
+
+@pytest.mark.parametrize("reason", [Qt.ActiveWindowFocusReason, Qt.PopupFocusReason])
+def test_losing_the_window_focus_does_not_cancel_a_rename_but_clicking_elsewhere_does(qapp, panel, reason):
+    row = rows(panel)[0]
+    hover(row)
+    row.edit_button.click()
+    field = edit_field(panel)
+    field.setText("keep me")
+    QApplication.sendEvent(field, QFocusEvent(QEvent.FocusOut, reason))
+    assert panel.is_editing and edit_field(panel) is field and field.text() == "keep me"
+    QApplication.sendEvent(field, QFocusEvent(QEvent.FocusOut, Qt.MouseFocusReason))
+    qapp.processEvents()
+    assert not panel.is_editing

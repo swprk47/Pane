@@ -120,6 +120,8 @@ class _NameEdit(QLineEdit):
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
+        if event.reason() in (Qt.ActiveWindowFocusReason, Qt.PopupFocusReason):
+            return                                   # (switching to another window: the typed name is kept)
         self._cancel()
 
 
