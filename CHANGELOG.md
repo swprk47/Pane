@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1 - 2026-10-25
 - Fix: switching to another window (Alt-Tab) while renaming a bookmark no longer throws the typed name away
 - Fix: a very long bookmark or chapter name is cut with an ellipsis in the hover pill instead of running off the video area
 - Fix: in a small window (PIP, for one) the bookmark list gets shorter so the panel fits above the seek bar
