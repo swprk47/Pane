@@ -120,6 +120,8 @@ class _NameEdit(QLineEdit):
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
+        if event.reason() in (Qt.ActiveWindowFocusReason, Qt.PopupFocusReason):
+            return                                   # (switching to another window: the typed name is kept)
         self._cancel()
 
 
@@ -258,6 +260,7 @@ class BookmarkPanel(QWidget):
         self._above = None
         self._align_to = None
         self._editing_row = None
+        self._count = 0
         self.hide()
 
         main = QVBoxLayout(self)
@@ -330,8 +333,24 @@ class BookmarkPanel(QWidget):
         self._list.addWidget(self.empty_label)
         self.empty_label.setVisible(not items)
         self.count_label.setText(f"{len(items)}개")
-        self._scroll.setFixedHeight(EMPTY_HEIGHT if not items else min(len(items), VISIBLE_ROWS) * ROW_HEIGHT)
+        self._count = len(items)
+        self._apply_scroll_height()
         self._fit()
+
+    def _apply_scroll_height(self):
+        """The list shows up to VISIBLE_ROWS rows, fewer (never under two) in a window too short to hold the panel between
+        its top edge and the seek bar."""
+        if not self._count:
+            self._scroll.setFixedHeight(EMPTY_HEIGHT)
+            return
+        rows = min(self._count, VISIBLE_ROWS)
+        parent, above = self.parentWidget(), self._above
+        if parent is not None:
+            top = above.mapTo(parent, QPoint(0, 0)).y() if above is not None and above.isVisible() else parent.height() - 100
+            chrome = self.layout().sizeHint().height() - self._scroll.minimumHeight()
+            room = top - 10 - 8 - chrome                      # (the gap above the bar, and the margin at the window's top)
+            rows = max(2, min(rows, room // ROW_HEIGHT))
+        self._scroll.setFixedHeight(rows * ROW_HEIGHT)
 
     def _on_edit_started(self, row):
         self._editing_row = row
@@ -370,6 +389,7 @@ class BookmarkPanel(QWidget):
         self._align_to = align_to
         self._above = above
         self.opened.emit()
+        self._apply_scroll_height()
         self.adjustSize()
         self._place()
         self.show()

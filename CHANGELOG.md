@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.4.1 - 2026-10-25
+- Fix: switching to another window (Alt-Tab) while renaming a bookmark no longer throws the typed name away
+- Fix: a very long bookmark or chapter name is cut with an ellipsis in the hover pill instead of running off the video area
+- Fix: in a small window (PIP, for one) the bookmark list gets shorter so the panel fits above the seek bar
+- Fix: the bookmark list is no longer rebuilt under your hands while you type a name
+- Fix: for a moment after opening a video its bookmark pins were placed with the previous video's length
 - New: a round-arrow button next to the PIP button (home screen only) checks for a new version at once. It turns while it asks; the answer is a pill at the top (`최신 버전이에요`, or `새 버전을 확인하지 못했어요`), and a new version brings up the usual update card, even for a version whose X was pressed before. The daily automatic check is unchanged
 
 ## 1.4.0 - 2026-10-24

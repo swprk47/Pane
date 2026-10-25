@@ -1,7 +1,7 @@
 """The time shown when the mouse is over the seek bar: the tip, the preview fill and its end marker."""
 import pytest
-from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
-from PySide6.QtGui import QImage, QMouseEvent, QRegion
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
+from PySide6.QtGui import QColor, QImage, QMouseEvent, QRegion
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -312,3 +312,17 @@ def test_the_wider_pill_still_stays_inside_the_bounds(pill_host):
     assert tip.geometry().left() >= 8
     tip.show_at("예제 5번 풀이", 598, 200, pill_host.rect(), dot=QColor(255, 200, 87), detail="41:05")
     assert tip.geometry().right() <= pill_host.width() - 8
+
+
+def test_a_text_wider_than_the_video_area_is_cut_with_an_ellipsis_and_the_pill_stays_inside(qapp):
+    host = QWidget()
+    host.resize(400, 200)
+    tip = SeekTimeTip(host)
+    bounds = QRect(0, 0, 400, 200)
+    long_name = "아주 긴 북마크 이름 " * 12
+    tip.show_at(long_name, 200, 100, bounds, dot=QColor(255, 200, 87), detail="0:34")
+    assert tip.width() <= bounds.width() - 2 * SeekTimeTip.EDGE
+    assert tip.text == long_name and tip.shown_text.endswith("…") and len(tip.shown_text) < len(long_name)
+    assert tip.x() >= bounds.left() + SeekTimeTip.EDGE and tip.x() + tip.width() <= bounds.right() - SeekTimeTip.EDGE + 1
+    tip.show_at("0:34", 200, 100, bounds)
+    assert tip.shown_text == "0:34"

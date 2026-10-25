@@ -408,6 +408,7 @@ class SeekTimeTip(_OverlayBase):
     def __init__(self, parent):
         super().__init__(parent)
         self.text = ""
+        self.shown_text = ""                 # what is painted: `text`, cut with an ellipsis when it would not fit
         self.dot = None
         self.detail = ""
         font = QFont("Segoe UI Variable Text")
@@ -424,11 +425,15 @@ class SeekTimeTip(_OverlayBase):
         """Show `text` with the pill's bottom edge at y_bottom, centred on x_center, inside `bounds` (a QRect). `dot` (a
         QColor) puts a dot before the text, `detail` a lighter text after it; with neither it is the plain pill."""
         self.text, self.dot, self.detail = text, dot, detail
-        w = QFontMetrics(self._font).horizontalAdvance(text) + 2 * self.PAD
+        extras = 2 * self.PAD
         if dot is not None:
-            w += self.DOT + self.DOT_GAP
+            extras += self.DOT + self.DOT_GAP
         if detail:
-            w += self.DETAIL_GAP + QFontMetrics(self._detail_font).horizontalAdvance(detail)
+            extras += self.DETAIL_GAP + QFontMetrics(self._detail_font).horizontalAdvance(detail)
+        fm = QFontMetrics(self._font)
+        room = max(40, bounds.width() - 2 * self.EDGE - extras)        # (a name longer than the video area is cut)
+        self.shown_text = fm.elidedText(text, Qt.ElideRight, room)
+        w = fm.horizontalAdvance(self.shown_text) + extras
         self.resize(w, self.HEIGHT)
         x = round(x_center - w / 2.0)
         x = max(bounds.left() + self.EDGE, min(x, bounds.right() - self.EDGE - w + 1))
@@ -451,7 +456,7 @@ class SeekTimeTip(_OverlayBase):
         if self.dot is None and not self.detail:
             p.setFont(self._font)
             p.setPen(QColor(255, 255, 255))
-            p.drawText(self.rect(), Qt.AlignCenter, self.text)
+            p.drawText(self.rect(), Qt.AlignCenter, self.shown_text)
             return
         x = float(self.PAD)
         if self.dot is not None:
@@ -461,8 +466,8 @@ class SeekTimeTip(_OverlayBase):
             x += self.DOT + self.DOT_GAP
         p.setFont(self._font)
         p.setPen(QColor(255, 255, 255))
-        text_w = QFontMetrics(self._font).horizontalAdvance(self.text)
-        p.drawText(QRectF(x, 0, text_w + 2, self.height()), Qt.AlignLeft | Qt.AlignVCenter, self.text)
+        text_w = QFontMetrics(self._font).horizontalAdvance(self.shown_text)
+        p.drawText(QRectF(x, 0, text_w + 2, self.height()), Qt.AlignLeft | Qt.AlignVCenter, self.shown_text)
         if self.detail:
             p.setFont(self._detail_font)
             p.setPen(QColor(255, 255, 255, 180))

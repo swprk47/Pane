@@ -1,12 +1,12 @@
 """The bookmark list panel: rows, rename, delete, jump, and how it is dismissed (a real widget, real events)."""
 import pytest
 from PySide6.QtCore import QEvent, QPointF, Qt
-from PySide6.QtGui import QEnterEvent, QKeyEvent
+from PySide6.QtGui import QEnterEvent, QFocusEvent, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QWidget
 
 from core.media_info import format_clock
-from ui.bookmark_panel import BookmarkPanel, _BookmarkRow
+from ui.bookmark_panel import ROW_HEIGHT, VISIBLE_ROWS, BookmarkPanel, _BookmarkRow
 
 ITEMS = [{"t": 125.0, "name": ""}, {"t": 760.0, "name": "증명 다시 보기"}, {"t": 1800.0, "name": ""}]
 
@@ -197,3 +197,47 @@ def test_enter_and_escape_in_the_edit_field_are_consumed_so_the_player_never_see
     event = QKeyEvent(QEvent.KeyPress, key, Qt.NoModifier)
     QApplication.sendEvent(field, event)
     assert event.isAccepted()
+
+
+@pytest.mark.parametrize("reason", [Qt.ActiveWindowFocusReason, Qt.PopupFocusReason])
+def test_losing_the_window_focus_does_not_cancel_a_rename_but_clicking_elsewhere_does(qapp, panel, reason):
+    row = rows(panel)[0]
+    hover(row)
+    row.edit_button.click()
+    field = edit_field(panel)
+    field.setText("keep me")
+    QApplication.sendEvent(field, QFocusEvent(QEvent.FocusOut, reason))
+    assert panel.is_editing and edit_field(panel) is field and field.text() == "keep me"
+    QApplication.sendEvent(field, QFocusEvent(QEvent.FocusOut, Qt.MouseFocusReason))
+    qapp.processEvents()
+    assert not panel.is_editing
+
+
+def test_in_a_short_window_the_list_gets_shorter_so_the_panel_fits_above_the_bar(qapp):
+    host = QWidget()
+    host.resize(480, 270)
+    host.show()
+    bar = QWidget(host)
+    bar.setGeometry(0, 200, 480, 30)
+    bar.show()
+    anchor = QPushButton("b", host)
+    anchor.setGeometry(430, 230, 30, 30)
+    anchor.show()
+    p = BookmarkPanel(host)
+    p.set_items([{"t": float(i * 10), "name": ""} for i in range(20)], 600.0)
+    p.show_above_widget(anchor, above=bar)
+    qapp.processEvents()
+    assert p.geometry().top() >= 8 and p.geometry().bottom() < bar.geometry().top()
+    assert p._scroll.height() >= 2 * ROW_HEIGHT
+    tall = QWidget()
+    tall.resize(900, 700)
+    tall.show()
+    bar2 = QWidget(tall)
+    bar2.setGeometry(0, 600, 900, 30)
+    bar2.show()
+    q = BookmarkPanel(tall)
+    q.set_items([{"t": float(i * 10), "name": ""} for i in range(20)], 600.0)
+    q.show_above_widget(bar2, above=bar2)
+    assert q._scroll.height() == VISIBLE_ROWS * ROW_HEIGHT, "a tall window still shows the usual seven rows"
+    host.close()
+    tall.close()

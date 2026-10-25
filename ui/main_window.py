@@ -604,8 +604,9 @@ class MainWindow(QMainWindow):
         tl = self.controller.timeline
         tl.set_chapters_visible(self.chapters_on)
         tl.set_marks([b["t"] for b in self.bookmarks], [t for t, _title in self.chapters])
-        if self.bookmark_panel is not None and self.bookmark_panel.isVisible():
-            self.bookmark_panel.set_items(self.bookmarks, self._duration)
+        panel = self.bookmark_panel
+        if panel is not None and panel.isVisible() and not panel.is_editing:      # (a name being typed is left alone)
+            panel.set_items(self.bookmarks, self._duration)
 
     def _set_bookmarks(self, items: list):
         self.bookmarks = items
@@ -865,6 +866,7 @@ class MainWindow(QMainWindow):
 
         self._current_file = file_path
         self._duration = 0.0                              # (the new video says how long it is in a moment)
+        self.controller.set_duration(0.0)                 # (the seek bar too: pins must not use the old video's length)
         self._time_pos = 0.0
         self._forget_marks()
         self.bookmarks = self.app_settings.get_bookmarks(file_path)
