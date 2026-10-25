@@ -1,6 +1,6 @@
 # The shortcut help panel (`?`) — design
 
-Date: 2026-10-26. Status: decisions taken in chat with the owner; to be reviewed as written.
+Date: 2026-10-26. Status: approved by the owner (2026-10-26), including the scroll fade for the drawer.
 Mock-ups (real home screen + real glass painting, throw-away): the /design canvas "Pane 단축키 도움말 시안"
 (A2 = the centred panel with better legibility, B = the right drawer, buttons ②).
 
@@ -36,6 +36,9 @@ friend who installs Pane never sees them. A help panel inside the app lists them
   wrong one), and is re-placed when the window is resized or goes full screen.
 - **A name being typed** in the bookmark list still owns the keyboard: `?` typed there is a character, not a command (the
   existing guard in `KeyRouter` is before the new key).
+- **The drawer scrolls** (about 1,000 px of content in at most 640 px): thin scroll bar as in the bookmark list, and a soft
+  fade at the top / bottom edge while there is more to see in that direction (so nobody misses the mouse and tips parts
+  below the keys). The centred layout shows everything and does not scroll.
 - **Nothing is created until the first time it opens**; after that the panel is kept (hidden) and only re-filled when shown.
 
 ## Content (the single place: `ui/help_content.py`, plain data)
