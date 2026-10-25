@@ -123,6 +123,8 @@ def test_readme_documents_every_key_binding_in_the_code():
     for text in (readme, top):
         for needle in ("`B`" if text is top else "B  ", "Shift+B", "Alt+", "북마크"):
             assert needle in text, needle
+    assert "Key_Question" in code                # the shortcut help
+    assert "| `?` |" in top and "?                단축키 도움말" in readme
 
 
 # --- build script ----------------------------------------------------------

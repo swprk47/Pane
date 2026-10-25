@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- New: a shortcut help. `?` (or the new `?` button on the title bar, or `단축키 (?)` in the right-click menu) lists every key, the mouse gestures and a few tips. On the home screen it is a centred panel over a dimmed window; while a video is open it is a drawer at the right edge that leaves the video playing and every shortcut working. `Esc` or `?` closes it. The divider on the title bar now stays while a video is open
+
 ## 1.4.1 - 2026-10-25
 - Fix: switching to another window (Alt-Tab) while renaming a bookmark no longer throws the typed name away
 - Fix: a very long bookmark or chapter name is cut with an ellipsis in the hover pill instead of running off the video area
