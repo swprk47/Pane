@@ -315,3 +315,16 @@ def test_a_real_file_with_chapters_shows_them_on_the_bar_and_in_the_pill(window,
     tl.hover_moved.emit(1.4, x_on_bar(window, 1.4))
     assert (window.seek_tip.text, window.seek_tip.detail) == ("Middle", "0:01")
     tl.hover_left.emit()
+
+
+def test_the_list_is_not_rebuilt_while_a_name_is_being_typed(window, video, pills, qapp):
+    add_at(window, 0.3)
+    window.toggle_bookmark_panel()
+    row = window.bookmark_panel.findChildren(_BookmarkRow)[0]
+    row.edit_button.click()
+    field = window.bookmark_panel.findChildren(QLineEdit)[0]
+    field.setText("half a na")
+    window._on_duration_changed(window._duration)            # what a length refinement from mpv does
+    window._refresh_marks()
+    assert window.bookmark_panel.is_editing
+    assert window.bookmark_panel.findChildren(QLineEdit)[0] is field and field.text() == "half a na"

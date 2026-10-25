@@ -604,8 +604,9 @@ class MainWindow(QMainWindow):
         tl = self.controller.timeline
         tl.set_chapters_visible(self.chapters_on)
         tl.set_marks([b["t"] for b in self.bookmarks], [t for t, _title in self.chapters])
-        if self.bookmark_panel is not None and self.bookmark_panel.isVisible():
-            self.bookmark_panel.set_items(self.bookmarks, self._duration)
+        panel = self.bookmark_panel
+        if panel is not None and panel.isVisible() and not panel.is_editing:      # (a name being typed is left alone)
+            panel.set_items(self.bookmarks, self._duration)
 
     def _set_bookmarks(self, items: list):
         self.bookmarks = items
