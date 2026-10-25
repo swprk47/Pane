@@ -55,6 +55,7 @@ def apply_windows_11_rounded_corners(hwnd):
 
 from ui.viewport import VideoViewport  # noqa: F401  (the name stays importable from here)
 from ui.context_menu import show_context_menu as _show_context_menu
+from ui.key_bindings import KeyRouter
 
 
 class MainWindow(QMainWindow):
@@ -82,6 +83,7 @@ class MainWindow(QMainWindow):
         self._last_problem = None          # what mpv said about the last file that would not open (for the diagnostics)
 
         self.app_settings = AppSettings()
+        self.keys = KeyRouter(self)                      # the keyboard (ui/key_bindings.py)
 
         # A click toggles play/pause AT ONCE (no waiting to see whether a second click follows). If the
         # second click does come (double-click = fullscreen), the toggle is undone. The timer is the window
@@ -1125,164 +1127,8 @@ class MainWindow(QMainWindow):
     # --- Keybindings Map ---
 
     def keyPressEvent(self, event: QKeyEvent):
-        key = event.key()
-        modifiers = event.modifiers()
-
-        # The control-layout panel is modal: it has the keyboard (normally it holds the focus itself).
-        panel = self.controller.settings_panel
-        if panel is not None:
-            if key == Qt.Key_Escape:
-                panel.reject()
-            event.accept()
-            return
-
-        # Bookmarks (before the plain Left / Right seek): B adds one, Shift+B opens the list, Alt+Left / Alt+Right jump
-        # to the previous / next one. While a name is being typed, every key belongs to the field.
-        if self.bookmark_panel is not None and self.bookmark_panel.is_editing:
-            event.accept()
-            return
-        if key == Qt.Key_B and not (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
-            if modifiers & Qt.ShiftModifier:
-                self.toggle_bookmark_panel()
-            else:
-                self.add_bookmark()
-            event.accept()
-            return
-        if key in (Qt.Key_Left, Qt.Key_Right) and (modifiers & Qt.AltModifier):
-            self.jump_bookmark(+1 if key == Qt.Key_Right else -1)
-            event.accept()
-            return
-
-        # Space: Play/Pause
-        if key == Qt.Key_Space:
-            self.engine.toggle_play()
-            event.accept()
-            return
-
-        # Speed: [ / ] (0.1x), Shift + [ / ] (0.05x)
-        if key == Qt.Key_BracketRight:
-            delta = 0.05 if (modifiers & Qt.ShiftModifier) else 0.1
-            self.change_speed_relative(delta)
-            event.accept()
-            return
-        elif key == Qt.Key_BracketLeft:
-            delta = -0.05 if (modifiers & Qt.ShiftModifier) else -0.1
-            self.change_speed_relative(delta)
-            event.accept()
-            return
-        elif key in (Qt.Key_Backslash, Qt.Key_Backspace):
-            self.reset_speed()
-            event.accept()
-            return
-
-        # Previous / next video: Shift+, / Shift+.  (also PageUp / PageDown)
-        if key in (Qt.Key_Greater, Qt.Key_PageDown):
-            self.play_adjacent(+1)
-            event.accept()
-            return
-        elif key in (Qt.Key_Less, Qt.Key_PageUp):
-            self.play_adjacent(-1)
-            event.accept()
-            return
-
-        # Seeking: Left / Right
-        if key == Qt.Key_Right:
-            step = 1.0 if (modifiers & Qt.ShiftModifier) else 5.0
-            self.seek_relative(step)
-            event.accept()
-            return
-        elif key == Qt.Key_Left:
-            step = -1.0 if (modifiers & Qt.ShiftModifier) else -5.0
-            self.seek_relative(step)
-            event.accept()
-            return
-
-        # Frame step: Comma / Period
-        if key == Qt.Key_Period:
-            self.engine.step_frame_forward()
-            event.accept()
-            return
-        elif key == Qt.Key_Comma:
-            self.engine.step_frame_backward()
-            event.accept()
-            return
-
-        # Volume: Up / Down
-        if key == Qt.Key_Up:
-            cur = self.engine.get_volume()
-            self.set_volume(cur + 5.0)
-            event.accept()
-            return
-        elif key == Qt.Key_Down:
-            cur = self.engine.get_volume()
-            self.set_volume(cur - 5.0)
-            event.accept()
-            return
-        elif key == Qt.Key_M:
-            self.toggle_mute()
-            event.accept()
-            return
-
-        # Media info: I
-        if key == Qt.Key_I and not (modifiers & Qt.ControlModifier):
-            self.toggle_media_info()
-            event.accept()
-            return
-
-        # Subtitle: C
-        if key == Qt.Key_C:
-            self.toggle_subtitle()
-            event.accept()
-            return
-
-        # Subtitle sync Z / X (0.1 s), audio delay with Shift, reset with Ctrl+Z
-        if key == Qt.Key_Z and (modifiers & Qt.ControlModifier):
-            self.reset_sync()
-            event.accept()
-            return
-        if key in (Qt.Key_Z, Qt.Key_X) and not (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
-            self.change_sync(bool(modifiers & Qt.ShiftModifier), 0.1 if key == Qt.Key_X else -0.1)
-            event.accept()
-            return
-
-        # Open File: Ctrl + O
-        if key == Qt.Key_O and (modifiers & Qt.ControlModifier):
-            self._open_file_dialog()
-            event.accept()
-            return
-
-        # Screenshot: Ctrl + S
-        if key == Qt.Key_S and (modifiers & Qt.ControlModifier):
-            self.take_screenshot()
-            event.accept()
-            return
-
-        # Fullscreen / PIP / Esc
-        if key in (Qt.Key_F, Qt.Key_Return):
-            self.toggle_fullscreen()
-            event.accept()
-            return
-        elif key == Qt.Key_Escape:
-            if self.next_up.is_counting():
-                self.next_up.cancel()
-            elif self.bookmark_panel is not None and self.bookmark_panel.isVisible():
-                self.bookmark_panel.hide()
-            elif self.track_popup.isVisible():
-                self.track_popup.hide()
-            elif self.info_panel.isVisible():
-                self.info_panel.hide()
-            elif self.isFullScreen():
-                self.toggle_fullscreen()
-            elif self._is_pip:
-                self.toggle_pip_mode()
-            event.accept()
-            return
-        elif key == Qt.Key_P:
-            self.toggle_pip_mode()
-            event.accept()
-            return
-
-        super().keyPressEvent(event)
+        if not self.keys.handle(event):
+            super().keyPressEvent(event)
 
     # --- Layout & Resizing ---
 
