@@ -112,7 +112,7 @@ def test_third_party_notices_cover_the_bundled_components():
 
 def test_readme_documents_every_key_binding_in_the_code():
     """Keys handled in MainWindow.keyPressEvent that a user should know about."""
-    code = (ROOT / "ui" / "main_window.py").read_text(encoding="utf-8")
+    code = (ROOT / "ui" / "key_bindings.py").read_text(encoding="utf-8")         # (the keys moved here from main_window.py)
     for key_const in ("Key_Space", "Key_M", "Key_C", "Key_P", "Key_I", "Key_F"):
         assert key_const in code
     readme = (RELEASE / "README_RELEASE.txt").read_text(encoding="utf-8")

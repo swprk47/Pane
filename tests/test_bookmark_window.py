@@ -339,3 +339,23 @@ def test_a_newly_opened_video_has_no_pins_until_its_length_is_known(window, samp
     tl = window.controller.timeline
     assert tl._duration == 0 and tl._pin_marks() == [], "the old video's length must not place the new video's pins"
     assert pump(lambda: len(tl._pin_marks()) == 1, timeout=10)
+
+
+def test_the_panels_add_button_adds_once_and_says_so_once(window, video, pills):
+    window.toggle_bookmark_panel()
+    window._time_pos = 1.0
+    pills.clear()
+    window.bookmark_panel.add_button.click()
+    assert [p[0] for p in pills] == ["북마크"], "one bookmark, one pill (a second handler would add 'already there')"
+    assert len(window.bookmarks) == 1
+
+
+def test_opening_another_video_forgets_the_chapters_and_closes_the_panel_at_once(window, sample_video, pump):
+    from pathlib import Path
+    window.load_media_file(str(Path(__file__).parent / "assets" / "chapters.mkv"))
+    assert pump(lambda: window.chapters and window.controller.timeline._duration > 0, timeout=10)
+    window.toggle_bookmark_panel()
+    assert window.bookmark_panel.isVisible()
+    window.load_media_file(sample_video)
+    assert window.chapters == [] and window.controller.timeline._chapters == [], "no chapters of the old video, even for a moment"
+    assert not window.bookmark_panel.isVisible()

@@ -1,6 +1,6 @@
 # Splitting `main_window.py` — design
 
-Date: 2026-10-25. Status: approved in chat (approach C, order below), to be reviewed as written.
+Date: 2026-10-25. Status: implemented on `refactor/main-window-split` (see PROGRESS §1; the result is 1,023 lines in `main_window.py`, not the hoped-for 900).
 
 ## Why
 

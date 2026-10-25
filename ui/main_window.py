@@ -1,35 +1,25 @@
 import os
-import sys
 import ctypes
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout,
-    QFileDialog, QMenu, QApplication
+    QFileDialog, QApplication
 )
-from PySide6.QtCore import Qt, QPoint, QRect, Signal, QEvent, QTimer
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeyEvent, QMouseEvent
+from PySide6.QtCore import Qt, QPoint, QEvent, QTimer
+from PySide6.QtGui import QKeyEvent
 
 from styles.glass_theme import GLASS_THEME_QSS
-from ui.title_bar import GlassTitleBar, native_start_window_drag
+from ui.title_bar import GlassTitleBar
 from ui.speed_popup import SpeedPopup
 from ui.track_popup import TrackPopup
-from ui.bookmark_panel import BookmarkPanel
-from ui.timeline_slider import PIN_COLOR
 from ui.osd_widget import GlassOSDWidget
 from ui.glass_controller import GlassController
 from ui.next_up import NextUpCard, NEXT_UP_SECONDS
-from ui.start_screen import StartScreen, DOCK_BOTTOM, DOCK_H
 from core import playlist
 from ui.media_info_panel import MediaInfoPanel
 from core.version import APP_NAME, APP_VERSION
 from core.media_types import open_dialog_filter
-from core.media_info import format_clock
-from core import app_log, diagnostics, exit_trace, file_errors, update_config
-from core.update_checker import UpdateChecker
-from ui.update_card import UpdateCard
-from ui.mpv_gl import MpvGLWidget
-from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator, SeekTimeTip, ThumbnailTip
-from core import bookmarks
-from core.thumbnails import ThumbnailProvider, bucket_of
+from core import app_log, diagnostics, exit_trace, file_errors
+from ui.overlay import TopScrim, MiniProgress, CenterBadge, SeekIndicator
 from core.tracks import pick_track, track_choice
 from ui.icons import get_svg_icon
 from core.player_engine import PlayerEngine
@@ -54,105 +44,12 @@ def apply_windows_11_rounded_corners(hwnd):
         print(f"[DWM] Corner preference notice: {e}")
 
 
-class VideoViewport(MpvGLWidget):
-    """
-    Dedicated video rendering viewport.
-    Supports dragging anywhere on the screen to move the window,
-    right-click context menu, and file drag-and-drop.
-    """
-    file_dropped = Signal(str)
-    double_clicked = Signal()
-    clicked = Signal()
-    context_menu_requested = Signal(QPoint)
-
-    def __init__(self, parent_window):
-        super().__init__(parent_window)
-        self.parent_window = parent_window
-        self.setAcceptDrops(True)
-        self.setMouseTracking(True)
-        self.setFocusPolicy(Qt.NoFocus)
-        self._press_pos = None
-        self._drag_started = False
-        self._after_double_click = False
-
-        # Empty state: the start screen covers the viewport until a video is loaded
-        self.start_screen = StartScreen(self)
-        self.notice_widget = self.start_screen          # (what "is the empty state showing" asks)
-        self.start_screen.setGeometry(self.rect())
-        self.start_screen.show()
-
-    def show_empty_notice(self, show: bool):
-        self.start_screen.setVisible(show)
-        if show:
-            self.start_screen.raise_()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.start_screen.setGeometry(self.rect())
-
-    def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
-            self.start_screen.set_dragging(True)
-            event.acceptProposedAction()
-
-    def dragLeaveEvent(self, event):
-        self.start_screen.set_dragging(False)
-        super().dragLeaveEvent(event)
-
-    def dropEvent(self, event: QDropEvent):
-        self.start_screen.set_dragging(False)
-        urls = event.mimeData().urls()
-        if urls:
-            file_path = urls[0].toLocalFile()
-            if os.path.exists(file_path):
-                self.file_dropped.emit(file_path)
-        event.acceptProposedAction()
-
-    def mouseDoubleClickEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton:
-            self._after_double_click = True
-            self.double_clicked.emit()
-            event.accept()
-
-    def mousePressEvent(self, event: QMouseEvent):
-        # Right button is deliberately not handled here: it falls through to
-        # contextMenuEvent so the menu opens through exactly one code path.
-        if event.button() == Qt.LeftButton:
-            self._press_pos = event.position().toPoint()
-            self._drag_started = False
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        # Start the native window move only once the cursor really drags.
-        # Starting it on press would swallow the button-up and break
-        # click / double-click detection.
-        if (event.buttons() & Qt.LeftButton and self._press_pos is not None
-                and not self._drag_started
-                and not self.parent_window.isFullScreen()
-                and not self.parent_window.isMaximized()):
-            moved = (event.position().toPoint() - self._press_pos).manhattanLength()
-            if moved >= QApplication.startDragDistance():
-                self._drag_started = True
-                native_start_window_drag(int(self.parent_window.winId()))
-                event.accept()
-                return
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        if event.button() == Qt.LeftButton and self._press_pos is not None:
-            if not self._drag_started and not self._after_double_click:
-                self.clicked.emit()
-            self._after_double_click = False
-            self._press_pos = None
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
-
-    def contextMenuEvent(self, event):
-        self.context_menu_requested.emit(event.globalPos())
-        event.accept()
+from ui.viewport import VideoViewport  # noqa: F401  (the name stays importable from here)
+from ui.context_menu import show_context_menu as _show_context_menu
+from ui.key_bindings import KeyRouter
+from ui.seek_tips import SeekTips
+from ui.bookmark_flow import BookmarkFlow
+from ui.update_flow import UpdateFlow
 
 
 class MainWindow(QMainWindow):
@@ -173,13 +70,12 @@ class MainWindow(QMainWindow):
         self._is_pip = False
         self._saved_geometry = None
         self._current_file = None
-        self.bookmarks = []                              # the loaded video's bookmarks [{"t", "name"}]
-        self.chapters = []                               # its chapters [(start, title)]
-        self.bookmark_panel = None                       # made on first use
         self._time_pos = 0.0                             # the playback position as the window last knew it
         self._last_problem = None          # what mpv said about the last file that would not open (for the diagnostics)
 
         self.app_settings = AppSettings()
+        self.keys = KeyRouter(self)                      # the keyboard (ui/key_bindings.py)
+        self.marks = BookmarkFlow(self)                  # bookmarks and chapters (ui/bookmark_flow.py)
 
         # A click toggles play/pause AT ONCE (no waiting to see whether a second click follows). If the
         # second click does come (double-click = fullscreen), the toggle is undone. The timer is the window
@@ -246,16 +142,8 @@ class MainWindow(QMainWindow):
         self.center_badge = CenterBadge(self.central_widget)
         self.center_badge.hide()
         self.seek_indicator = SeekIndicator(self.central_widget)
-        self.seek_tip = SeekTimeTip(self.central_widget)
-        self.thumbnail_tip = ThumbnailTip(self.central_widget)
-        self.thumbnail_provider = ThumbnailProvider(self)
-        self.thumbnail_provider.thumbnail_ready.connect(self._on_thumbnail_ready)
-        self._thumb_spot = None                          # (seconds, x) of the pointer while it is over the seek bar
-        self._tips_viewport = None                       # the video area the pill and the picture were placed in
+        self.tips = SeekTips(self)                       # the pill and the picture above the seek bar (ui/seek_tips.py)
         self._applying_speed = None                      # a speed set from memory: its change notice is not a user choice
-        self._stop_timer = QTimer(self)                  # "only when the pointer rests": fires STOP_DELAY_MS after the last move
-        self._stop_timer.setSingleShot(True)
-        self._stop_timer.timeout.connect(self._request_thumbnail)
         self.mini_progress = MiniProgress(self.central_widget)
         self.mini_progress.hide()
 
@@ -267,16 +155,8 @@ class MainWindow(QMainWindow):
         self.next_up.finished.connect(self._play_next_target)
         self.next_up.play_now.connect(self._play_next_target)
 
-        # the update notice: a card over the window (see _refresh_update_card) and the checker behind it
-        self.update_card = UpdateCard(self.central_widget)
-        self._install_wait = QTimer(self)          # the setup was started: Pane should be closed by it soon
-        self._install_wait.setSingleShot(True)
-        self._install_wait.timeout.connect(self._installer_stalled)
-        self._installer_path = ""
-        self._update_offer = None                 # the Manifest of the newer version the checker found
-        self.update_checker = UpdateChecker(self.app_settings, APP_VERSION, getattr(sys, "frozen", False),
-                                            update_config.UPDATE_MANIFEST_URL,
-                                            bytes.fromhex(update_config.UPDATE_PUBLIC_KEY_HEX), parent=self)
+        # the update notice: a card over the window and the checker behind it (ui/update_flow.py)
+        self.updates = UpdateFlow(self)
 
         self.info_panel = MediaInfoPanel(self.central_widget)
         self.info_panel.set_provider(self.engine.get_media_info)
@@ -287,14 +167,13 @@ class MainWindow(QMainWindow):
         # keep the controls on screen while the speed panel is open
         # (and while the mouse is on the title bar, which fades with them)
         self.controller.hold_visible = (lambda: self.speed_popup.isVisible() or self.track_popup.isVisible()
-                                        or (self.bookmark_panel is not None and self.bookmark_panel.isVisible())
+                                        or self.marks.panel_visible()
                                         or self.title_bar.underMouse())
         self.controller.visibility_changed.connect(self._on_controls_visibility)
         self.controller.opacity_changed.connect(self._on_controls_opacity)
         self.title_bar.activity.connect(self.controller.trigger_activity)
         self.title_bar.installEventFilter(self)
-        self._home_check = False                          # the home screen's update check is running
-        self.title_bar.update_clicked.connect(self._check_update_from_home)
+        self.title_bar.update_clicked.connect(self.updates.check_from_home)
         self.top_scrim.hide()
 
         self.osd = GlassOSDWidget(self.central_widget)
@@ -311,7 +190,7 @@ class MainWindow(QMainWindow):
         self.engine.playback_state_changed.connect(self._on_playback_state)
         self.engine.speed_changed.connect(self._on_speed_changed)
         self.engine.tracks_ready.connect(self._apply_remembered_tracks)
-        self.engine.tracks_ready.connect(self._load_chapters)
+        self.engine.tracks_ready.connect(self.marks.load_chapters)
         self.engine.volume_changed.connect(self._on_volume_changed)
         self.engine.file_ended.connect(self._on_file_ended)
         self.engine.error_occurred.connect(lambda err: self.osd.show_message(err, "warning"))
@@ -319,32 +198,28 @@ class MainWindow(QMainWindow):
         self.viewport.start_screen.copy_requested.connect(self.copy_diagnostics)
 
         # Controller -> Engine
-        self.controller.timeline.hover_moved.connect(self._show_seek_tip)
-        self.controller.timeline.hover_left.connect(self._hide_seek_tips)
-        self.controller.timeline.pin_pressed.connect(lambda t: self._seek_to_mark(t, say=False))
-        self.controller.bookmarks_clicked.connect(self.toggle_bookmark_panel)
-        self.controller.visibility_changed.connect(lambda shown: None if shown else self._hide_seek_tips())
-        self.update_card.update_clicked.connect(self._start_update)
-        self.update_card.dismissed.connect(self._dismiss_update)
-        self.update_checker.update_available.connect(self._on_update_available)
-        self.update_checker.download_progress.connect(self._on_update_progress)
-        self.update_checker.installer_ready.connect(self._on_update_installer_ready)
-        self.update_checker.install_failed.connect(self._on_update_failed)
-        self.engine.playback_state_changed.connect(lambda _playing: self._refresh_update_card())
+        self.controller.timeline.hover_moved.connect(self.tips.show)
+        self.controller.timeline.hover_left.connect(self.tips.hide)
+        self.controller.timeline.pin_pressed.connect(lambda t: self.marks.seek_to(t, say=False))
+        self.controller.bookmarks_clicked.connect(self.marks.toggle_panel)
+        self.controller.visibility_changed.connect(lambda shown: None if shown else self.tips.hide())
+        self.updates.card.update_clicked.connect(self.updates.start)
+        self.updates.card.dismissed.connect(self.updates.dismiss)
+        self.updates.checker.update_available.connect(self.updates.on_available)
+        self.updates.checker.download_progress.connect(self.updates.on_progress)
+        self.updates.checker.installer_ready.connect(self.updates.on_installer_ready)
+        self.updates.checker.install_failed.connect(self.updates.on_failed)
+        self.engine.playback_state_changed.connect(lambda _playing: self.updates.refresh_card())
         for signal in (self.next_up.finished, self.next_up.cancelled, self.next_up.play_now,
                        self.controller.settings_panel_toggled):
-            signal.connect(self._refresh_update_card)
-        QTimer.singleShot(5000, self.update_checker.check)       # the automatic check, a moment after the window is up
-        self.thumbnails_on = self.app_settings.get_thumbnails_enabled()
-        self.thumbnails_on_stop = self.app_settings.get_thumbnails_on_stop()
-        self.controller.thumbnails_on = self.thumbnails_on
-        self.controller.thumbnails_on_stop = self.thumbnails_on_stop
-        self.thumbnail_provider.set_enabled(self.thumbnails_on)
-        self.controller.thumbnails_changed.connect(self._on_thumbnails_changed)
-        self.controller.thumbnails_on_stop_changed.connect(self._on_thumbnails_on_stop_changed)
-        self.chapters_on = self.app_settings.get_chapters_visible()
-        self.controller.chapters_on = self.chapters_on
-        self.controller.chapters_changed.connect(self._on_chapters_changed)
+            signal.connect(self.updates.refresh_card)
+        QTimer.singleShot(5000, self.updates.checker.check)       # the automatic check, a moment after the window is up
+        self.controller.thumbnails_on = self.tips.thumbnails_on
+        self.controller.thumbnails_on_stop = self.tips.thumbnails_on_stop
+        self.controller.thumbnails_changed.connect(self.tips.on_thumbnails_changed)
+        self.controller.thumbnails_on_stop_changed.connect(self.tips.on_thumbnails_on_stop_changed)
+        self.controller.chapters_on = self.marks.chapters_on
+        self.controller.chapters_changed.connect(self.marks.on_chapters_changed)
         self.controller.updates_on = self.app_settings.get_update_check_enabled()
         self.controller.updates_changed.connect(self.app_settings.set_update_check_enabled)
         self.controller.hwdec_on = self.engine.hardware_decoding
@@ -413,274 +288,98 @@ class MainWindow(QMainWindow):
     # --- Video Context Menu (Right Click) ---
 
     def show_context_menu(self, global_pos: QPoint):
-        """Display comprehensive Apple Glass context menu on right click."""
-        menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                background-color: rgba(26, 26, 36, 0.98);
-                border: 1px solid rgba(255, 255, 255, 0.22);
-                border-radius: 12px;
-                padding: 6px;
-                font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif;
-            }
-            QMenu::item {
-                color: #FFFFFF;
-                font-size: 13px;
-                padding: 6px 20px 6px 12px;
-                border-radius: 6px;
-                margin: 1px 0;
-            }
-            QMenu::item:selected {
-                background-color: rgba(255, 255, 255, 0.16);
-                color: #FFFFFF;
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: rgba(255, 255, 255, 0.12);
-                margin: 4px 6px;
-            }
-        """)
+        _show_context_menu(self, global_pos)
 
-        # 1. Open File
-        act_open = menu.addAction("파일 열기... (Ctrl+O)")
-        act_open.triggered.connect(self._open_file_dialog)
+    STOP_DELAY_MS = 300                                  # ("only when the pointer rests": SeekTips reads it through the window)
 
-        menu.addSeparator()
+    # The tips live in ui/seek_tips.py; the old names stay here as forwarders.
+    @property
+    def seek_tip(self):
+        return self.tips.seek_tip
 
-        # 2. Play / Pause
-        is_playing = self.engine.is_playing()
-        act_play = menu.addAction("일시정지 (Space)" if is_playing else "재생 (Space)")
-        act_play.triggered.connect(self.engine.toggle_play)
-        prev_, next_ = playlist.neighbors(self._current_file) if self._current_file else (None, None)
-        act_prev = menu.addAction("이전 영상 (Shift+,)")
-        act_prev.setEnabled(prev_ is not None)
-        act_prev.triggered.connect(lambda: self.play_adjacent(-1))
-        act_next = menu.addAction("다음 영상 (Shift+.)")
-        act_next.setEnabled(next_ is not None)
-        act_next.triggered.connect(lambda: self.play_adjacent(+1))
-        act_auto = menu.addAction("영상이 끝나면 다음 영상 자동 재생")
-        act_auto.setCheckable(True)
-        act_auto.setChecked(self.app_settings.get_auto_next())
-        act_auto.triggered.connect(self.app_settings.set_auto_next)
+    @property
+    def thumbnail_tip(self):
+        return self.tips.thumbnail_tip
 
-        # 3. Speed Submenu
-        speed_menu = menu.addMenu("재생 속도 (배속)")
-        speed_menu.setStyleSheet(menu.styleSheet())
-        cur_spd = self.engine.get_speed()
+    @property
+    def thumbnail_provider(self):
+        return self.tips.thumbnail_provider
 
-        for spd in [0.8, 1.0, 1.2, 1.25, 1.4, 1.5, 1.75, 2.0]:
-            label = f"{spd:g}x" + ("  ✓" if abs(cur_spd - spd) < 0.01 else "")
-            act_s = speed_menu.addAction(label)
-            act_s.triggered.connect(lambda _, s=spd: self.engine.set_speed(s))
+    @property
+    def thumbnails_on(self) -> bool:
+        return self.tips.thumbnails_on
 
-        speed_menu.addSeparator()
-        act_speed_popup = speed_menu.addAction("정밀 배속 슬라이더 & 프리셋 설정...")
-        act_speed_popup.triggered.connect(self._show_speed_popup)
+    @thumbnails_on.setter
+    def thumbnails_on(self, value: bool):
+        self.tips.thumbnails_on = value
 
-        # 4. Subtitles
-        sub_menu = menu.addMenu("자막 (Subtitles)")
-        sub_menu.setStyleSheet(menu.styleSheet())
-        act_sub_toggle = sub_menu.addAction("자막 켜기 / 끄기 (C)")
-        act_sub_toggle.triggered.connect(lambda: self.toggle_subtitle(osd=False))
-        act_sub_load = sub_menu.addAction("외부 자막 파일 선택...")
-        act_sub_load.triggered.connect(self._select_subtitle_file)
+    @property
+    def thumbnails_on_stop(self) -> bool:
+        return self.tips.thumbnails_on_stop
 
-        menu.addSeparator()
-
-        # 5. Screenshot
-        act_shot = menu.addAction("현재 화면 고화질 캡처 (Ctrl+S)")
-        act_shot.triggered.connect(self.take_screenshot)
-
-        # Media info (codec / decoder / stats)
-        act_info = menu.addAction("재생 정보 - 코덱, 디코더 (I)")
-        act_info.setCheckable(True)
-        act_info.setChecked(self.info_panel.isVisible())
-        act_info.triggered.connect(self.toggle_media_info)
-
-        # 6. PIP Mode
-        act_pip = menu.addAction("PIP 항상 위 모드 (P)")
-        act_pip.setCheckable(True)
-        act_pip.setChecked(self._is_pip)
-        act_pip.triggered.connect(self.toggle_pip_mode)
-
-        # 7. Fullscreen
-        act_full = menu.addAction("전체화면 (F)")
-        act_full.setCheckable(True)
-        act_full.setChecked(self.isFullScreen())
-        act_full.triggered.connect(self.toggle_fullscreen)
-
-        menu.addSeparator()
-
-        # 8. Customize Buttons
-        act_layout = menu.addAction("설정...")
-        act_layout.triggered.connect(self.controller._open_settings_dialog)
-
-        act_about = menu.addAction(f"{APP_NAME} 정보 (v{APP_VERSION})")
-        act_about.triggered.connect(self.show_about)
-
-        # 9. Exit
-        act_exit = menu.addAction("Pane 종료 (Alt+F4)")
-        act_exit.triggered.connect(self.close)
-
-        menu.exec(global_pos)
-
-    def _show_seek_tip(self, seconds: float, x: float):
-        """The time under the pointer, as a pill just above the seek bar."""
-        tl = self.controller.timeline
-        spot = tl.mapTo(self.central_widget, QPoint(round(x), tl.height() // 2))
-        text, dot, detail = format_clock(seconds), None, ""         # (a bookmark under the pointer, else its chapter, else the time)
-        pin = tl.pin_at(x)
-        item = next((b for b in self.bookmarks if b["t"] == pin), None) if pin is not None else None
-        chapter = bookmarks.chapter_at(self.chapters, seconds) if self.chapters_on else None
-        if item is not None:
-            text, dot = bookmarks.display_name(item), PIN_COLOR
-            detail = format_clock(item["t"]) if item["name"] else ""
-        elif chapter is not None:
-            text, detail = chapter[1], format_clock(seconds)
-        self.seek_tip.show_at(text, spot.x(), spot.y() - 15, self.viewport.geometry(), dot=dot, detail=detail)
-        self._thumb_spot = (seconds, spot.x())
-        if not self._thumbnails_wanted():
-            self.thumbnail_tip.hide_tip()
-        elif self.thumbnails_on_stop:
-            self.thumbnail_tip.hide_tip()                # moving: the time only; the picture comes when the pointer rests
-            self._stop_timer.start(self.STOP_DELAY_MS)
-        else:
-            self._request_thumbnail()
-
-    STOP_DELAY_MS = 300
-
-    def _thumbnails_wanted(self) -> bool:
-        return bool(self.thumbnails_on and self._current_file is not None and self._duration > 0)
-
-    def _thumb_seconds(self) -> float:
-        """The moment the picture is for: the time under the pointer, but never the very end (a seek to the end of a file
-        that is kept open is the riskiest one): at most the last second."""
-        return min(self._thumb_spot[0], max(0.0, self._duration - 1.0))
-
-    def _request_thumbnail(self):
-        if self._thumb_spot is not None and self._thumbnails_wanted():
-            self.thumbnail_provider.request(self._current_file, self._thumb_seconds())
-
-    def _on_thumbnail_ready(self, path: str, bucket: int, image):
-        """A picture arrived: shown only for the file and the 2 s step the pointer is at now (a late one is dropped)."""
-        spot = self._thumb_spot
-        if (spot is None or path != self._current_file or bucket != bucket_of(self._thumb_seconds())
-                or not self.seek_tip.isVisible() or not self._thumbnails_wanted()
-                or (self.thumbnails_on_stop and self._stop_timer.isActive())):
-            return
-        self.thumbnail_tip.show_at(image, spot[1], self.seek_tip.y() - ThumbnailTip.GAP, self.viewport.geometry())
+    @thumbnails_on_stop.setter
+    def thumbnails_on_stop(self, value: bool):
+        self.tips.thumbnails_on_stop = value
 
     def _hide_seek_tips(self):
-        """The pill and the picture go together; nothing is asked for any more."""
-        self.seek_tip.hide_tip()
-        self.thumbnail_tip.hide_tip()
-        self._stop_timer.stop()
-        self._thumb_spot = None
+        self.tips.hide()
 
-    def _on_chapters_changed(self, enabled: bool):
-        self.chapters_on = enabled
-        self.app_settings.set_chapters_visible(enabled)
-        self._refresh_marks()
-        self._hide_seek_tips()
+    @property
+    def _stop_timer(self):
+        return self.tips._stop_timer
 
-    # --- bookmarks and chapter marks ------------------------------------------------------------------
-
-    def _marks_usable(self) -> bool:
-        return self._current_file is not None and self._duration > 0
-
-    def _forget_marks(self):
-        self.bookmarks, self.chapters = [], []
-        if self.bookmark_panel is not None:
-            self.bookmark_panel.hide()
-        self._refresh_marks()
-
-    def _load_chapters(self):
-        """(Once per video, when mpv has loaded the file.) The file's own chapters for the bar and the pill."""
-        self.chapters = self.engine.chapters() if self._current_file else []
-        self._refresh_marks()
-
-    def _refresh_marks(self):
-        """The pins and the chapter gaps into the seek bar, and the list into the panel when it is open."""
-        tl = self.controller.timeline
-        tl.set_chapters_visible(self.chapters_on)
-        tl.set_marks([b["t"] for b in self.bookmarks], [t for t, _title in self.chapters])
-        panel = self.bookmark_panel
-        if panel is not None and panel.isVisible() and not panel.is_editing:      # (a name being typed is left alone)
-            panel.set_items(self.bookmarks, self._duration)
-
-    def _set_bookmarks(self, items: list):
-        self.bookmarks = items
-        if self._current_file:
-            self.app_settings.save_bookmarks(self._current_file, items)
-        self._refresh_marks()
-
-    def add_bookmark(self):
-        if not self._marks_usable():
-            return
-        t = min(self._time_pos, self._duration)
-        items, added, existing = bookmarks.add(self.bookmarks, t)
-        if added:
-            self._set_bookmarks(items)
-            self.osd.show_message("북마크", "bookmark", format_clock(t))
-        elif existing is not None:
-            self.osd.show_message("이미 북마크가 있어요", "bookmark", format_clock(existing))
-        else:
-            self.osd.show_message(f"북마크는 영상마다 {bookmarks.MAX_PER_VIDEO}개까지 저장돼요", "warning")
-
-    def rename_bookmark(self, t: float, name: str):
-        self._set_bookmarks(bookmarks.rename(self.bookmarks, t, name))
-
-    def delete_bookmark(self, t: float):
-        self._set_bookmarks(bookmarks.remove(self.bookmarks, t))
-
-    def _seek_to_mark(self, t: float, say: bool):
-        """An exact seek (the position is noted at once, so a quick second key press goes on from here)."""
-        self.next_up.cancel()
-        self._time_pos = t
-        self.engine.seek(t, reference="exact")
-        if say:
-            self.osd.show_message("북마크", "bookmark", format_clock(t))
-
-    def jump_bookmark(self, direction: int):
-        """Alt+Right (+1) / Alt+Left (-1): the next / previous bookmark (one beyond the video's length is skipped)."""
-        if not self._marks_usable():
-            return
-        usable = [b for b in self.bookmarks if b["t"] <= self._duration]
-        target = bookmarks.next_after(usable, self._time_pos) if direction > 0 else bookmarks.previous(usable, self._time_pos)
-        if target is None:
-            self.osd.show_message("다음 북마크가 없어요" if direction > 0 else "이전 북마크가 없어요", "warning")
-        else:
-            self._seek_to_mark(target, say=True)
-
-    def toggle_bookmark_panel(self):
-        if not self._marks_usable():
-            return
-        if self.bookmark_panel is None:
-            panel = BookmarkPanel(self.central_widget)
-            panel.opened.connect(lambda: panel.set_items(self.bookmarks, self._duration))
-            panel.jump_requested.connect(lambda t: self._seek_to_mark(t, say=False))
-            panel.add_requested.connect(self.add_bookmark)
-            panel.rename_requested.connect(self.rename_bookmark)
-            panel.delete_requested.connect(self.delete_bookmark)
-            self.bookmark_panel = panel
-        button = self.controller.btn_bookmarks
-        if button is None or not button.isVisible():
-            button = self.controller.timeline
-        self.bookmark_panel.toggle_above_widget(button, align_to=self.controller.right_zone, above=self.controller.timeline)
+    def _thumb_seconds(self) -> float:
+        return self.tips._seconds()
 
     def _on_thumbnails_changed(self, enabled: bool):
-        self.thumbnails_on = enabled
-        self.app_settings.set_thumbnails_enabled(enabled)
-        self.thumbnail_provider.set_enabled(enabled)
-        if not enabled:
-            self._stop_timer.stop()
-            self.thumbnail_tip.hide_tip()
+        self.tips.on_thumbnails_changed(enabled)
 
     def _on_thumbnails_on_stop_changed(self, enabled: bool):
-        self.thumbnails_on_stop = enabled
-        self.app_settings.set_thumbnails_on_stop(enabled)
-        self._stop_timer.stop()
-        self.thumbnail_tip.hide_tip()
+        self.tips.on_thumbnails_on_stop_changed(enabled)
+
+    # Bookmarks and chapters live in ui/bookmark_flow.py; the old names stay here as forwarders.
+    @property
+    def bookmarks(self) -> list:
+        return self.marks.bookmarks
+
+    @property
+    def chapters(self) -> list:
+        return self.marks.chapters
+
+    @property
+    def chapters_on(self) -> bool:
+        return self.marks.chapters_on
+
+    @property
+    def bookmark_panel(self):
+        return self.marks.panel
+
+    def add_bookmark(self):
+        self.marks.add()
+
+    def rename_bookmark(self, t: float, name: str):
+        self.marks.rename(t, name)
+
+    def delete_bookmark(self, t: float):
+        self.marks.delete(t)
+
+    def jump_bookmark(self, direction: int):
+        self.marks.jump(direction)
+
+    def toggle_bookmark_panel(self):
+        self.marks.toggle_panel()
+
+    def _seek_to_mark(self, t: float, say: bool):
+        self.marks.seek_to(t, say)
+
+    def _load_chapters(self):
+        self.marks.load_chapters()
+
+    def _refresh_marks(self):
+        self.marks.refresh()
+
+    def _on_chapters_changed(self, enabled: bool):
+        self.marks.on_chapters_changed(enabled)
 
     def _on_hwdec_changed(self, enabled: bool):
         self.engine.set_hardware_decoding(enabled)
@@ -741,80 +440,31 @@ class MainWindow(QMainWindow):
     def show_about(self):
         self._build_about_box().exec()
 
-    UPDATE_CHECK_TIMEOUT_MS = 20000
+    UPDATE_CHECK_TIMEOUT_MS = 20000                      # (the update notice reads these two through the window)
+    INSTALL_WAIT_MS = 60000
+
+    # The update notice lives in ui/update_flow.py; the old names stay here as forwarders.
+    @property
+    def update_card(self):
+        return self.updates.card
+
+    @property
+    def update_checker(self):
+        return self.updates.checker
 
     def _ask_for_update(self, done):
-        """Ask for a version check now (whatever the daily time and the switch say) and call `done(kind, payload)` once
-        with ("current", None), ("available", manifest) or ("failed", message). (A check that was already running, the
-        automatic one, may end without a word: it does not wait for ever.)"""
-        checker = self.update_checker
-        state = {"done": False}
-        handlers = {}
-
-        def finish(kind, payload=None):
-            if state["done"]:
-                return
-            state["done"] = True
-            for signal, handler in handlers.items():
-                try:
-                    signal.disconnect(handler)
-                except (RuntimeError, TypeError):
-                    pass
-            done(kind, payload)
-
-        handlers[checker.up_to_date] = lambda: finish("current")
-        handlers[checker.update_available] = lambda m: finish("available", m)
-        handlers[checker.check_failed] = lambda message: finish("failed", message)
-        for signal, handler in handlers.items():
-            signal.connect(handler)
-        QTimer.singleShot(self.UPDATE_CHECK_TIMEOUT_MS, lambda: finish("failed", "새 버전을 확인하지 못했어요"))
-        checker.check(manual=True)
+        self.updates.ask(done)
 
     def _on_about_check(self, box, button):
-        """"업데이트 확인": ask now and show the answer in the dialog; when there is an update the button becomes
-        "지금 업데이트"."""
-        if button.text() == "지금 업데이트":
-            self._start_update()
-            box.close()
-            return
-        button.setEnabled(False)
-        box.setInformativeText("확인하는 중…")
-
-        def done(kind, payload):
-            button.setEnabled(True)
-            if kind == "current":
-                box.setInformativeText(f"최신 버전이에요 (v{APP_VERSION})")
-            elif kind == "available":
-                box.setInformativeText(f"새 버전이 있어요: {payload.version}")
-                button.setText("지금 업데이트")
-            else:
-                box.setInformativeText(payload)
-
-        self._ask_for_update(done)
+        self.updates.on_about_check(box, button)
 
     def _check_update_from_home(self):
-        """The button next to PIP: it turns while the check runs; the answer is a pill at the top (or the update card)."""
-        if self._home_check:
-            return
-        self._home_check = True
-        button = self.title_bar.btn_update
-        button.set_spinning(True)
-        self.osd.show_message("확인하는 중…", "refresh")
+        self.updates.check_from_home()
 
-        def done(kind, payload):
-            self._home_check = False
-            button.set_spinning(False)
-            if kind == "current":
-                self.osd.show_message(f"최신 버전이에요 (v{APP_VERSION})", "check")
-            elif kind == "available":
-                self._update_offer = payload              # (asked for by hand: shown even if its X was pressed before)
-                if self.update_card.mode not in ("progress", "installing"):
-                    self.update_card.show_offer(payload.version, payload.notes)
-                self._refresh_update_card()
-            else:
-                self.osd.show_message(payload, "warning")
-
-        self._ask_for_update(done)
+    def _refresh_update_card(self):
+        updates = getattr(self, "updates", None)
+        if updates is not None:
+            updates.refresh_card()
 
     def _on_copy_diagnostics(self, button):
         self.copy_diagnostics()
@@ -868,9 +518,7 @@ class MainWindow(QMainWindow):
         self._duration = 0.0                              # (the new video says how long it is in a moment)
         self.controller.set_duration(0.0)                 # (the seek bar too: pins must not use the old video's length)
         self._time_pos = 0.0
-        self._forget_marks()
-        self.bookmarks = self.app_settings.get_bookmarks(file_path)
-        self._refresh_marks()
+        self.marks.open_video(file_path)
         self.track_popup.hide()
         self.next_up.cancel()
         self._next_target = None
@@ -919,7 +567,7 @@ class MainWindow(QMainWindow):
         self._duration = duration
         if self._current_file and duration > 0:
             self.app_settings.save_duration(self._current_file, duration)     # (the start screen's progress line)
-        self._refresh_marks()
+        self.marks.refresh()
 
     def _on_playback_state(self, is_playing: bool):
         if is_playing:
@@ -1040,7 +688,7 @@ class MainWindow(QMainWindow):
         problem = file_errors.classify(path, why, log_lines)
         self._last_problem = problem.detail
         self._current_file = None
-        self._forget_marks()
+        self.marks.forget()
         self.next_up.cancel()
         self._next_target = None
         self._update_playlist_state()
@@ -1057,84 +705,6 @@ class MainWindow(QMainWindow):
         self.viewport.start_screen.set_problem(problem.title, problem.hint)
         self.viewport.show_empty_notice(True)
         self._refresh_update_card()
-
-    # --- the update card -------------------------------------------------------------------------
-
-    def _on_update_available(self, manifest):
-        self._update_offer = manifest
-        if self.update_card.mode not in ("progress", "installing") \
-                and manifest.version != self.app_settings.get_update_dismissed_version():
-            self.update_card.show_offer(manifest.version, manifest.notes)
-        self._refresh_update_card()
-
-    def _on_update_progress(self, done: int, total: int):
-        if self.update_card.mode == "progress":
-            self.update_card.show_progress(done, total)
-
-    INSTALL_WAIT_MS = 60000
-
-    def _on_update_installer_ready(self, path: str):
-        self._installer_path = path
-        self.update_card.show_installing()
-        self._install_wait.start(self.INSTALL_WAIT_MS)
-        self._refresh_update_card()
-
-    def _installer_stalled(self):
-        """The setup was started but Pane is still running a minute later (administrator prompt cancelled, the file
-        blocked after it started, the setup failed): say so and keep the file's place, with [다시 시도]."""
-        if self.update_card.mode == "installing":
-            self.update_card.show_failure(f"설치가 시작되지 않았어요. 설치 파일: {self._installer_path}")
-            self._refresh_update_card()
-
-    def _on_update_failed(self, message: str):
-        self._install_wait.stop()
-        self.update_card.show_failure(message)
-        self._refresh_update_card()
-
-    def _start_update(self):
-        offer = self._update_offer
-        if offer is None:
-            return
-        self._install_wait.stop()
-        self.update_card.show_offer(offer.version, offer.notes)       # (sets the version the progress text names)
-        if self.update_checker.download_and_install():                # (False: a check is still running, stay as the offer)
-            self.update_card.show_progress(0, offer.size)
-        self._refresh_update_card()
-
-    def _dismiss_update(self):
-        """The X: this version is not announced again (a newer one is); 정보 > 업데이트 확인 still offers it."""
-        if self._update_offer is not None:
-            self.app_settings.set_update_dismissed_version(self._update_offer.version)
-        self.update_card.hide_card()
-
-    def _update_card_blocked(self) -> bool:
-        """Never over a playing video; the next-video card, the settings panel and a file-error notice come first."""
-        playing = self._current_file is not None and self.engine.is_playing()
-        return bool(playing or self.next_up.isVisible() or self.controller.settings_panel is not None
-                    or self.viewport.start_screen.has_problem())
-
-    def _refresh_update_card(self):
-        """Show or hide the card as the window's state allows (it keeps its content while hidden)."""
-        if not hasattr(self, "update_card") or not hasattr(self, "controller"):
-            return
-        card = self.update_card
-        if card.mode == "hidden" or self._update_card_blocked():
-            card.setVisible(False)
-            return
-        card.setVisible(True)
-        self._place_update_card()
-        card.raise_()
-
-    def _place_update_card(self):
-        """Bottom right, like the next-video card: above the controls of a loaded video, above the dock otherwise."""
-        vp = self.viewport.geometry()
-        card = self.update_card
-        x = max(vp.x() + 8, vp.right() - card.width() - 24)
-        if self._current_file is not None:
-            y = vp.bottom() - self.controller.CONTROLS_HEIGHT - card.height() - 6
-        else:
-            y = vp.bottom() - (DOCK_BOTTOM + DOCK_H) - card.height() - 12
-        card.move(x, max(vp.y() + 8, y))
 
     def _update_playlist_state(self):
         prev_, next_ = playlist.neighbors(self._current_file) if self._current_file else (None, None)
@@ -1332,164 +902,8 @@ class MainWindow(QMainWindow):
     # --- Keybindings Map ---
 
     def keyPressEvent(self, event: QKeyEvent):
-        key = event.key()
-        modifiers = event.modifiers()
-
-        # The control-layout panel is modal: it has the keyboard (normally it holds the focus itself).
-        panel = self.controller.settings_panel
-        if panel is not None:
-            if key == Qt.Key_Escape:
-                panel.reject()
-            event.accept()
-            return
-
-        # Bookmarks (before the plain Left / Right seek): B adds one, Shift+B opens the list, Alt+Left / Alt+Right jump
-        # to the previous / next one. While a name is being typed, every key belongs to the field.
-        if self.bookmark_panel is not None and self.bookmark_panel.is_editing:
-            event.accept()
-            return
-        if key == Qt.Key_B and not (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
-            if modifiers & Qt.ShiftModifier:
-                self.toggle_bookmark_panel()
-            else:
-                self.add_bookmark()
-            event.accept()
-            return
-        if key in (Qt.Key_Left, Qt.Key_Right) and (modifiers & Qt.AltModifier):
-            self.jump_bookmark(+1 if key == Qt.Key_Right else -1)
-            event.accept()
-            return
-
-        # Space: Play/Pause
-        if key == Qt.Key_Space:
-            self.engine.toggle_play()
-            event.accept()
-            return
-
-        # Speed: [ / ] (0.1x), Shift + [ / ] (0.05x)
-        if key == Qt.Key_BracketRight:
-            delta = 0.05 if (modifiers & Qt.ShiftModifier) else 0.1
-            self.change_speed_relative(delta)
-            event.accept()
-            return
-        elif key == Qt.Key_BracketLeft:
-            delta = -0.05 if (modifiers & Qt.ShiftModifier) else -0.1
-            self.change_speed_relative(delta)
-            event.accept()
-            return
-        elif key in (Qt.Key_Backslash, Qt.Key_Backspace):
-            self.reset_speed()
-            event.accept()
-            return
-
-        # Previous / next video: Shift+, / Shift+.  (also PageUp / PageDown)
-        if key in (Qt.Key_Greater, Qt.Key_PageDown):
-            self.play_adjacent(+1)
-            event.accept()
-            return
-        elif key in (Qt.Key_Less, Qt.Key_PageUp):
-            self.play_adjacent(-1)
-            event.accept()
-            return
-
-        # Seeking: Left / Right
-        if key == Qt.Key_Right:
-            step = 1.0 if (modifiers & Qt.ShiftModifier) else 5.0
-            self.seek_relative(step)
-            event.accept()
-            return
-        elif key == Qt.Key_Left:
-            step = -1.0 if (modifiers & Qt.ShiftModifier) else -5.0
-            self.seek_relative(step)
-            event.accept()
-            return
-
-        # Frame step: Comma / Period
-        if key == Qt.Key_Period:
-            self.engine.step_frame_forward()
-            event.accept()
-            return
-        elif key == Qt.Key_Comma:
-            self.engine.step_frame_backward()
-            event.accept()
-            return
-
-        # Volume: Up / Down
-        if key == Qt.Key_Up:
-            cur = self.engine.get_volume()
-            self.set_volume(cur + 5.0)
-            event.accept()
-            return
-        elif key == Qt.Key_Down:
-            cur = self.engine.get_volume()
-            self.set_volume(cur - 5.0)
-            event.accept()
-            return
-        elif key == Qt.Key_M:
-            self.toggle_mute()
-            event.accept()
-            return
-
-        # Media info: I
-        if key == Qt.Key_I and not (modifiers & Qt.ControlModifier):
-            self.toggle_media_info()
-            event.accept()
-            return
-
-        # Subtitle: C
-        if key == Qt.Key_C:
-            self.toggle_subtitle()
-            event.accept()
-            return
-
-        # Subtitle sync Z / X (0.1 s), audio delay with Shift, reset with Ctrl+Z
-        if key == Qt.Key_Z and (modifiers & Qt.ControlModifier):
-            self.reset_sync()
-            event.accept()
-            return
-        if key in (Qt.Key_Z, Qt.Key_X) and not (modifiers & (Qt.ControlModifier | Qt.AltModifier)):
-            self.change_sync(bool(modifiers & Qt.ShiftModifier), 0.1 if key == Qt.Key_X else -0.1)
-            event.accept()
-            return
-
-        # Open File: Ctrl + O
-        if key == Qt.Key_O and (modifiers & Qt.ControlModifier):
-            self._open_file_dialog()
-            event.accept()
-            return
-
-        # Screenshot: Ctrl + S
-        if key == Qt.Key_S and (modifiers & Qt.ControlModifier):
-            self.take_screenshot()
-            event.accept()
-            return
-
-        # Fullscreen / PIP / Esc
-        if key in (Qt.Key_F, Qt.Key_Return):
-            self.toggle_fullscreen()
-            event.accept()
-            return
-        elif key == Qt.Key_Escape:
-            if self.next_up.is_counting():
-                self.next_up.cancel()
-            elif self.bookmark_panel is not None and self.bookmark_panel.isVisible():
-                self.bookmark_panel.hide()
-            elif self.track_popup.isVisible():
-                self.track_popup.hide()
-            elif self.info_panel.isVisible():
-                self.info_panel.hide()
-            elif self.isFullScreen():
-                self.toggle_fullscreen()
-            elif self._is_pip:
-                self.toggle_pip_mode()
-            event.accept()
-            return
-        elif key == Qt.Key_P:
-            self.toggle_pip_mode()
-            event.accept()
-            return
-
-        super().keyPressEvent(event)
+        if not self.keys.handle(event):
+            super().keyPressEvent(event)
 
     # --- Layout & Resizing ---
 
@@ -1504,11 +918,8 @@ class MainWindow(QMainWindow):
         vp = self.viewport.geometry()
         if vp.width() <= 0 or vp.height() <= 0:
             return
-        if vp != self._tips_viewport:             # (the time pill and the picture were placed for the bar as it was:
-            self._tips_viewport = QRect(vp)       #  only a change of the video area moves it; a layout pass alone does not)
-            self._hide_seek_tips()
-            if self.bookmark_panel is not None:
-                self.bookmark_panel.hide()
+        if self.tips.area_changed(vp):            # (the tips were placed for the bar as it was: only a change of the video
+            self.marks.hide_panel()               #  area moves them, and the list; a layout pass alone does not)
 
         # Controls: compact (transport only) when the full set doesn't fit.
         c = self.controller
@@ -1530,8 +941,8 @@ class MainWindow(QMainWindow):
                                vp.y() + (vp.height() - self.center_badge.height()) // 2)
 
         self.seek_indicator.place(vp)
-        if self.update_card.isVisible():
-            self._place_update_card()
+        if self.updates.card.isVisible():
+            self.updates.place_card()
         if hasattr(self, "osd"):
             self.osd.place(vp.x() + vp.width() // 2, vp.y())      # (the same spot with or without the title bar)
 
@@ -1563,8 +974,8 @@ class MainWindow(QMainWindow):
             self.speed_popup.raise_()
         if self.track_popup.isVisible():
             self.track_popup.raise_()
-        if self.bookmark_panel is not None and self.bookmark_panel.isVisible():
-            self.bookmark_panel.raise_()
+        if self.marks.panel_visible():
+            self.marks.raise_panel()
         if self.next_up.isVisible():
             self.next_up.raise_()
         if self.info_panel.isVisible():
@@ -1590,10 +1001,8 @@ class MainWindow(QMainWindow):
 
     def _on_close(self):
         exit_trace.begin()                              # (timed "[exit]" lines in pane.log: where a slow or stuck exit stopped)
-        self.update_checker.request_stop()             # (a download in flight gives up at its next chunk)
-        self.update_checker.wait_for_done(500)
-        exit_trace.stage("update check stopped")
-        self.thumbnail_provider.shutdown()              # (a picture in the making gets a second at most)
+        self.updates.request_stop()                     # (a download in flight gives up at its next chunk; traced)
+        self.tips.shutdown()                            # (a picture in the making gets a second at most)
         exit_trace.stage("thumbnails closed")
         # Render context first, then the mpv core (the other order aborts).
         if hasattr(self, "viewport"):

@@ -14,7 +14,6 @@ from ctypes import wintypes
 import pytest
 from PySide6.QtCore import QPoint
 
-import ui.main_window as mw
 
 pytestmark = pytest.mark.e2e
 
@@ -36,7 +35,8 @@ def screen_window(window, pump, monkeypatch):
     pump(timeout=0.4)
     started = []
     # entering the system move loop would block the test
-    monkeypatch.setattr(mw, "native_start_window_drag", lambda hwnd: started.append(hwnd) or True)
+    import ui.viewport as viewport_module                 # (the drag is started from there since VideoViewport moved out of main_window)
+    monkeypatch.setattr(viewport_module, "native_start_window_drag", lambda hwnd: started.append(hwnd) or True)
     window._drag_calls = started
     return window
 
